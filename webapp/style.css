@@ -349,6 +349,14 @@ body.no-scroll { overflow: hidden; }
   z-index: 1000;
 }
 
+.video-fallback {
+  margin: -8px 16px 16px;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: center;
+}
+.video-fallback a { color: var(--gold); font-weight: 700; }
+
 .locked-box {
   margin: 0 16px;
   padding: 26px 22px;

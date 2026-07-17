@@ -239,35 +239,65 @@ async function openCourseDetail(courseId) {
   }
 }
 
+function extractYoutubeId(url) {
+  try {
+    // Barcha keng tarqalgan YouTube manzil turlarini qamrab oladi:
+    // youtu.be/ID, youtube.com/watch?v=ID, /embed/ID, /shorts/ID, m.youtube.com, ortiqcha & parametrlar bilan
+    const patterns = [
+      /youtu\.be\/([a-zA-Z0-9_-]{11})/,
+      /[?&]v=([a-zA-Z0-9_-]{11})/,
+      /\/embed\/([a-zA-Z0-9_-]{11})/,
+      /\/shorts\/([a-zA-Z0-9_-]{11})/
+    ];
+    for (const p of patterns) {
+      const m = url.match(p);
+      if (m) return m[1];
+    }
+  } catch (e) {}
+  return "";
+}
+
 function playLesson(lesson, course) {
   const content = document.getElementById("detailContent");
   document.getElementById("detailTitle").textContent = lesson.title;
 
   let videoHtml = "";
-  const url = lesson.video_url || "";
+  const url = (lesson.video_url || "").trim();
   const isYoutube = url.includes("youtube.com") || url.includes("youtu.be");
 
   if (isYoutube) {
-    let videoId = "";
-    if (url.includes("youtu.be/")) videoId = url.split("youtu.be/")[1].split("?")[0];
-    else if (url.includes("watch?v=")) videoId = url.split("watch?v=")[1].split("&")[0];
-    else if (url.includes("/embed/")) videoId = url.split("/embed/")[1].split("?")[0];
+    const videoId = extractYoutubeId(url);
 
-    // rel=0 va modestbranding=1 — video tugagach faqat shu kanaldan tavsiya chiqadi,
-    // youtube-nocookie domeni orqali chalg'ituvchi tavsiyalar yanada kamayadi.
-    const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1&playsinline=1`;
-    videoHtml = `
-      <div class="video-wrap" id="videoWrap">
-        <iframe src="${embedUrl}"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-          allowfullscreen></iframe>
-        <button class="fullscreen-btn" id="fullscreenBtn">⛶</button>
-      </div>`;
+    if (!videoId) {
+      // Video ID topilmadi — havola formati notanish, foydalanuvchiga asl havolani beramiz
+      videoHtml = `
+        <div class="locked-box">
+          <p>Bu videoni to'g'ridan-to'g'ri ko'rsatib bo'lmadi.</p>
+          <button class="gold-btn" onclick="window.open('${url}', '_blank')">▶ YouTube'da ochish</button>
+        </div>`;
+    } else {
+      // rel=0 va modestbranding=1 — video tugagach faqat shu kanaldan tavsiya chiqadi,
+      // youtube-nocookie domeni orqali chalg'ituvchi tavsiyalar yanada kamayadi.
+      const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1&playsinline=1`;
+      videoHtml = `
+        <div class="video-wrap" id="videoWrap">
+          <iframe src="${embedUrl}"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+            allowfullscreen></iframe>
+          <button class="fullscreen-btn" id="fullscreenBtn">⛶</button>
+        </div>
+        <div class="video-fallback">
+          Video ochilmayaptimi? <a href="${url}" target="_blank" rel="noopener">To'g'ridan-to'g'ri YouTube'da ochish</a>
+        </div>`;
+    }
   } else if (url) {
     videoHtml = `
       <div class="video-wrap" id="videoWrap">
         <video src="${url}" controls playsinline></video>
         <button class="fullscreen-btn" id="fullscreenBtn">⛶</button>
+      </div>
+      <div class="video-fallback">
+        Video ochilmayaptimi? <a href="${url}" target="_blank" rel="noopener">Havolani to'g'ridan-to'g'ri ochish</a>
       </div>`;
   } else {
     videoHtml = `<div class="locked-box"><p>Video manzili kiritilmagan</p></div>`;
