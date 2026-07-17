@@ -5,7 +5,7 @@ from fastapi import FastAPI, Query, Header, HTTPException, Body
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
-from config import ADMIN_PASSWORD, BOT_USERNAME, BRAND_NAME, BRAND_SUB
+from config import ADMIN_PASSWORD, ADMIN_TELEGRAM_IDS, BOT_USERNAME, BRAND_NAME, BRAND_SUB
 from database import (
     init_db, add_sample_courses, get_or_create_user,
     get_all_courses, get_course, create_course, update_course, delete_course,
@@ -29,10 +29,20 @@ def startup():
     add_sample_courses()
 
 
-def check_admin(x_admin_password: str = Header(default="")):
-    if x_admin_password != ADMIN_PASSWORD:
-        raise HTTPException(status_code=401, detail="Noto'g'ri parol")
-    return True
+def check_admin(x_admin_password: str = Header(default=""), x_telegram_id: str = Header(default="")):
+    """Admin ekanini ikki xil usulda tekshiradi:
+    1) Mini App ichidan: X-Telegram-Id header orqali (ADMIN_TELEGRAM_IDS ro'yxati bilan solishtiriladi)
+    2) Alohida admin.html sahifasidan: X-Admin-Password header orqali
+    """
+    if x_admin_password and x_admin_password == ADMIN_PASSWORD:
+        return True
+    if x_telegram_id:
+        try:
+            if int(x_telegram_id) in ADMIN_TELEGRAM_IDS:
+                return True
+        except ValueError:
+            pass
+    raise HTTPException(status_code=401, detail="Ruxsat yo'q")
 
 
 # ---------- PUBLIC: brand / user ----------
@@ -48,6 +58,11 @@ def api_get_user(telegram_id: int = Query(...), first_name: str = Query("Foydala
     referrals = get_confirmed_referral_count(telegram_id)
     user["confirmed_referrals"] = referrals
     return user
+
+
+@app.get("/api/is-admin")
+def api_is_admin(telegram_id: int = Query(...)):
+    return {"is_admin": telegram_id in ADMIN_TELEGRAM_IDS}
 
 
 @app.get("/api/referral-link")
@@ -94,7 +109,7 @@ def api_get_course(course_id: int, telegram_id: int = Query(...)):
     return course
 
 
-# ---------- ADMIN: auth ----------
+# ---------- ADMIN: auth (admin.html uchun, zaxira variant) ----------
 
 @app.post("/api/admin/login")
 def admin_login(password: str = Body(..., embed=True)):
@@ -106,8 +121,8 @@ def admin_login(password: str = Body(..., embed=True)):
 # ---------- ADMIN: courses CRUD ----------
 
 @app.get("/api/admin/courses")
-def admin_list_courses(x_admin_password: str = Header(default="")):
-    check_admin(x_admin_password)
+def admin_list_courses(x_admin_password: str = Header(default=""), x_telegram_id: str = Header(default="")):
+    check_admin(x_admin_password, x_telegram_id)
     courses = get_all_courses(only_active=False)
     for c in courses:
         c["lessons_count"] = get_lessons_count(c["id"])
@@ -115,22 +130,22 @@ def admin_list_courses(x_admin_password: str = Header(default="")):
 
 
 @app.post("/api/admin/courses")
-def admin_create_course(data: dict = Body(...), x_admin_password: str = Header(default="")):
-    check_admin(x_admin_password)
+def admin_create_course(data: dict = Body(...), x_admin_password: str = Header(default=""), x_telegram_id: str = Header(default="")):
+    check_admin(x_admin_password, x_telegram_id)
     new_id = create_course(data)
     return {"id": new_id}
 
 
 @app.put("/api/admin/courses/{course_id}")
-def admin_update_course(course_id: int, data: dict = Body(...), x_admin_password: str = Header(default="")):
-    check_admin(x_admin_password)
+def admin_update_course(course_id: int, data: dict = Body(...), x_admin_password: str = Header(default=""), x_telegram_id: str = Header(default="")):
+    check_admin(x_admin_password, x_telegram_id)
     update_course(course_id, data)
     return {"ok": True}
 
 
 @app.delete("/api/admin/courses/{course_id}")
-def admin_delete_course(course_id: int, x_admin_password: str = Header(default="")):
-    check_admin(x_admin_password)
+def admin_delete_course(course_id: int, x_admin_password: str = Header(default=""), x_telegram_id: str = Header(default="")):
+    check_admin(x_admin_password, x_telegram_id)
     delete_course(course_id)
     return {"ok": True}
 
@@ -138,28 +153,28 @@ def admin_delete_course(course_id: int, x_admin_password: str = Header(default="
 # ---------- ADMIN: lessons CRUD ----------
 
 @app.get("/api/admin/courses/{course_id}/lessons")
-def admin_list_lessons(course_id: int, x_admin_password: str = Header(default="")):
-    check_admin(x_admin_password)
+def admin_list_lessons(course_id: int, x_admin_password: str = Header(default=""), x_telegram_id: str = Header(default="")):
+    check_admin(x_admin_password, x_telegram_id)
     return {"lessons": get_lessons(course_id)}
 
 
 @app.post("/api/admin/lessons")
-def admin_create_lesson(data: dict = Body(...), x_admin_password: str = Header(default="")):
-    check_admin(x_admin_password)
+def admin_create_lesson(data: dict = Body(...), x_admin_password: str = Header(default=""), x_telegram_id: str = Header(default="")):
+    check_admin(x_admin_password, x_telegram_id)
     new_id = create_lesson(data)
     return {"id": new_id}
 
 
 @app.put("/api/admin/lessons/{lesson_id}")
-def admin_update_lesson(lesson_id: int, data: dict = Body(...), x_admin_password: str = Header(default="")):
-    check_admin(x_admin_password)
+def admin_update_lesson(lesson_id: int, data: dict = Body(...), x_admin_password: str = Header(default=""), x_telegram_id: str = Header(default="")):
+    check_admin(x_admin_password, x_telegram_id)
     update_lesson(lesson_id, data)
     return {"ok": True}
 
 
 @app.delete("/api/admin/lessons/{lesson_id}")
-def admin_delete_lesson(lesson_id: int, x_admin_password: str = Header(default="")):
-    check_admin(x_admin_password)
+def admin_delete_lesson(lesson_id: int, x_admin_password: str = Header(default=""), x_telegram_id: str = Header(default="")):
+    check_admin(x_admin_password, x_telegram_id)
     delete_lesson(lesson_id)
     return {"ok": True}
 

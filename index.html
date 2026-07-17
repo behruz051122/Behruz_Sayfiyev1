@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Behruz Sayfiyev</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="logo-block">
+      <div class="logo">BS</div>
+      <div>
+        <div class="brand" id="brandName">Behruz Sayfiyev</div>
+        <div class="brand-sub" id="brandSub">TALABA PANELI</div>
+      </div>
+    </div>
+    <div class="stats">
+      <span id="pointsBadge" class="badge">⚡ 0</span>
+      <span id="coinsBadge" class="badge">🪙 0</span>
+      <button id="adminGearBtn" class="admin-gear hidden" data-nav="admin">⚙️</button>
+    </div>
+  </header>
+
+  <main id="app">
+
+    <!-- HOME SCREEN -->
+    <section id="screen-home" class="screen">
+      <section class="hello">
+        <div class="hello-label">XAYRLI KUN</div>
+        <h1 id="helloName">Salom 👋</h1>
+        <p>Bugun ham birga o'rganamiz. Maqsadingizga bir qadam yaqinroq.</p>
+      </section>
+
+      <div class="menu-cards">
+        <button class="menu-card gold" data-nav="courses">
+          <div class="menu-card-icon">📚</div>
+          <div>
+            <div class="menu-card-title">Kurslar</div>
+            <div class="menu-card-sub">Video darslar va masalalar</div>
+          </div>
+          <div class="menu-card-arrow">›</div>
+        </button>
+
+        <button class="menu-card purple" data-nav="books">
+          <div class="menu-card-icon">📗</div>
+          <div>
+            <div class="menu-card-title">Kitoblar</div>
+            <div class="menu-card-sub">Yechilgan masalalar to'plami</div>
+          </div>
+          <div class="menu-card-arrow">›</div>
+        </button>
+
+        <button class="menu-card teal" data-nav="referral">
+          <div class="menu-card-icon">🎁</div>
+          <div>
+            <div class="menu-card-title">Do'st taklif qiling</div>
+            <div class="menu-card-sub">Yopiq darslarni bepul oching</div>
+          </div>
+          <div class="menu-card-arrow">›</div>
+        </button>
+      </div>
+    </section>
+
+    <!-- COURSE LIST SCREEN (courses yoki books) -->
+    <section id="screen-list" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="home">←</button>
+        <h2 id="listTitle">Kurslar</h2>
+      </div>
+      <div id="courseList" class="course-list"></div>
+    </section>
+
+    <!-- COURSE DETAIL SCREEN -->
+    <section id="screen-detail" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="back-to-list">←</button>
+        <h2 id="detailTitle">Kurs</h2>
+      </div>
+      <div id="detailContent"></div>
+    </section>
+
+    <!-- REFERRAL SCREEN -->
+    <section id="screen-referral" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="home">←</button>
+        <h2>Do'st taklif qiling</h2>
+      </div>
+      <div class="referral-box">
+        <div class="referral-icon">🎁</div>
+        <p>Havolangiz orqali qo'shilgan va kanalga obuna bo'lgan har bir do'stingiz uchun yopiq darslar ochiladi.</p>
+        <div class="referral-count">
+          Tasdiqlangan takliflar: <span id="referralCount">0</span>
+        </div>
+        <div class="referral-link-box">
+          <input id="referralLinkInput" type="text" readonly>
+          <button id="copyLinkBtn">Nusxalash</button>
+        </div>
+        <button id="shareLinkBtn" class="share-btn">📤 Do'stlarga ulashish</button>
+      </div>
+    </section>
+
+    <!-- ADMIN SCREEN -->
+    <section id="screen-admin" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="home">←</button>
+        <h2>⚙️ Admin panel</h2>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-section-head">
+          <h3>Kurslar / Kitoblar</h3>
+          <button id="adminNewCourseBtn" class="gold-btn small">+ Yangi qo'shish</button>
+        </div>
+        <div id="adminCoursesList" class="admin-list"></div>
+      </div>
+
+      <div id="adminCourseForm" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3 id="adminCourseFormTitle">Yangi kurs</h3>
+          <button id="adminCloseCourseForm" class="icon-btn">✕</button>
+        </div>
+        <form id="courseFormEl" class="admin-form">
+          <input type="hidden" id="ac_id">
+          <label>Nomi <input id="ac_title" required></label>
+          <label>Fan <input id="ac_subject" required></label>
+          <label>Turi
+            <select id="ac_resource_type">
+              <option value="course">Kurs (video darslar)</option>
+              <option value="book">Kitob</option>
+            </select>
+          </label>
+          <label>Tavsif <textarea id="ac_description"></textarea></label>
+          <label>Bepulmi?
+            <select id="ac_is_free">
+              <option value="1">Ha, bepul</option>
+              <option value="0">Yo'q, referal orqali ochiladi</option>
+            </select>
+          </label>
+          <label>Nechta taklif kerak <input id="ac_required_referrals" type="number" min="0" value="0"></label>
+          <label>Muddat (masalan: 3 oy) <input id="ac_duration_text"></label>
+          <label>Emoji <input id="ac_thumbnail_emoji" value="📘"></label>
+          <label>Tartib raqami <input id="ac_order_num" type="number" value="0"></label>
+          <label>Faolmi?
+            <select id="ac_is_active">
+              <option value="1">Ha</option>
+              <option value="0">Yo'q (yashirilgan)</option>
+            </select>
+          </label>
+          <button type="submit" class="gold-btn">Saqlash</button>
+        </form>
+      </div>
+
+      <div id="adminLessonsPanel" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3 id="adminLessonsTitle">Darslar</h3>
+          <button id="adminCloseLessons" class="icon-btn">✕</button>
+        </div>
+        <div id="adminLessonsList" class="admin-list"></div>
+        <form id="lessonFormEl" class="admin-form">
+          <input type="hidden" id="al_id">
+          <input type="hidden" id="al_course_id">
+          <label>Dars nomi <input id="al_title" required></label>
+          <label>Video havolasi (YouTube yoki mp4) <input id="al_video_url"></label>
+          <label>Tavsif <textarea id="al_description"></textarea></label>
+          <label>Tartib raqami <input id="al_order_num" type="number" value="0"></label>
+          <button type="submit" class="gold-btn">Darsni saqlash</button>
+        </form>
+      </div>
+    </section>
+
+  </main>
+
+  <nav class="bottom-nav">
+    <button class="nav-item active" data-nav="home">🏠<span>Bosh sahifa</span></button>
+    <button class="nav-item" data-nav="courses">📚<span>Kurslar</span></button>
+    <button class="nav-item" data-nav="referral">🎁<span>Takliflar</span></button>
+    <button class="nav-item" data-nav="books">📗<span>Kitoblar</span></button>
+  </nav>
+
+<script src="app.js"></script>
+</body>
+</html>
