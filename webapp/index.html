@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Behruz Sayfiyev</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="logo-block">
+      <div class="logo">BS</div>
+      <div>
+        <div class="brand" id="brandName">Behruz Sayfiyev</div>
+        <div class="brand-sub" id="brandSub">TALABA PANELI</div>
+      </div>
+    </div>
+    <div class="stats">
+      <span id="pointsBadge" class="badge">⚡ 0</span>
+      <span id="coinsBadge" class="badge">🪙 0</span>
+    </div>
+  </header>
+
+  <main id="app">
+
+    <!-- HOME SCREEN -->
+    <section id="screen-home" class="screen">
+      <section class="hello">
+        <div class="hello-label">XAYRLI KUN</div>
+        <h1 id="helloName">Salom 👋</h1>
+        <p>Bugun ham birga o'rganamiz. Maqsadingizga bir qadam yaqinroq.</p>
+      </section>
+
+      <div class="menu-cards">
+        <button class="menu-card gold" data-nav="courses">
+          <div class="menu-card-icon">📚</div>
+          <div>
+            <div class="menu-card-title">Kurslar</div>
+            <div class="menu-card-sub">Video darslar va masalalar</div>
+          </div>
+          <div class="menu-card-arrow">›</div>
+        </button>
+
+        <button class="menu-card purple" data-nav="books">
+          <div class="menu-card-icon">📗</div>
+          <div>
+            <div class="menu-card-title">Kitoblar</div>
+            <div class="menu-card-sub">Yechilgan masalalar to'plami</div>
+          </div>
+          <div class="menu-card-arrow">›</div>
+        </button>
+
+        <button class="menu-card teal" data-nav="referral">
+          <div class="menu-card-icon">🎁</div>
+          <div>
+            <div class="menu-card-title">Do'st taklif qiling</div>
+            <div class="menu-card-sub">Yopiq darslarni bepul oching</div>
+          </div>
+          <div class="menu-card-arrow">›</div>
+        </button>
+      </div>
+    </section>
+
+    <!-- COURSE LIST SCREEN (courses yoki books) -->
+    <section id="screen-list" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="home">←</button>
+        <h2 id="listTitle">Kurslar</h2>
+      </div>
+      <div id="courseList" class="course-list"></div>
+    </section>
+
+    <!-- COURSE DETAIL SCREEN -->
+    <section id="screen-detail" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="back-to-list">←</button>
+        <h2 id="detailTitle">Kurs</h2>
+      </div>
+      <div id="detailContent"></div>
+    </section>
+
+    <!-- REFERRAL SCREEN -->
+    <section id="screen-referral" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="home">←</button>
+        <h2>Do'st taklif qiling</h2>
+      </div>
+      <div class="referral-box">
+        <div class="referral-icon">🎁</div>
+        <p>Havolangiz orqali qo'shilgan va kanalga obuna bo'lgan har bir do'stingiz uchun yopiq darslar ochiladi.</p>
+        <div class="referral-count">
+          Tasdiqlangan takliflar: <span id="referralCount">0</span>
+        </div>
+        <div class="referral-link-box">
+          <input id="referralLinkInput" type="text" readonly>
+          <button id="copyLinkBtn">Nusxalash</button>
+        </div>
+        <button id="shareLinkBtn" class="share-btn">📤 Do'stlarga ulashish</button>
+      </div>
+    </section>
+
+  </main>
+
+  <nav class="bottom-nav">
+    <button class="nav-item active" data-nav="home">🏠<span>Bosh sahifa</span></button>
+    <button class="nav-item" data-nav="courses">📚<span>Kurslar</span></button>
+    <button class="nav-item" data-nav="referral">🎁<span>Takliflar</span></button>
+    <button class="nav-item" data-nav="books">📗<span>Kitoblar</span></button>
+  </nav>
+
+<script src="app.js"></script>
+</body>
+</html>

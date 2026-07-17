@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — Behruz Sayfiyev</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+
+  <div id="loginScreen" class="login-screen">
+    <div class="login-box">
+      <h1>🔐 Admin panel</h1>
+      <p>Kirish uchun parolni kiriting</p>
+      <input id="passwordInput" type="password" placeholder="Parol">
+      <button id="loginBtn">Kirish</button>
+      <div id="loginError" class="error-text"></div>
+    </div>
+  </div>
+
+  <div id="adminScreen" class="admin-screen hidden">
+    <header class="admin-header">
+      <h1>⚙️ Admin panel — Kurslar va darslar</h1>
+      <button id="logoutBtn" class="logout-btn">Chiqish</button>
+    </header>
+
+    <div class="admin-body">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Kurslar / Kitoblar ro'yxati</h2>
+          <button id="newCourseBtn" class="primary-btn">+ Yangi qo'shish</button>
+        </div>
+        <div id="coursesTable" class="courses-table"></div>
+      </div>
+
+      <div id="courseFormPanel" class="panel hidden">
+        <div class="panel-head">
+          <h2 id="courseFormTitle">Yangi kurs</h2>
+          <button id="closeCourseForm" class="icon-btn">✕</button>
+        </div>
+        <form id="courseForm" class="form-grid">
+          <input type="hidden" id="courseId">
+          <label>Nomi <input id="f_title" required></label>
+          <label>Fan <input id="f_subject" required></label>
+          <label>Turi
+            <select id="f_resource_type">
+              <option value="course">Kurs (video darslar)</option>
+              <option value="book">Kitob</option>
+            </select>
+          </label>
+          <label>Tavsif <textarea id="f_description"></textarea></label>
+          <label>Bepulmi?
+            <select id="f_is_free">
+              <option value="1">Ha, bepul</option>
+              <option value="0">Yo'q, referal orqali ochiladi</option>
+            </select>
+          </label>
+          <label>Nechta taklif kerak <input id="f_required_referrals" type="number" min="0" value="0"></label>
+          <label>Muddat (masalan: 3 oy) <input id="f_duration_text"></label>
+          <label>Emoji (masalan: 🧪) <input id="f_thumbnail_emoji" value="📘"></label>
+          <label>Tartib raqami <input id="f_order_num" type="number" value="0"></label>
+          <label>Faolmi?
+            <select id="f_is_active">
+              <option value="1">Ha</option>
+              <option value="0">Yo'q (yashirilgan)</option>
+            </select>
+          </label>
+          <button type="submit" class="primary-btn full">Saqlash</button>
+        </form>
+      </div>
+
+      <div id="lessonsPanel" class="panel hidden">
+        <div class="panel-head">
+          <h2 id="lessonsPanelTitle">Darslar</h2>
+          <button id="closeLessonsPanel" class="icon-btn">✕</button>
+        </div>
+        <div id="lessonsList" class="lessons-admin-list"></div>
+        <form id="lessonForm" class="form-grid">
+          <input type="hidden" id="lessonId">
+          <input type="hidden" id="lessonCourseId">
+          <label>Dars nomi <input id="l_title" required></label>
+          <label>Video havolasi (YouTube yoki to'g'ridan-to'g'ri mp4) <input id="l_video_url"></label>
+          <label>Tavsif <textarea id="l_description"></textarea></label>
+          <label>Tartib raqami <input id="l_order_num" type="number" value="0"></label>
+          <button type="submit" class="primary-btn full">Darsni saqlash</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+<script src="admin.js"></script>
+</body>
+</html>
