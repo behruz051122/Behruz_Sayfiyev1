@@ -288,8 +288,16 @@ function playLesson(lesson, course) {
   if (fsBtn) {
     fsBtn.addEventListener("click", () => {
       const wrap = document.getElementById("videoWrap");
-      if (wrap.requestFullscreen) wrap.requestFullscreen();
-      else if (wrap.webkitRequestFullscreen) wrap.webkitRequestFullscreen();
+      const isActive = wrap.classList.toggle("fs-active");
+      fsBtn.textContent = isActive ? "✕" : "⛶";
+      document.body.classList.toggle("no-scroll", isActive);
+
+      // Telefon gorizontal holatga o'tishga urinamiz (barcha qurilmalarda ishlamasligi mumkin, xavfsiz)
+      if (isActive && screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock("landscape").catch(() => {});
+      } else if (!isActive && screen.orientation && screen.orientation.unlock) {
+        try { screen.orientation.unlock(); } catch (e) {}
+      }
     });
   }
 }

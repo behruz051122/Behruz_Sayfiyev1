@@ -319,6 +319,22 @@ body {
   aspect-ratio: unset;
   border-radius: 0;
 }
+
+/* CSS orqali "soxta" to'liq ekran — Telegram WebView'da brauzerning
+   haqiqiy Fullscreen API'si ishlamasligi mumkin, shuning uchun buni
+   o'zimiz qo'lda yaratamiz: video butun ekranni qoplaydi. */
+.video-wrap.fs-active {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 999;
+  border-radius: 0;
+  aspect-ratio: unset;
+  margin: 0;
+}
+body.no-scroll { overflow: hidden; }
+
 .fullscreen-btn {
   position: absolute;
   bottom: 10px;
@@ -330,7 +346,7 @@ body {
   border-radius: 8px;
   font-size: 15px;
   cursor: pointer;
-  z-index: 5;
+  z-index: 1000;
 }
 
 .locked-box {
