@@ -1,7 +1,8 @@
 # database.py
-# Barcha ma'lumotlar bazasi funksiyalari
+# Barcha ma'lumotlar bazasi funksiyalari (v2 — paragraf tuzilishi, coin, obuna)
 
 import sqlite3
+import datetime
 from config import DB_PATH
 
 
@@ -23,14 +24,16 @@ def init_db():
             first_name TEXT,
             username TEXT,
             points INTEGER DEFAULT 10,
-            coins INTEGER DEFAULT 5,
+            coins INTEGER DEFAULT 0,
             referred_by INTEGER,
             is_subscribed INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
 
-    # resource_type: 'course' (video darslar kursi) yoki 'book' (kitob/masala to'plami)
+    # resource_type: 'course' yoki 'book'
+    # price=0 => bepul (yoki faqat referal orqali, required_referrals bilan)
+    # duration_days=NULL => muddatsiz (bepul kurslar uchun), aks holda obuna necha kunga
     cur.execute("""
         CREATE TABLE IF NOT EXISTS courses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,6 +43,8 @@ def init_db():
             description TEXT,
             is_free INTEGER DEFAULT 1,
             required_referrals INTEGER DEFAULT 0,
+            price INTEGER DEFAULT 0,
+            duration_days INTEGER,
             duration_text TEXT,
             students_count INTEGER DEFAULT 0,
             thumbnail_emoji TEXT DEFAULT '📘',
@@ -49,19 +54,53 @@ def init_db():
         )
     """)
 
+    # Paragraf (bo'lim) — har biri ichida bir nechta (masalan 10 tadan) video dars bo'ladi
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS lessons (
+        CREATE TABLE IF NOT EXISTS paragraphs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             course_id INTEGER NOT NULL,
             title TEXT NOT NULL,
-            video_url TEXT,
-            description TEXT,
             order_num INTEGER DEFAULT 0,
             FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
         )
     """)
 
-    # Referal tizimi: kim kimni taklif qildi, tasdiqlanganmi (kanalga obuna bo'lganmi)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS lessons (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            paragraph_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            video_url TEXT,
+            description TEXT,
+            order_num INTEGER DEFAULT 0,
+            FOREIGN KEY (paragraph_id) REFERENCES paragraphs (id) ON DELETE CASCADE
+        )
+    """)
+
+    # Foydalanuvchi qaysi darsni ko'rib, coin olganini yozib boradi (bir darsga bir marta coin)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS lesson_progress (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            telegram_id INTEGER NOT NULL,
+            lesson_id INTEGER NOT NULL,
+            coin_awarded INTEGER DEFAULT 0,
+            watched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(telegram_id, lesson_id)
+        )
+    """)
+
+    # Pullik kursga obuna (admin qo'lda tasdiqlaydi yoki keyinchalik Payme/Click orqali avtomatik)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS enrollments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            telegram_id INTEGER NOT NULL,
+            course_id INTEGER NOT NULL,
+            expiry_date TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(telegram_id, course_id)
+        )
+    """)
+
     cur.execute("""
         CREATE TABLE IF NOT EXISTS referrals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,7 +113,7 @@ def init_db():
 
     conn.commit()
     conn.close()
-    print("Baza tayyor: users, courses, lessons, referrals jadvallari.")
+    print("Baza tayyor (v2): users, courses, paragraphs, lessons, lesson_progress, enrollments, referrals.")
 
 
 # ---------- USERS ----------
@@ -84,7 +123,6 @@ def get_or_create_user(telegram_id: int, first_name: str, username: str = None, 
     cur = conn.cursor()
     cur.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
     user = cur.fetchone()
-
     if user is None:
         cur.execute(
             "INSERT INTO users (telegram_id, first_name, username, referred_by) VALUES (?, ?, ?, ?)",
@@ -93,7 +131,6 @@ def get_or_create_user(telegram_id: int, first_name: str, username: str = None, 
         conn.commit()
         cur.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
         user = cur.fetchone()
-
     conn.close()
     return dict(user)
 
@@ -106,10 +143,17 @@ def set_user_subscribed(telegram_id: int, value: bool = True):
     conn.close()
 
 
+def add_coins(telegram_id: int, amount: int = 1):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET coins = coins + ? WHERE telegram_id = ?", (amount, telegram_id))
+    conn.commit()
+    conn.close()
+
+
 # ---------- REFERRALS ----------
 
 def create_pending_referral(referrer_id: int, referred_id: int):
-    """Yangi referalni yozadi (hali tasdiqlanmagan holatda)"""
     if referrer_id == referred_id:
         return
     conn = get_connection()
@@ -124,9 +168,7 @@ def create_pending_referral(referrer_id: int, referred_id: int):
     conn.close()
 
 
-def confirm_referral(referred_id: int) -> int | None:
-    """referred_id foydalanuvchi kanalga obuna bo'lganini tasdiqlaydi.
-    Referrer_id ni qaytaradi (agar mavjud bo'lsa)."""
+def confirm_referral(referred_id: int):
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("SELECT referrer_telegram_id, confirmed FROM referrals WHERE referred_telegram_id = ?", (referred_id,))
@@ -145,25 +187,19 @@ def confirm_referral(referred_id: int) -> int | None:
 def get_confirmed_referral_count(telegram_id: int) -> int:
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute(
-        "SELECT COUNT(*) as c FROM referrals WHERE referrer_telegram_id = ? AND confirmed = 1",
-        (telegram_id,)
-    )
+    cur.execute("SELECT COUNT(*) as c FROM referrals WHERE referrer_telegram_id = ? AND confirmed = 1", (telegram_id,))
     count = cur.fetchone()["c"]
     conn.close()
     return count
 
 
 def get_referral_progress(telegram_id: int):
-    """Referrer uchun taklif qilingan odamlar ro'yxati (ism va holati)"""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("""
         SELECT r.referred_telegram_id, r.confirmed, u.first_name
-        FROM referrals r
-        LEFT JOIN users u ON u.telegram_id = r.referred_telegram_id
-        WHERE r.referrer_telegram_id = ?
-        ORDER BY r.created_at DESC
+        FROM referrals r LEFT JOIN users u ON u.telegram_id = r.referred_telegram_id
+        WHERE r.referrer_telegram_id = ? ORDER BY r.created_at DESC
     """, (telegram_id,))
     rows = [dict(r) for r in cur.fetchall()]
     conn.close()
@@ -203,12 +239,14 @@ def create_course(data: dict) -> int:
     cur = conn.cursor()
     cur.execute("""
         INSERT INTO courses (title, subject, resource_type, description, is_free,
-            required_referrals, duration_text, students_count, thumbnail_emoji, order_num, is_active)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            required_referrals, price, duration_days, duration_text, students_count,
+            thumbnail_emoji, order_num, is_active)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         data.get("title", ""), data.get("subject", ""), data.get("resource_type", "course"),
         data.get("description", ""), int(data.get("is_free", 1)),
-        int(data.get("required_referrals", 0)), data.get("duration_text", ""),
+        int(data.get("required_referrals", 0)), int(data.get("price", 0)),
+        data.get("duration_days") or None, data.get("duration_text", ""),
         int(data.get("students_count", 0)), data.get("thumbnail_emoji", "📘"),
         int(data.get("order_num", 0)), int(data.get("is_active", 1))
     ))
@@ -221,15 +259,14 @@ def create_course(data: dict) -> int:
 def update_course(course_id: int, data: dict):
     conn = get_connection()
     cur = conn.cursor()
-    fields = []
-    values = []
+    fields, values = [], []
     allowed = ["title", "subject", "resource_type", "description", "is_free",
-               "required_referrals", "duration_text", "students_count",
-               "thumbnail_emoji", "order_num", "is_active"]
+               "required_referrals", "price", "duration_days", "duration_text",
+               "students_count", "thumbnail_emoji", "order_num", "is_active"]
     for key in allowed:
         if key in data:
             fields.append(f"{key} = ?")
-            values.append(data[key])
+            values.append(data[key] if data[key] != "" else None)
     if fields:
         values.append(course_id)
         cur.execute(f"UPDATE courses SET {', '.join(fields)} WHERE id = ?", values)
@@ -245,26 +282,89 @@ def delete_course(course_id: int):
     conn.close()
 
 
-# ---------- LESSONS ----------
+# ---------- PARAGRAPHS ----------
 
-def get_lessons(course_id: int):
+def get_paragraphs(course_id: int):
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM lessons WHERE course_id = ? ORDER BY order_num ASC, id ASC", (course_id,))
+    cur.execute("SELECT * FROM paragraphs WHERE course_id = ? ORDER BY order_num ASC, id ASC", (course_id,))
     rows = [dict(r) for r in cur.fetchall()]
     conn.close()
-    # course.lessons_count ni dinamik hisoblaymiz, shuning uchun alohida jadval kerak emas
     return rows
+
+
+def get_paragraph(paragraph_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM paragraphs WHERE id = ?", (paragraph_id,))
+    row = cur.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def create_paragraph(data: dict) -> int:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("INSERT INTO paragraphs (course_id, title, order_num) VALUES (?, ?, ?)", (
+        int(data["course_id"]), data.get("title", ""), int(data.get("order_num", 0))
+    ))
+    conn.commit()
+    new_id = cur.lastrowid
+    conn.close()
+    return new_id
+
+
+def update_paragraph(paragraph_id: int, data: dict):
+    conn = get_connection()
+    cur = conn.cursor()
+    fields, values = [], []
+    for key in ["title", "order_num"]:
+        if key in data:
+            fields.append(f"{key} = ?")
+            values.append(data[key])
+    if fields:
+        values.append(paragraph_id)
+        cur.execute(f"UPDATE paragraphs SET {', '.join(fields)} WHERE id = ?", values)
+        conn.commit()
+    conn.close()
+
+
+def delete_paragraph(paragraph_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM paragraphs WHERE id = ?", (paragraph_id,))
+    conn.commit()
+    conn.close()
+
+
+# ---------- LESSONS ----------
+
+def get_lessons(paragraph_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM lessons WHERE paragraph_id = ? ORDER BY order_num ASC, id ASC", (paragraph_id,))
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return rows
+
+
+def get_lesson(lesson_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM lessons WHERE id = ?", (lesson_id,))
+    row = cur.fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 
 def create_lesson(data: dict) -> int:
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("""
-        INSERT INTO lessons (course_id, title, video_url, description, order_num)
+        INSERT INTO lessons (paragraph_id, title, video_url, description, order_num)
         VALUES (?, ?, ?, ?, ?)
     """, (
-        int(data["course_id"]), data.get("title", ""), data.get("video_url", ""),
+        int(data["paragraph_id"]), data.get("title", ""), data.get("video_url", ""),
         data.get("description", ""), int(data.get("order_num", 0))
     ))
     conn.commit()
@@ -276,10 +376,8 @@ def create_lesson(data: dict) -> int:
 def update_lesson(lesson_id: int, data: dict):
     conn = get_connection()
     cur = conn.cursor()
-    fields = []
-    values = []
-    allowed = ["title", "video_url", "description", "order_num"]
-    for key in allowed:
+    fields, values = [], []
+    for key in ["title", "video_url", "description", "order_num"]:
         if key in data:
             fields.append(f"{key} = ?")
             values.append(data[key])
@@ -298,14 +396,182 @@ def delete_lesson(lesson_id: int):
     conn.close()
 
 
-def get_lessons_count(course_id: int) -> int:
+def count_course_lessons(course_id: int) -> int:
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) as c FROM lessons WHERE course_id = ?", (course_id,))
+    cur.execute("""
+        SELECT COUNT(*) as c FROM lessons l
+        JOIN paragraphs p ON p.id = l.paragraph_id
+        WHERE p.course_id = ?
+    """, (course_id,))
     c = cur.fetchone()["c"]
     conn.close()
     return c
 
+
+def count_paragraph_lessons(paragraph_id: int) -> int:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) as c FROM lessons WHERE paragraph_id = ?", (paragraph_id,))
+    c = cur.fetchone()["c"]
+    conn.close()
+    return c
+
+
+# ---------- LESSON PROGRESS / COINS ----------
+
+def mark_lesson_watched(telegram_id: int, lesson_id: int) -> bool:
+    """Darsni 'ko'rildi' deb belgilaydi va agar birinchi marta bo'lsa 1 coin beradi.
+    Coin berilgan bo'lsa True, avval berilgan bo'lsa False qaytaradi."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT coin_awarded FROM lesson_progress WHERE telegram_id = ? AND lesson_id = ?",
+                (telegram_id, lesson_id))
+    row = cur.fetchone()
+    if row is not None:
+        conn.close()
+        return False  # allaqachon ko'rilgan, qayta coin berilmaydi
+
+    cur.execute("INSERT INTO lesson_progress (telegram_id, lesson_id, coin_awarded) VALUES (?, ?, 1)",
+                (telegram_id, lesson_id))
+    conn.commit()
+    conn.close()
+    add_coins(telegram_id, 1)
+    return True
+
+
+def get_watched_lesson_ids(telegram_id: int, course_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT lp.lesson_id FROM lesson_progress lp
+        JOIN lessons l ON l.id = lp.lesson_id
+        JOIN paragraphs p ON p.id = l.paragraph_id
+        WHERE lp.telegram_id = ? AND p.course_id = ?
+    """, (telegram_id, course_id))
+    ids = [r["lesson_id"] for r in cur.fetchall()]
+    conn.close()
+    return ids
+
+
+# ---------- ENROLLMENTS (pullik obuna) ----------
+
+def grant_enrollment(telegram_id: int, course_id: int, duration_days: int = None):
+    """Foydalanuvchiga kursga obuna beradi (yoki mavjud obunani uzaytiradi).
+    duration_days=None bo'lsa, muddatsiz (lifetime) obuna beriladi."""
+    conn = get_connection()
+    cur = conn.cursor()
+
+    if duration_days is None:
+        expiry = None
+    else:
+        cur.execute("SELECT expiry_date FROM enrollments WHERE telegram_id = ? AND course_id = ?",
+                    (telegram_id, course_id))
+        row = cur.fetchone()
+        now = datetime.datetime.utcnow()
+        if row and row["expiry_date"]:
+            current_expiry = datetime.datetime.fromisoformat(row["expiry_date"])
+            base = current_expiry if current_expiry > now else now
+        else:
+            base = now
+        expiry = (base + datetime.timedelta(days=duration_days)).isoformat()
+
+    cur.execute("""
+        INSERT INTO enrollments (telegram_id, course_id, expiry_date)
+        VALUES (?, ?, ?)
+        ON CONFLICT(telegram_id, course_id) DO UPDATE SET expiry_date = excluded.expiry_date
+    """, (telegram_id, course_id, expiry))
+    conn.commit()
+    conn.close()
+
+
+def get_enrollment(telegram_id: int, course_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM enrollments WHERE telegram_id = ? AND course_id = ?", (telegram_id, course_id))
+    row = cur.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_user_enrollments(telegram_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT e.*, c.title, c.thumbnail_emoji, c.subject FROM enrollments e
+        JOIN courses c ON c.id = e.course_id
+        WHERE e.telegram_id = ? ORDER BY e.created_at DESC
+    """, (telegram_id,))
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return rows
+
+
+GRACE_PERIOD_DAYS = 2
+
+
+def compute_course_access(telegram_id: int, course: dict):
+    """Kurs uchun kirish holatini hisoblaydi.
+    Qaytaradi: {'unlocked': bool, 'reason': 'free'|'referral'|'enrolled'|'grace'|'expired'|'locked',
+                'expiry_date': str|None, 'days_left': int|None}
+    """
+    if course["is_free"]:
+        return {"unlocked": True, "reason": "free", "expiry_date": None, "days_left": None}
+
+    if course.get("required_referrals", 0) > 0:
+        refs = get_confirmed_referral_count(telegram_id)
+        if refs >= course["required_referrals"]:
+            return {"unlocked": True, "reason": "referral", "expiry_date": None, "days_left": None}
+
+    if course.get("price", 0) > 0:
+        enrollment = get_enrollment(telegram_id, course["id"])
+        if enrollment:
+            if enrollment["expiry_date"] is None:
+                return {"unlocked": True, "reason": "enrolled", "expiry_date": None, "days_left": None}
+            expiry = datetime.datetime.fromisoformat(enrollment["expiry_date"])
+            now = datetime.datetime.utcnow()
+            grace_end = expiry + datetime.timedelta(days=GRACE_PERIOD_DAYS)
+            days_left = (expiry - now).days
+            if now <= expiry:
+                return {"unlocked": True, "reason": "enrolled", "expiry_date": enrollment["expiry_date"], "days_left": days_left}
+            elif now <= grace_end:
+                return {"unlocked": True, "reason": "grace", "expiry_date": enrollment["expiry_date"], "days_left": days_left}
+            else:
+                return {"unlocked": False, "reason": "expired", "expiry_date": enrollment["expiry_date"], "days_left": days_left}
+
+    return {"unlocked": False, "reason": "locked", "expiry_date": None, "days_left": None}
+
+
+# ---------- LEADERBOARD ----------
+
+def get_leaderboard(limit: int = 100):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT telegram_id, first_name, coins FROM users
+        WHERE coins > 0 ORDER BY coins DESC, id ASC LIMIT ?
+    """, (limit,))
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return rows
+
+
+def get_user_rank(telegram_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT coins FROM users WHERE telegram_id = ?", (telegram_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return None
+    my_coins = row["coins"]
+    cur.execute("SELECT COUNT(*) as c FROM users WHERE coins > ?", (my_coins,))
+    rank = cur.fetchone()["c"] + 1
+    conn.close()
+    return rank
+
+
+# ---------- SAMPLE DATA ----------
 
 def add_sample_courses():
     conn = get_connection()
@@ -313,16 +579,15 @@ def add_sample_courses():
     cur.execute("SELECT COUNT(*) as c FROM courses")
     count = cur.fetchone()["c"]
     if count == 0:
-        sample = [
-            ("Mavzulashtirilgan masala kursi", "Kimyo", "course", "2000 dan ortiq masalalar", 0, 1, "3 oy", 0, "🧪", 1, 1),
-            ("Super nazariya", "Biologiya", "course", "Barcha mavzulardan nazariy videolar", 0, 2, "6 oy", 0, "🧬", 2, 1),
-            ("Yechilgan masalalar to'plami", "Kimyo", "book", "Men shaxsan yechgan masalalar to'plami", 1, 0, "", 0, "📗", 3, 1),
-        ]
-        cur.executemany("""
+        cur.execute("""
             INSERT INTO courses (title, subject, resource_type, description, is_free,
-                required_referrals, duration_text, students_count, thumbnail_emoji, order_num, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, sample)
+                required_referrals, price, duration_days, duration_text, students_count,
+                thumbnail_emoji, order_num, is_active)
+            VALUES ('Mavzulashtirilgan masala kursi', 'Kimyo', 'course', '2000 dan ortiq masalalar',
+                0, 1, 0, NULL, '3 oy', 0, '🧪', 1, 1)
+        """)
+        course_id = cur.lastrowid
+        cur.execute("INSERT INTO paragraphs (course_id, title, order_num) VALUES (?, ?, ?)",
+                    (course_id, "1-§. Kirish", 1))
         conn.commit()
-        print("Namuna kurslar qo'shildi.")
     conn.close()

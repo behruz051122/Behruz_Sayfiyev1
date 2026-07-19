@@ -18,7 +18,6 @@
       </div>
     </div>
     <div class="stats">
-      <span id="pointsBadge" class="badge">⚡ 0</span>
       <span id="coinsBadge" class="badge">🪙 0</span>
       <button id="adminGearBtn" class="admin-gear hidden" data-nav="admin">⚙️</button>
     </div>
@@ -26,7 +25,7 @@
 
   <main id="app">
 
-    <!-- HOME SCREEN -->
+    <!-- HOME -->
     <section id="screen-home" class="screen">
       <section class="hello">
         <div class="hello-label">XAYRLI KUN</div>
@@ -68,24 +67,22 @@
       <div class="home-footnote">Behruz Sayfiyev · Premium ta'lim platformasi</div>
     </section>
 
-    <!-- COURSE LIST SCREEN (courses yoki books) -->
+    <!-- COURSE LIST -->
     <section id="screen-list" class="screen hidden">
       <div class="screen-header">
         <button class="back-btn" data-nav="home">←</button>
         <h2 id="listTitle">Kurslar</h2>
       </div>
-
       <div class="filter-row" id="statusFilterRow">
         <button class="filter-chip active" data-filter="all">Hammasi</button>
         <button class="filter-chip" data-filter="free">Bepul</button>
         <button class="filter-chip" data-filter="locked">Yopiq</button>
       </div>
       <div class="filter-row" id="subjectFilterRow"></div>
-
       <div id="courseList" class="course-list"></div>
     </section>
 
-    <!-- COURSE DETAIL SCREEN -->
+    <!-- COURSE DETAIL (paragraphs) -->
     <section id="screen-detail" class="screen hidden">
       <div class="screen-header">
         <button class="back-btn" data-nav="back-to-list">←</button>
@@ -94,7 +91,25 @@
       <div id="detailContent"></div>
     </section>
 
-    <!-- REFERRAL SCREEN -->
+    <!-- PARAGRAPH DETAIL (lesson list within paragraph) -->
+    <section id="screen-paragraph" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="back-to-course">←</button>
+        <h2 id="paragraphTitle">Bo'lim</h2>
+      </div>
+      <div id="paragraphContent"></div>
+    </section>
+
+    <!-- LESSON PLAYER -->
+    <section id="screen-lesson" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="back-to-paragraph">←</button>
+        <h2 id="lessonTitle">Dars</h2>
+      </div>
+      <div id="lessonContent"></div>
+    </section>
+
+    <!-- REFERRAL -->
     <section id="screen-referral" class="screen hidden">
       <div class="screen-header">
         <button class="back-btn" data-nav="home">←</button>
@@ -117,7 +132,39 @@
       </div>
     </section>
 
-    <!-- ADMIN SCREEN -->
+    <!-- TESTLAR (placeholder — 2-bosqichda to'liq quriladi) -->
+    <section id="screen-tests" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="home">←</button>
+        <h2>Testlar</h2>
+      </div>
+      <div class="locked-box" style="margin:16px;">
+        <div class="lock-emoji">🧪</div>
+        <h3>Tez orada</h3>
+        <p>Har bir mavzu bo'yicha vaqtli, ketma-ket testlar shu yerda paydo bo'ladi.</p>
+      </div>
+    </section>
+
+    <!-- NATIJALAR (leaderboard) -->
+    <section id="screen-leaderboard" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="home">←</button>
+        <h2>🏆 Natijalar</h2>
+      </div>
+      <div id="myRankBox" class="my-rank-box"></div>
+      <div id="leaderboardList" class="leaderboard-list"></div>
+    </section>
+
+    <!-- PROFIL -->
+    <section id="screen-profile" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="home">←</button>
+        <h2>Profilim</h2>
+      </div>
+      <div id="profileContent"></div>
+    </section>
+
+    <!-- ADMIN -->
     <section id="screen-admin" class="screen hidden">
       <div class="screen-header">
         <button class="back-btn" data-nav="home">←</button>
@@ -148,15 +195,17 @@
             </select>
           </label>
           <label>Tavsif <textarea id="ac_description"></textarea></label>
-          <label>Bepulmi?
+          <label>Kirish turi
             <select id="ac_is_free">
-              <option value="1">Ha, bepul</option>
-              <option value="0">Yo'q, referal orqali ochiladi</option>
+              <option value="1">Bepul (hamma ko'radi)</option>
+              <option value="0">Yopiq (referal yoki pullik)</option>
             </select>
           </label>
-          <label>Nechta taklif kerak <input id="ac_required_referrals" type="number" min="0" value="0"></label>
-          <label>O'quvchilar soni (ko'rsatish uchun) <input id="ac_students_count" type="number" min="0" value="0"></label>
-          <label>Muddat (masalan: 3 oy) <input id="ac_duration_text"></label>
+          <label>Nechta taklif kerak (agar referal orqali ochilsa) <input id="ac_required_referrals" type="number" min="0" value="0"></label>
+          <label>Narxi, so'm (agar pullik bo'lsa) <input id="ac_price" type="number" min="0" value="0"></label>
+          <label>Obuna muddati, kun (bo'sh = muddatsiz) <input id="ac_duration_days" type="number" min="0"></label>
+          <label>O'quvchilar soni <input id="ac_students_count" type="number" min="0" value="0"></label>
+          <label>Muddat matni (masalan: 3 oy) <input id="ac_duration_text"></label>
           <label>Emoji <input id="ac_thumbnail_emoji" value="📘"></label>
           <label>Tartib raqami <input id="ac_order_num" type="number" value="0"></label>
           <label>Faolmi?
@@ -169,6 +218,21 @@
         </form>
       </div>
 
+      <div id="adminParagraphsPanel" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3 id="adminParagraphsTitle">Bo'limlar (paragraflar)</h3>
+          <button id="adminCloseParagraphs" class="icon-btn">✕</button>
+        </div>
+        <div id="adminParagraphsList" class="admin-list"></div>
+        <form id="paragraphFormEl" class="admin-form">
+          <input type="hidden" id="ap_id">
+          <input type="hidden" id="ap_course_id">
+          <label>Bo'lim nomi (masalan: 1-§. Kirish) <input id="ap_title" required></label>
+          <label>Tartib raqami <input id="ap_order_num" type="number" value="0"></label>
+          <button type="submit" class="gold-btn">Bo'limni saqlash</button>
+        </form>
+      </div>
+
       <div id="adminLessonsPanel" class="admin-section hidden">
         <div class="admin-section-head">
           <h3 id="adminLessonsTitle">Darslar</h3>
@@ -177,7 +241,7 @@
         <div id="adminLessonsList" class="admin-list"></div>
         <form id="lessonFormEl" class="admin-form">
           <input type="hidden" id="al_id">
-          <input type="hidden" id="al_course_id">
+          <input type="hidden" id="al_paragraph_id">
           <label>Dars nomi <input id="al_title" required></label>
           <label>Video havolasi (YouTube yoki mp4) <input id="al_video_url"></label>
           <label>Tavsif <textarea id="al_description"></textarea></label>
@@ -186,7 +250,24 @@
         </form>
       </div>
 
-      <div class="version-tag">Behruz Sayfiyev · nashr v3.2</div>
+      <div id="adminEnrollPanel" class="admin-section">
+        <div class="admin-section-head">
+          <h3>Pullik obuna berish (qo'lda)</h3>
+        </div>
+        <p style="font-size:11px;color:var(--text-dim);margin-bottom:10px;">
+          To'lov skrinshotini tekshirib bo'lgach, shu yerdan o'quvchiga kursni qo'lda oching.
+        </p>
+        <form id="enrollFormEl" class="admin-form">
+          <label>O'quvchining Telegram ID raqami <input id="en_telegram_id" type="number" required></label>
+          <label>Kurs
+            <select id="en_course_id"></select>
+          </label>
+          <label>Necha kunga (bo'sh = muddatsiz) <input id="en_duration_days" type="number" min="1"></label>
+          <button type="submit" class="gold-btn">Obunani berish / uzaytirish</button>
+        </form>
+      </div>
+
+      <div class="version-tag">Behruz Sayfiyev · nashr v4.0</div>
     </section>
 
   </main>
@@ -194,8 +275,9 @@
   <nav class="bottom-nav">
     <button class="nav-item active" data-nav="home">🏠<span>Bosh sahifa</span></button>
     <button class="nav-item" data-nav="courses">📚<span>Kurslar</span></button>
-    <button class="nav-item" data-nav="referral">🎁<span>Takliflar</span></button>
-    <button class="nav-item" data-nav="books">📗<span>Kitoblar</span></button>
+    <button class="nav-item" data-nav="tests">📝<span>Testlar</span></button>
+    <button class="nav-item" data-nav="leaderboard">🏆<span>Natijalar</span></button>
+    <button class="nav-item" data-nav="profile">👤<span>Profil</span></button>
   </nav>
 
 <script src="app.js"></script>

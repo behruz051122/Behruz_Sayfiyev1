@@ -23,5 +23,12 @@ ADMIN_PASSWORD = "behruz_2026"
 # Mini App ichidagi Admin bo'limini ko'radigan Telegram ID lar ro'yxati.
 ADMIN_TELEGRAM_IDS = [
     7558364715,
+]ADMIN_PASSWORD = "behruz_2026"
+# Mini App ichidagi Admin bo'limini ko'radigan Telegram ID lar ro'yxati.
+ADMIN_TELEGRAM_IDS = [
+    7558364715,
 ]
+
+# Foydalanuvchilar "Yordam" bo'limida shu shaxsga yozadi (o'zingizning username'ingiz, @ belgisisiz)
+ADMIN_CONTACT_USERNAME = "Behruz_Sayfiyev"
 DB_PATH = "database.db"
