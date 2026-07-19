@@ -24,6 +24,6 @@ ADMIN_TELEGRAM_IDS = [
 ]
 
 # Foydalanuvchilar "Yordam" bo'limida shu shaxsga yozadi (o'zingizning username'ingiz, @ belgisisiz)
-ADMIN_CONTACT_USERNAME = "Behruz_Sayfiyev"
+ADMIN_CONTACT_USERNAME = "BehruzSayfiyev"
 
 DB_PATH = "database.db"
