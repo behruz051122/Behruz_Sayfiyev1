@@ -1,6 +1,3 @@
-# config.py
-# Barcha sozlamalar shu yerda
-
 BOT_TOKEN = "8949426843:AAGMfLmX3NObg8v5gn3BFPieI62-35HoVhA"  # @BotFather dan
 
 # Mini App joylashgan HTTPS manzil
@@ -20,10 +17,7 @@ BRAND_SUB = "ONLINE TA'LIM PLATFORMASI"
 
 # Admin panelga kirish paroli — buni albatta o'zgartiring!
 ADMIN_PASSWORD = "behruz_2026"
-# Mini App ichidagi Admin bo'limini ko'radigan Telegram ID lar ro'yxati.
-ADMIN_TELEGRAM_IDS = [
-    7558364715,
-]ADMIN_PASSWORD = "behruz_2026"
+
 # Mini App ichidagi Admin bo'limini ko'radigan Telegram ID lar ro'yxati.
 ADMIN_TELEGRAM_IDS = [
     7558364715,
@@ -31,4 +25,5 @@ ADMIN_TELEGRAM_IDS = [
 
 # Foydalanuvchilar "Yordam" bo'limida shu shaxsga yozadi (o'zingizning username'ingiz, @ belgisisiz)
 ADMIN_CONTACT_USERNAME = "Behruz_Sayfiyev"
+
 DB_PATH = "database.db"
