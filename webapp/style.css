@@ -126,6 +126,11 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 
 .watched-confirmed { text-align: center; padding: 12px; border-radius: 12px; background: rgba(45,212,191,0.12); border: 1px solid rgba(45,212,191,0.35); color: var(--teal); font-weight: 700; font-size: 13px; }
 
+.lesson-nav-row { display: flex; gap: 10px; margin: 14px 16px 0; }
+.lesson-nav-btn { flex: 1; background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 12px 10px; border-radius: 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.lesson-nav-btn.primary { background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: #1a1a1a; border: none; }
+.lesson-nav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
 /* ---------- VIDEO ---------- */
 
 .video-wrap { margin: 0 16px 16px; border-radius: 16px; overflow: hidden; background: #000; aspect-ratio: 16/9; position: relative; }

@@ -3,6 +3,15 @@
 const tg = window.Telegram.WebApp;
 tg.expand();
 
+// Telegram Bot API 8.0+ da qo'shilgan rasmiy "to'liq ekran" funksiyasi.
+// Bu Mini App'ning o'zini Telegram ichida mavjud bo'sh joyni to'liq
+// egallashga majbur qiladi — bu kompyuterda ham, telefonda ham ishlaydi.
+try {
+  if (tg.isVersionAtLeast && tg.isVersionAtLeast("8.0") && tg.requestFullscreen) {
+    tg.requestFullscreen();
+  }
+} catch (e) { console.warn("Fullscreen so'rovi qo'llab-quvvatlanmaydi:", e); }
+
 const tgUser = tg.initDataUnsafe?.user || { id: 0, first_name: "Mehmon" };
 const API_BASE = window.location.origin;
 
@@ -316,6 +325,11 @@ function playLesson(lesson) {
   document.getElementById("lessonTitle").textContent = lesson.title;
   const content = document.getElementById("lessonContent");
 
+  const siblingLessons = currentParagraph ? currentParagraph.lessons : [];
+  const currentIndex = siblingLessons.findIndex(l => l.id === lesson.id);
+  const prevLesson = currentIndex > 0 ? siblingLessons[currentIndex - 1] : null;
+  const nextLesson = currentIndex >= 0 && currentIndex < siblingLessons.length - 1 ? siblingLessons[currentIndex + 1] : null;
+
   let videoHtml = "";
   const url = (lesson.video_url || "").trim();
   const isYoutube = url.includes("youtube.com") || url.includes("youtu.be");
@@ -329,10 +343,10 @@ function playLesson(lesson) {
           <button class="gold-btn" onclick="window.open('${url}', '_blank')">▶ YouTube'da ochish</button>
         </div>`;
     } else {
-      const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1&playsinline=1`;
+      const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1&playsinline=1&fs=0`;
       videoHtml = `
         <div class="video-wrap" id="videoWrap">
-          <iframe src="${embedUrl}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen></iframe>
+          <iframe src="${embedUrl}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>
           <button class="fullscreen-btn" id="fullscreenBtn">⛶</button>
         </div>
         <div class="video-fallback">Video ochilmayaptimi? <a href="${url}" target="_blank" rel="noopener">To'g'ridan-to'g'ri YouTube'da ochish</a></div>`;
@@ -359,7 +373,17 @@ function playLesson(lesson) {
         ? `<div class="watched-confirmed">✓ Bu dars ko'rildi — coin qo'shildi</div>`
         : `<button class="gold-btn" id="markWatchedBtn">✓ Ko'rib bo'ldim (+1 🪙)</button>`}
     </div>
+    <div class="lesson-nav-row">
+      <button class="lesson-nav-btn" id="prevLessonBtn" ${prevLesson ? "" : "disabled"}>← Oldingi dars</button>
+      <button class="lesson-nav-btn primary" id="nextLessonBtn" ${nextLesson ? "" : "disabled"}>Keyingi dars →</button>
+    </div>
   `;
+
+  const prevBtn = document.getElementById("prevLessonBtn");
+  if (prevBtn && prevLesson) prevBtn.addEventListener("click", () => playLesson(prevLesson));
+
+  const nextBtn = document.getElementById("nextLessonBtn");
+  if (nextBtn && nextLesson) nextBtn.addEventListener("click", () => playLesson(nextLesson));
 
   const fsBtn = document.getElementById("fullscreenBtn");
   if (fsBtn) {
