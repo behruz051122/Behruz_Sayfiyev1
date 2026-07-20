@@ -16,7 +16,7 @@ ADMIN_TELEGRAM_IDS = [
     7558364715,
 ]
 
-ADMIN_CONTACT_USERNAME = "Behruz_Sayfiyev"
+ADMIN_CONTACT_USERNAME = "BehruzSayfiyev"
 
 import os
 DB_PATH = os.environ.get("DB_PATH", "database.db")
