@@ -17,6 +17,32 @@
 }
 
 body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-height: 100vh; }
+
+/* ---------- KOMPYUTERDA PROFESSIONAL KO'RINISH ----------
+   Telegram Mini App kompyuterda butun monitor kengligini egallaganda,
+   elementlar proporsiyasiz cho'zilib, matnlar mayda va video buzilib
+   ko'rinib qolmasligi uchun, kontentni telefon kengligida (480px)
+   markazda ushlab turamiz — bu yetakchi Mini App'larning standart yechimi. */
+@media (min-width: 560px) {
+  html { background: #050508; }
+  body { max-width: 480px; margin: 0 auto; box-shadow: 0 0 60px rgba(0,0,0,0.5); }
+  .bottom-nav { left: 50% !important; transform: translateX(-50%); width: 100%; max-width: 480px; }
+}
+
+/* Kompyuterda sichqoncha bilan ishlashda tugmalar sezilarli bo'lishi uchun */
+@media (hover: hover) {
+  .banner-card:hover, .course-card:hover, .paragraph-item:hover, .lesson-item:hover,
+  .gold-btn:hover:not(:disabled), .share-btn:hover, .filter-chip:hover {
+    filter: brightness(1.08);
+    transition: filter 0.15s ease;
+  }
+  .back-btn:hover, .icon-btn:hover, .admin-gear:hover { background: var(--border); }
+}
+
+/* Nozik skroll paneli (kompyuterda toza ko'rinish uchun) */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
 .hidden { display: none !important; }
 .empty-msg { color: var(--text-dim); padding: 24px; text-align: center; font-size: 13px; }
 
@@ -130,12 +156,61 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 .lesson-nav-btn { flex: 1; background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 12px 10px; border-radius: 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
 .lesson-nav-btn.primary { background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: #1a1a1a; border: none; }
 .lesson-nav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.lesson-nav-btn.full { width: 100%; }
+
+/* ---------- TESTLAR ---------- */
+
+.test-timer-bar {
+  margin: 0 16px 14px;
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12px; font-weight: 700; color: var(--text-dim);
+}
+#testTimer { color: var(--gold); font-size: 14px; }
+#testTimer.timer-warning { color: #ff5c5c; animation: pulse-warn 1s infinite; }
+@keyframes pulse-warn { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+.question-card {
+  margin: 0 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 20px;
+}
+.question-image { width: 100%; border-radius: 12px; margin-bottom: 14px; display: block; }
+.question-text { font-size: 15px; font-weight: 800; line-height: 1.5; margin-bottom: 18px; }
+.option-list { display: flex; flex-direction: column; gap: 10px; }
+.option-btn {
+  text-align: left;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.option-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.option-btn.selected { border-color: var(--gold); background: rgba(212,175,55,0.15); color: var(--gold-light); }
 
 /* ---------- VIDEO ---------- */
 
 .video-wrap { margin: 0 16px 16px; border-radius: 16px; overflow: hidden; background: #000; aspect-ratio: 16/9; position: relative; }
-.video-wrap video, .video-wrap iframe { width: 100%; height: 100%; border: 0; display: block; }
-.video-wrap.fs-active { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 999; border-radius: 0; aspect-ratio: unset; margin: 0; }
+.video-wrap video, .video-wrap iframe { width: 100%; height: 100%; border: 0; display: block; resize: none; overflow: hidden; }
+
+/* To'liq ekran rejimida: butun ekranni qora fon bilan qoplaymiz, lekin
+   videoning o'zini 16:9 proporsiyasida saqlab, markazda ko'rsatamiz —
+   shu orqali video cho'zilib, buzilib ketmaydi (letterbox usuli). */
+.video-wrap.fs-active {
+  position: fixed; inset: 0; width: 100vw; height: 100vh;
+  z-index: 999; border-radius: 0; aspect-ratio: unset; margin: 0;
+  background: #000;
+  display: flex; align-items: center; justify-content: center;
+}
+.video-wrap.fs-active video, .video-wrap.fs-active iframe {
+  width: var(--fs-video-w, 100%);
+  height: var(--fs-video-h, 100%);
+}
 body.no-scroll { overflow: hidden; }
 .fullscreen-btn { position: absolute; bottom: 10px; right: 10px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.2); color: #fff; width: 36px; height: 36px; border-radius: 8px; font-size: 15px; cursor: pointer; z-index: 1000; }
 .video-fallback { margin: -8px 16px 16px; font-size: 11px; color: var(--text-dim); text-align: center; }

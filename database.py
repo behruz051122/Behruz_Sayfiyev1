@@ -111,9 +111,75 @@ def init_db():
         )
     """)
 
+    # ---------- TEST TIZIMI ----------
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS tests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject TEXT NOT NULL,
+            title TEXT NOT NULL,
+            difficulty TEXT DEFAULT 'orta',
+            time_limit_seconds INTEGER DEFAULT 600,
+            order_num INTEGER DEFAULT 0,
+            is_active INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS test_questions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            test_id INTEGER NOT NULL,
+            question_text TEXT NOT NULL,
+            image_url TEXT,
+            option_1 TEXT,
+            option_2 TEXT,
+            option_3 TEXT,
+            option_4 TEXT,
+            correct_index INTEGER NOT NULL,
+            order_num INTEGER DEFAULT 0,
+            FOREIGN KEY (test_id) REFERENCES tests (id) ON DELETE CASCADE
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS test_attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            telegram_id INTEGER NOT NULL,
+            test_id INTEGER NOT NULL,
+            score INTEGER DEFAULT 0,
+            total_questions INTEGER DEFAULT 0,
+            started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            finished_at TIMESTAMP
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS test_answers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            attempt_id INTEGER NOT NULL,
+            question_id INTEGER NOT NULL,
+            selected_index INTEGER,
+            is_correct INTEGER DEFAULT 0,
+            FOREIGN KEY (attempt_id) REFERENCES test_attempts (id) ON DELETE CASCADE
+        )
+    """)
+
+    # Har bir savolga birinchi marta to'g'ri javob berilganda coin beriladi —
+    # qayta ishlashda (retake) coin qayta berilmaydi, bu suiiste'molni oldini oladi.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS user_question_progress (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            telegram_id INTEGER NOT NULL,
+            question_id INTEGER NOT NULL,
+            coin_awarded INTEGER DEFAULT 0,
+            UNIQUE(telegram_id, question_id)
+        )
+    """)
+
     conn.commit()
     conn.close()
-    print("Baza tayyor (v2): users, courses, paragraphs, lessons, lesson_progress, enrollments, referrals.")
+    print("Baza tayyor (v3): users, courses, paragraphs, lessons, lesson_progress, enrollments, referrals, tests.")
 
 
 # ---------- USERS ----------
@@ -569,6 +635,241 @@ def get_user_rank(telegram_id: int):
     rank = cur.fetchone()["c"] + 1
     conn.close()
     return rank
+
+
+# ---------- TESTLAR ----------
+
+DIFFICULTY_TIME_SECONDS = {
+    "oson": 300,      # 5 daqiqa
+    "orta": 600,      # 10 daqiqa
+    "qiyin": 900,     # 15 daqiqa
+}
+
+
+def get_all_tests(subject: str = None, only_active: bool = True):
+    conn = get_connection()
+    cur = conn.cursor()
+    query = "SELECT * FROM tests WHERE 1=1"
+    params = []
+    if subject:
+        query += " AND subject = ?"
+        params.append(subject)
+    if only_active:
+        query += " AND is_active = 1"
+    query += " ORDER BY order_num ASC, id ASC"
+    cur.execute(query, params)
+    tests = [dict(row) for row in cur.fetchall()]
+    conn.close()
+    return tests
+
+
+def get_test(test_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM tests WHERE id = ?", (test_id,))
+    row = cur.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def count_test_questions(test_id: int) -> int:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) as c FROM test_questions WHERE test_id = ?", (test_id,))
+    c = cur.fetchone()["c"]
+    conn.close()
+    return c
+
+
+def create_test(data: dict) -> int:
+    conn = get_connection()
+    cur = conn.cursor()
+    difficulty = data.get("difficulty", "orta")
+    time_limit = data.get("time_limit_seconds") or DIFFICULTY_TIME_SECONDS.get(difficulty, 600)
+    cur.execute("""
+        INSERT INTO tests (subject, title, difficulty, time_limit_seconds, order_num, is_active)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (
+        data.get("subject", ""), data.get("title", ""), difficulty, int(time_limit),
+        int(data.get("order_num", 0)), int(data.get("is_active", 1))
+    ))
+    conn.commit()
+    new_id = cur.lastrowid
+    conn.close()
+    return new_id
+
+
+def update_test(test_id: int, data: dict):
+    conn = get_connection()
+    cur = conn.cursor()
+    fields, values = [], []
+    for key in ["subject", "title", "difficulty", "time_limit_seconds", "order_num", "is_active"]:
+        if key in data:
+            fields.append(f"{key} = ?")
+            values.append(data[key])
+    if fields:
+        values.append(test_id)
+        cur.execute(f"UPDATE tests SET {', '.join(fields)} WHERE id = ?", values)
+        conn.commit()
+    conn.close()
+
+
+def delete_test(test_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM tests WHERE id = ?", (test_id,))
+    conn.commit()
+    conn.close()
+
+
+# ---------- SAVOLLAR ----------
+
+def get_questions(test_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM test_questions WHERE test_id = ? ORDER BY order_num ASC, id ASC", (test_id,))
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return rows
+
+
+def get_question(question_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM test_questions WHERE id = ?", (question_id,))
+    row = cur.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def create_question(data: dict) -> int:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO test_questions (test_id, question_text, image_url, option_1, option_2, option_3, option_4, correct_index, order_num)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        int(data["test_id"]), data.get("question_text", ""), data.get("image_url", ""),
+        data.get("option_1", ""), data.get("option_2", ""), data.get("option_3", ""), data.get("option_4", ""),
+        int(data.get("correct_index", 1)), int(data.get("order_num", 0))
+    ))
+    conn.commit()
+    new_id = cur.lastrowid
+    conn.close()
+    return new_id
+
+
+def update_question(question_id: int, data: dict):
+    conn = get_connection()
+    cur = conn.cursor()
+    fields, values = [], []
+    for key in ["question_text", "image_url", "option_1", "option_2", "option_3", "option_4", "correct_index", "order_num"]:
+        if key in data:
+            fields.append(f"{key} = ?")
+            values.append(data[key])
+    if fields:
+        values.append(question_id)
+        cur.execute(f"UPDATE test_questions SET {', '.join(fields)} WHERE id = ?", values)
+        conn.commit()
+    conn.close()
+
+
+def delete_question(question_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM test_questions WHERE id = ?", (question_id,))
+    conn.commit()
+    conn.close()
+
+
+# ---------- TEST TOPSHIRISH (attempt) ----------
+
+def start_attempt(telegram_id: int, test_id: int) -> int:
+    conn = get_connection()
+    cur = conn.cursor()
+    total = count_test_questions(test_id)
+    cur.execute("""
+        INSERT INTO test_attempts (telegram_id, test_id, total_questions) VALUES (?, ?, ?)
+    """, (telegram_id, test_id, total))
+    conn.commit()
+    attempt_id = cur.lastrowid
+    conn.close()
+    return attempt_id
+
+
+def submit_answer(telegram_id: int, attempt_id: int, question_id: int, selected_index: int):
+    """Javobni tekshiradi, yozib qo'yadi, va agar bu savolga birinchi marta to'g'ri
+    javob berilgan bo'lsa 1 coin beradi. {'correct': bool, 'correct_index': int, 'coin_awarded': bool} qaytaradi."""
+    question = get_question(question_id)
+    if not question:
+        return {"correct": False, "correct_index": None, "coin_awarded": False}
+
+    is_correct = int(selected_index) == int(question["correct_index"])
+
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO test_answers (attempt_id, question_id, selected_index, is_correct)
+        VALUES (?, ?, ?, ?)
+    """, (attempt_id, question_id, selected_index, 1 if is_correct else 0))
+    if is_correct:
+        cur.execute("UPDATE test_attempts SET score = score + 1 WHERE id = ?", (attempt_id,))
+    conn.commit()
+    conn.close()
+
+    coin_awarded = False
+    if is_correct:
+        conn2 = get_connection()
+        cur2 = conn2.cursor()
+        cur2.execute("SELECT id FROM user_question_progress WHERE telegram_id = ? AND question_id = ?",
+                     (telegram_id, question_id))
+        already = cur2.fetchone()
+        if already is None:
+            cur2.execute("INSERT INTO user_question_progress (telegram_id, question_id, coin_awarded) VALUES (?, ?, 1)",
+                         (telegram_id, question_id))
+            conn2.commit()
+            add_coins(telegram_id, 1)
+            coin_awarded = True
+        conn2.close()
+
+    return {"correct": is_correct, "correct_index": question["correct_index"], "coin_awarded": coin_awarded}
+
+
+def finish_attempt(attempt_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE test_attempts SET finished_at = CURRENT_TIMESTAMP WHERE id = ?", (attempt_id,))
+    conn.commit()
+    cur.execute("SELECT * FROM test_attempts WHERE id = ?", (attempt_id,))
+    row = cur.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_attempt(attempt_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM test_attempts WHERE id = ?", (attempt_id,))
+    row = cur.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_user_test_results(telegram_id: int):
+    """Foydalanuvchining har bir test bo'yicha eng yaxshi natijasini qaytaradi (Natijalar bo'limi uchun)."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT t.id as test_id, t.title, t.subject, MAX(a.score) as best_score, a.total_questions
+        FROM test_attempts a
+        JOIN tests t ON t.id = a.test_id
+        WHERE a.telegram_id = ? AND a.finished_at IS NOT NULL
+        GROUP BY t.id
+        ORDER BY t.order_num ASC
+    """, (telegram_id,))
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return rows
 
 
 # ---------- SAMPLE DATA ----------

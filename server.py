@@ -235,5 +235,120 @@ def admin_grant_enrollment(data: dict = Body(...), x_admin_password: str = Heade
     return {"ok": True}
 
 
+# ---------- PUBLIC: testlar ----------
+
+@app.get("/api/tests")
+def api_get_tests(subject: str = None, telegram_id: int = Query(...)):
+    tests = db.get_all_tests(subject=subject)
+    for t in tests:
+        t["question_count"] = db.count_test_questions(t["id"])
+    return {"tests": tests}
+
+
+@app.get("/api/test/{test_id}")
+def api_get_test(test_id: int, telegram_id: int = Query(...)):
+    test = db.get_test(test_id)
+    if not test:
+        raise HTTPException(status_code=404, detail="Test topilmadi")
+    questions = db.get_questions(test_id)
+    # Foydalanuvchiga to'g'ri javob indeksini oldindan yubormaymiz — aldashning oldini olish uchun
+    safe_questions = []
+    for q in questions:
+        safe_questions.append({
+            "id": q["id"], "question_text": q["question_text"], "image_url": q["image_url"],
+            "option_1": q["option_1"], "option_2": q["option_2"],
+            "option_3": q["option_3"], "option_4": q["option_4"], "order_num": q["order_num"]
+        })
+    test["questions"] = safe_questions
+    return test
+
+
+@app.post("/api/test/{test_id}/start")
+def api_start_test(test_id: int, telegram_id: int = Body(..., embed=True)):
+    db.get_or_create_user(telegram_id, "Foydalanuvchi")
+    attempt_id = db.start_attempt(telegram_id, test_id)
+    return {"attempt_id": attempt_id}
+
+
+@app.post("/api/attempt/{attempt_id}/answer")
+def api_submit_answer(attempt_id: int, data: dict = Body(...)):
+    telegram_id = int(data["telegram_id"])
+    question_id = int(data["question_id"])
+    selected_index = int(data["selected_index"])
+    db.get_or_create_user(telegram_id, "Foydalanuvchi")
+    result = db.submit_answer(telegram_id, attempt_id, question_id, selected_index)
+    return result
+
+
+@app.post("/api/attempt/{attempt_id}/finish")
+def api_finish_attempt(attempt_id: int):
+    result = db.finish_attempt(attempt_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Urinish topilmadi")
+    return result
+
+
+@app.get("/api/my-test-results")
+def api_my_test_results(telegram_id: int = Query(...)):
+    return {"results": db.get_user_test_results(telegram_id)}
+
+
+# ---------- ADMIN: testlar CRUD ----------
+
+@app.get("/api/admin/tests")
+def admin_list_tests(x_admin_password: str = Header(default=""), x_telegram_id: str = Header(default="")):
+    check_admin(x_admin_password, x_telegram_id)
+    tests = db.get_all_tests(only_active=False)
+    for t in tests:
+        t["question_count"] = db.count_test_questions(t["id"])
+    return {"tests": tests}
+
+
+@app.post("/api/admin/tests")
+def admin_create_test(data: dict = Body(...), x_admin_password: str = Header(default=""), x_telegram_id: str = Header(default="")):
+    check_admin(x_admin_password, x_telegram_id)
+    return {"id": db.create_test(data)}
+
+
+@app.put("/api/admin/tests/{test_id}")
+def admin_update_test(test_id: int, data: dict = Body(...), x_admin_password: str = Header(default=""), x_telegram_id: str = Header(default="")):
+    check_admin(x_admin_password, x_telegram_id)
+    db.update_test(test_id, data)
+    return {"ok": True}
+
+
+@app.delete("/api/admin/tests/{test_id}")
+def admin_delete_test(test_id: int, x_admin_password: str = Header(default=""), x_telegram_id: str = Header(default="")):
+    check_admin(x_admin_password, x_telegram_id)
+    db.delete_test(test_id)
+    return {"ok": True}
+
+
+@app.get("/api/admin/tests/{test_id}/questions")
+def admin_list_questions(test_id: int, x_admin_password: str = Header(default=""), x_telegram_id: str = Header(default="")):
+    check_admin(x_admin_password, x_telegram_id)
+    return {"questions": db.get_questions(test_id)}
+
+
+@app.post("/api/admin/questions")
+def admin_create_question(data: dict = Body(...), x_admin_password: str = Header(default=""), x_telegram_id: str = Header(default="")):
+    check_admin(x_admin_password, x_telegram_id)
+    return {"id": db.create_question(data)}
+
+
+@app.put("/api/admin/questions/{question_id}")
+def admin_update_question(question_id: int, data: dict = Body(...), x_admin_password: str = Header(default=""), x_telegram_id: str = Header(default="")):
+    check_admin(x_admin_password, x_telegram_id)
+    db.update_question(question_id, data)
+    return {"ok": True}
+
+
+@app.delete("/api/admin/questions/{question_id}")
+def admin_delete_question(question_id: int, x_admin_password: str = Header(default=""), x_telegram_id: str = Header(default="")):
+    check_admin(x_admin_password, x_telegram_id)
+    db.delete_question(question_id)
+    return {"ok": True}
+
+
 # Mini App va admin panel statik fayllari
 app.mount("/", StaticFiles(directory="webapp", html=True), name="webapp")

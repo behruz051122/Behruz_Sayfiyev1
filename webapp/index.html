@@ -138,12 +138,28 @@
         <button class="back-btn" data-nav="home">←</button>
         <h2>Testlar</h2>
       </div>
-      <div class="locked-box" style="margin:16px;">
-        <div class="lock-emoji">🧪</div>
-        <h3>Tez orada</h3>
-        <p>Har bir mavzu bo'yicha vaqtli, ketma-ket testlar shu yerda paydo bo'ladi.</p>
-      </div>
+      <div class="filter-row" id="testSubjectFilterRow"></div>
+      <div id="testList" class="course-list"></div>
     </section>
+
+    <!-- TEST TOPSHIRISH -->
+    <section id="screen-test-play" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="tests">←</button>
+        <h2 id="testPlayTitle">Test</h2>
+      </div>
+      <div id="testPlayContent"></div>
+    </section>
+
+    <!-- TEST NATIJASI -->
+    <section id="screen-test-result" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="tests">←</button>
+        <h2>Natija</h2>
+      </div>
+      <div id="testResultContent"></div>
+    </section>
+
 
     <!-- NATIJALAR (leaderboard) -->
     <section id="screen-leaderboard" class="screen hidden">
@@ -267,7 +283,71 @@
         </form>
       </div>
 
-      <div class="version-tag">Behruz Sayfiyev · nashr v4.0</div>
+      <div class="admin-section">
+        <div class="admin-section-head">
+          <h3>Testlar</h3>
+          <button id="adminNewTestBtn" class="gold-btn small">+ Yangi test</button>
+        </div>
+        <div id="adminTestsList" class="admin-list"></div>
+      </div>
+
+      <div id="adminTestForm" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3 id="adminTestFormTitle">Yangi test</h3>
+          <button id="adminCloseTestForm" class="icon-btn">✕</button>
+        </div>
+        <form id="testFormEl" class="admin-form">
+          <input type="hidden" id="at_id">
+          <label>Fan <input id="at_subject" required placeholder="Kimyo yoki Biologiya"></label>
+          <label>Test nomi <input id="at_title" required></label>
+          <label>Murakkablik darajasi
+            <select id="at_difficulty">
+              <option value="oson">Oson (5 daqiqa)</option>
+              <option value="orta" selected>O'rta (10 daqiqa)</option>
+              <option value="qiyin">Qiyin (15 daqiqa)</option>
+            </select>
+          </label>
+          <label>Vaqt chegarasi, soniya (bo'sh = darajaga qarab avtomatik) <input id="at_time_limit" type="number" min="30"></label>
+          <label>Tartib raqami <input id="at_order_num" type="number" value="0"></label>
+          <label>Faolmi?
+            <select id="at_is_active">
+              <option value="1">Ha</option>
+              <option value="0">Yo'q (yashirilgan)</option>
+            </select>
+          </label>
+          <button type="submit" class="gold-btn">Testni saqlash</button>
+        </form>
+      </div>
+
+      <div id="adminQuestionsPanel" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3 id="adminQuestionsTitle">Savollar</h3>
+          <button id="adminCloseQuestions" class="icon-btn">✕</button>
+        </div>
+        <div id="adminQuestionsList" class="admin-list"></div>
+        <form id="questionFormEl" class="admin-form">
+          <input type="hidden" id="aq_id">
+          <input type="hidden" id="aq_test_id">
+          <label>Savol matni <textarea id="aq_question_text" required></textarea></label>
+          <label>Rasm havolasi (ixtiyoriy) <input id="aq_image_url" placeholder="https://..."></label>
+          <label>1-variant <input id="aq_option_1" required></label>
+          <label>2-variant <input id="aq_option_2" required></label>
+          <label>3-variant (ixtiyoriy — Rost/Yolg'on uchun bo'sh qoldiring) <input id="aq_option_3"></label>
+          <label>4-variant (ixtiyoriy) <input id="aq_option_4"></label>
+          <label>To'g'ri javob
+            <select id="aq_correct_index">
+              <option value="1">1-variant</option>
+              <option value="2">2-variant</option>
+              <option value="3">3-variant</option>
+              <option value="4">4-variant</option>
+            </select>
+          </label>
+          <label>Tartib raqami <input id="aq_order_num" type="number" value="0"></label>
+          <button type="submit" class="gold-btn">Savolni saqlash</button>
+        </form>
+      </div>
+
+      <div class="version-tag">Behruz Sayfiyev · nashr v5.0</div>
     </section>
 
   </main>
