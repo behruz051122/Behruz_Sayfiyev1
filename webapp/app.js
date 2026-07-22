@@ -1,4 +1,4 @@
-// app.js — Mini App logikasi (v4.0 — paragraf tuzilishi, coin, reyting, obuna)
+// app.js — Mini App logikasi (v5.0 — testlar, coin birlashtirish, video tuzatishlar)
 
 const tg = window.Telegram.WebApp;
 tg.expand();
