@@ -27,7 +27,7 @@ ADMIN_TELEGRAM_IDS = [
 ]
 
 # Foydalanuvchilar "Yordam" bo'limida shu shaxsga yozadi (o'zingizning username'ingiz, @ belgisisiz)
-ADMIN_CONTACT_USERNAME = "Behruz_Sayfiyev"
+ADMIN_CONTACT_USERNAME = "BehruzSayfiyev"
 
 # Ma'lumotlar bazasi fayli qayerda saqlanishi.
 # Railway'da doimiy xotira (Volume) ulanganda, u DB_PATH muhit o'zgaruvchisini
