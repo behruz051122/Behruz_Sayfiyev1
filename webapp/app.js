@@ -58,6 +58,7 @@ function handleNav(target) {
   else if (target === "back-to-list") showScreen("list");
   else if (target === "back-to-course") openCourseDetail(currentCourse.id);
   else if (target === "back-to-paragraph") openParagraph(currentParagraph.id);
+  else if (target === "back-to-lesson") playLesson(currentLesson);
   else if (target === "admin") { loadAdminCourses(); loadAdminTests(); showScreen("admin"); }
 }
 
@@ -395,6 +396,10 @@ function playLesson(lesson) {
         ? `<div class="watched-confirmed">✓ Bu dars ko'rildi — coin qo'shildi</div>`
         : `<button class="gold-btn" id="markWatchedBtn">✓ Ko'rib bo'ldim (+1 🪙)</button>`}
     </div>
+    ${lesson.image_url ? `
+    <div style="margin:10px 16px 0;">
+      <button class="solution-btn" id="viewSolutionBtn">📄 Yechimni ko'rish</button>
+    </div>` : ""}
     <div class="lesson-nav-row">
       <button class="lesson-nav-btn" id="prevLessonBtn" ${prevLesson ? "" : "disabled"}>← Oldingi dars</button>
       <button class="lesson-nav-btn primary" id="nextLessonBtn" ${nextLesson ? "" : "disabled"}>Keyingi dars →</button>
@@ -403,6 +408,9 @@ function playLesson(lesson) {
       <button class="lesson-nav-btn full" id="backToListBtn">☰ Barcha darslar ro'yxati</button>
     </div>
   `;
+
+  const viewSolutionBtn = document.getElementById("viewSolutionBtn");
+  if (viewSolutionBtn) viewSolutionBtn.addEventListener("click", () => openSolution(lesson));
 
   const backToListBtn = document.getElementById("backToListBtn");
   if (backToListBtn) backToListBtn.addEventListener("click", () => handleNav("back-to-paragraph"));
@@ -467,6 +475,82 @@ function playLesson(lesson) {
   }
 
   showScreen("lesson");
+}
+
+// ---------- Yechim rasmini ko'rish (kattalashtirish, sudrab ko'rish) ----------
+
+let solutionZoom = 100;
+let solutionDrag = { active: false, startX: 0, startY: 0, scrollLeft: 0, scrollTop: 0 };
+
+function openSolution(lesson) {
+  currentLesson = lesson;
+  document.getElementById("solutionTitle").textContent = `Yechim — ${lesson.title}`;
+  solutionZoom = 100;
+
+  const siblingLessons = currentParagraph ? currentParagraph.lessons : [];
+  const currentIndex = siblingLessons.findIndex(l => l.id === lesson.id);
+  const prevLesson = currentIndex > 0 ? siblingLessons[currentIndex - 1] : null;
+  const nextLesson = currentIndex >= 0 && currentIndex < siblingLessons.length - 1 ? siblingLessons[currentIndex + 1] : null;
+
+  document.getElementById("solutionContent").innerHTML = `
+    <div class="zoom-bar">
+      <button class="zoom-btn" id="zoomOutBtn">－</button>
+      <span class="zoom-label" id="zoomLabel">100%</span>
+      <button class="zoom-btn" id="zoomInBtn">＋</button>
+    </div>
+    <div class="solution-image-wrap" id="solutionImageWrap">
+      <img src="${lesson.image_url}" id="solutionImage" alt="Yechim rasmi">
+    </div>
+    <div class="lesson-nav-row">
+      <button class="lesson-nav-btn" id="prevSolutionBtn" ${prevLesson ? "" : "disabled"}>← Oldingi yechim</button>
+      <button class="lesson-nav-btn primary" id="nextSolutionBtn" ${nextLesson ? "" : "disabled"}>Keyingi yechim →</button>
+    </div>
+    <div style="margin:10px 16px 0;">
+      <button class="lesson-nav-btn full" id="solutionBackToListBtn">☰ Barcha darslar ro'yxati</button>
+    </div>
+  `;
+
+  applySolutionZoom();
+
+  document.getElementById("zoomInBtn").addEventListener("click", () => {
+    solutionZoom = Math.min(400, solutionZoom + 25);
+    applySolutionZoom();
+  });
+  document.getElementById("zoomOutBtn").addEventListener("click", () => {
+    solutionZoom = Math.max(50, solutionZoom - 25);
+    applySolutionZoom();
+  });
+
+  document.getElementById("prevSolutionBtn").addEventListener("click", () => { if (prevLesson) openSolution(prevLesson); });
+  document.getElementById("nextSolutionBtn").addEventListener("click", () => { if (nextLesson) openSolution(nextLesson); });
+  document.getElementById("solutionBackToListBtn").addEventListener("click", () => handleNav("back-to-paragraph"));
+
+  // Kompyuterda sichqoncha bilan rasmni sudrab ko'rish (mobil qurilmalarda barmoq bilan
+  // tabiiy scroll ishlaydi, kompyuterda esa shu qo'shimcha qulaylik kerak)
+  const wrap = document.getElementById("solutionImageWrap");
+  wrap.addEventListener("mousedown", (e) => {
+    solutionDrag = { active: true, startX: e.pageX, startY: e.pageY, scrollLeft: wrap.scrollLeft, scrollTop: wrap.scrollTop };
+    wrap.classList.add("dragging");
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!solutionDrag.active) return;
+    e.preventDefault();
+    wrap.scrollLeft = solutionDrag.scrollLeft - (e.pageX - solutionDrag.startX);
+    wrap.scrollTop = solutionDrag.scrollTop - (e.pageY - solutionDrag.startY);
+  });
+  window.addEventListener("mouseup", () => {
+    solutionDrag.active = false;
+    wrap.classList.remove("dragging");
+  });
+
+  showScreen("solution");
+}
+
+function applySolutionZoom() {
+  const img = document.getElementById("solutionImage");
+  const label = document.getElementById("zoomLabel");
+  if (img) img.style.width = solutionZoom + "%";
+  if (label) label.textContent = solutionZoom + "%";
 }
 
 // ---------- Referal ----------
@@ -1034,6 +1118,7 @@ async function openAdminLessons(paragraphId, title) {
   document.getElementById("al_id").value = "";
   document.getElementById("al_title").value = "";
   document.getElementById("al_video_url").value = "";
+  document.getElementById("al_image_url").value = "";
   document.getElementById("al_description").value = "";
   document.getElementById("al_order_num").value = 0;
   await renderAdminLessons(paragraphId);
@@ -1049,7 +1134,7 @@ async function renderAdminLessons(paragraphId) {
     const row = document.createElement("div");
     row.className = "admin-row";
     row.innerHTML = `
-      <div class="info"><div class="t">${idx + 1}. ${l.title}</div></div>
+      <div class="info"><div class="t">${idx + 1}. ${l.title}${l.image_url ? " 📄" : ""}</div></div>
       <div class="row-actions">
         <button data-a="edit">Tahrirlash / Almashtirish</button>
         <button data-a="delete" class="danger">O'chirish</button>
@@ -1059,6 +1144,7 @@ async function renderAdminLessons(paragraphId) {
       document.getElementById("al_id").value = l.id;
       document.getElementById("al_title").value = l.title;
       document.getElementById("al_video_url").value = l.video_url || "";
+      document.getElementById("al_image_url").value = l.image_url || "";
       document.getElementById("al_description").value = l.description || "";
       document.getElementById("al_order_num").value = l.order_num;
     };
@@ -1080,6 +1166,7 @@ document.getElementById("lessonFormEl").addEventListener("submit", async (e) => 
     paragraph_id: parseInt(paragraphId),
     title: document.getElementById("al_title").value,
     video_url: document.getElementById("al_video_url").value,
+    image_url: document.getElementById("al_image_url").value,
     description: document.getElementById("al_description").value,
     order_num: parseInt(document.getElementById("al_order_num").value)
   };
@@ -1088,6 +1175,7 @@ document.getElementById("lessonFormEl").addEventListener("submit", async (e) => 
   document.getElementById("al_id").value = "";
   document.getElementById("al_title").value = "";
   document.getElementById("al_video_url").value = "";
+  document.getElementById("al_image_url").value = "";
   document.getElementById("al_description").value = "";
   document.getElementById("al_order_num").value = 0;
   renderAdminLessons(paragraphId);

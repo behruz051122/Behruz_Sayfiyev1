@@ -109,6 +109,15 @@
       <div id="lessonContent"></div>
     </section>
 
+    <!-- YECHIM RASMI (faqat rasm yuklangan darslarda ko'rinadi) -->
+    <section id="screen-solution" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="back-to-lesson">←</button>
+        <h2 id="solutionTitle">Yechim</h2>
+      </div>
+      <div id="solutionContent"></div>
+    </section>
+
     <!-- REFERRAL -->
     <section id="screen-referral" class="screen hidden">
       <div class="screen-header">
@@ -260,6 +269,7 @@
           <input type="hidden" id="al_paragraph_id">
           <label>Dars nomi <input id="al_title" required></label>
           <label>Video havolasi (YouTube yoki mp4) <input id="al_video_url"></label>
+          <label>Yechim rasmi havolasi (ixtiyoriy — to'ldirilsa, o'quvchiga "Yechimni ko'rish" tugmasi chiqadi) <input id="al_image_url" placeholder="https://..."></label>
           <label>Tavsif <textarea id="al_description"></textarea></label>
           <label>Tartib raqami <input id="al_order_num" type="number" value="0"></label>
           <button type="submit" class="gold-btn">Darsni saqlash</button>
@@ -347,7 +357,7 @@
         </form>
       </div>
 
-      <div class="version-tag">Behruz Sayfiyev · nashr v5.0</div>
+      <div class="version-tag">Behruz Sayfiyev · nashr v5.1</div>
     </section>
 
   </main>

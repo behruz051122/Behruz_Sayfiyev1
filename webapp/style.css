@@ -158,6 +158,58 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 .lesson-nav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .lesson-nav-btn.full { width: 100%; }
 
+.solution-btn {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--purple);
+  color: var(--purple-light);
+  padding: 13px;
+  border-radius: 12px;
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* ---------- YECHIM RASMINI KO'RISH ---------- */
+
+.zoom-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  margin: 0 16px 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px 14px;
+}
+.zoom-btn {
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--gold);
+  font-size: 18px; font-weight: 800;
+  cursor: pointer;
+}
+.zoom-label { font-size: 12px; font-weight: 700; color: var(--text-dim); }
+
+.solution-image-wrap {
+  margin: 0 16px 14px;
+  border-radius: 16px;
+  overflow: auto;
+  background: #0c0c14;
+  border: 1px solid var(--border);
+  height: 60vh;
+  touch-action: pan-x pan-y;
+  cursor: grab;
+}
+.solution-image-wrap.dragging { cursor: grabbing; }
+.solution-image-wrap img {
+  display: block;
+  width: 100%;
+  height: auto;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
 /* ---------- TESTLAR ---------- */
 
 .test-timer-bar {

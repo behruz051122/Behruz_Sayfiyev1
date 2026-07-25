@@ -77,6 +77,14 @@ def init_db():
         )
     """)
 
+    # Eski (v5.0'gacha) yaratilgan bazalarda "image_url" ustuni yo'q edi.
+    # Doimiy xotirada saqlangan mavjud ma'lumotlarni buzmasdan, xavfsiz qo'shib qo'yamiz.
+    try:
+        cur.execute("ALTER TABLE lessons ADD COLUMN image_url TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # ustun allaqachon mavjud — muammo emas
+
     # Foydalanuvchi qaysi darsni ko'rib, coin olganini yozib boradi (bir darsga bir marta coin)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS lesson_progress (
@@ -427,11 +435,11 @@ def create_lesson(data: dict) -> int:
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("""
-        INSERT INTO lessons (paragraph_id, title, video_url, description, order_num)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO lessons (paragraph_id, title, video_url, image_url, description, order_num)
+        VALUES (?, ?, ?, ?, ?, ?)
     """, (
         int(data["paragraph_id"]), data.get("title", ""), data.get("video_url", ""),
-        data.get("description", ""), int(data.get("order_num", 0))
+        data.get("image_url", ""), data.get("description", ""), int(data.get("order_num", 0))
     ))
     conn.commit()
     new_id = cur.lastrowid
@@ -443,7 +451,7 @@ def update_lesson(lesson_id: int, data: dict):
     conn = get_connection()
     cur = conn.cursor()
     fields, values = [], []
-    for key in ["title", "video_url", "description", "order_num"]:
+    for key in ["title", "video_url", "image_url", "description", "order_num"]:
         if key in data:
             fields.append(f"{key} = ?")
             values.append(data[key])
