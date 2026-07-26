@@ -3,6 +3,7 @@
 from fastapi import FastAPI, Query, Header, HTTPException, Body
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+import os
 
 from config import ADMIN_PASSWORD, ADMIN_TELEGRAM_IDS, ADMIN_CONTACT_USERNAME, BOT_USERNAME, BRAND_NAME, BRAND_SUB
 import database as db
@@ -40,6 +41,25 @@ def check_admin(x_admin_password: str = Header(default=""), x_telegram_id: str =
 @app.get("/api/brand")
 def api_brand():
     return {"brand_name": BRAND_NAME, "brand_sub": BRAND_SUB, "bot_username": BOT_USERNAME, "admin_contact": ADMIN_CONTACT_USERNAME}
+
+
+@app.get("/api/debug/db-info")
+def api_debug_db_info():
+    """Ma'lumotlar bazasi qayerda saqlanayotganini va doimiy xotiraga
+    (Railway Volume) yozib bo'layotganini tekshirish uchun diagnostika."""
+    path = db.DB_PATH
+    exists = os.path.exists(path)
+    size = os.path.getsize(path) if exists else 0
+    is_persistent_path = path.startswith("/data")
+    course_count = len(db.get_all_courses(only_active=False))
+    return {
+        "db_path": path,
+        "file_exists": exists,
+        "file_size_bytes": size,
+        "looks_persistent": is_persistent_path,
+        "courses_in_database": course_count,
+        "railway_db_path_env_set": os.environ.get("DB_PATH") is not None,
+    }
 
 
 @app.get("/api/user")
