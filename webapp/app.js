@@ -1,16 +1,7 @@
-// app.js — Mini App logikasi (v5.0 — testlar, coin birlashtirish, video tuzatishlar)
+// app.js — Mini App logikasi (v5 — xavfsizlashtirilgan: initData bilan tasdiqlangan so'rovlar)
 
 const tg = window.Telegram.WebApp;
 tg.expand();
-
-// Telegram Bot API 8.0+ da qo'shilgan rasmiy "to'liq ekran" funksiyasi.
-// Bu Mini App'ning o'zini Telegram ichida mavjud bo'sh joyni to'liq
-// egallashga majbur qiladi — bu kompyuterda ham, telefonda ham ishlaydi.
-try {
-  if (tg.isVersionAtLeast && tg.isVersionAtLeast("8.0") && tg.requestFullscreen) {
-    tg.requestFullscreen();
-  }
-} catch (e) { console.warn("Fullscreen so'rovi qo'llab-quvvatlanmaydi:", e); }
 
 const tgUser = tg.initDataUnsafe?.user || { id: 0, first_name: "Mehmon" };
 const API_BASE = window.location.origin;
@@ -24,6 +15,29 @@ let activeStatusFilter = "all";
 let activeSubjectFilter = "Hammasi";
 let botUsername = "";
 let adminContact = "";
+
+// ---------- Xavfsiz API chaqiruvi ----------
+//
+// MUHIM: tgUser.id (yuqorida) faqat INTERFEYSDA ko'rsatish uchun ishlatiladi
+// (masalan darhol ismni chiqarish). Har qanday MA'LUMOT o'zgartiruvchi yoki
+// shaxsiy ma'lumot so'rovida server tg.initData'ni qayta tekshiradi — shuning
+// uchun tgUser.id'ni to'g'ridan-to'g'ri so'rovlarga "ishonchli manba" sifatida
+// yubormaymiz, buning o'rniga har doim apiFetch() orqali initData yuboriladi.
+
+async function apiFetch(path, options = {}) {
+  const headers = Object.assign(
+    { "Content-Type": "application/json" },
+    options.headers || {},
+    { "X-Telegram-Init-Data": tg.initData || "" }
+  );
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  if (res.status === 401) {
+    const msg = "Xavfsizlik tekshiruvidan o'tmadi. Ilovani Telegram ichida qayta oching.";
+    if (tg.showAlert) tg.showAlert(msg); else alert(msg);
+    throw new Error("Unauthorized (401)");
+  }
+  return res;
+}
 
 // ---------- Navigatsiya ----------
 
@@ -52,20 +66,20 @@ function handleNav(target) {
     document.getElementById("listTitle").textContent = "Kitoblar";
     loadCourseList(); showScreen("list");
   } else if (target === "referral") { loadReferral(); showScreen("referral"); }
-  else if (target === "tests") { loadTests(); showScreen("tests"); }
+  else if (target === "tests") { showScreen("tests"); }
   else if (target === "leaderboard") { loadLeaderboard(); showScreen("leaderboard"); }
   else if (target === "profile") { loadProfile(); showScreen("profile"); }
   else if (target === "back-to-list") showScreen("list");
   else if (target === "back-to-course") openCourseDetail(currentCourse.id);
   else if (target === "back-to-paragraph") openParagraph(currentParagraph.id);
-  else if (target === "back-to-lesson") playLesson(currentLesson);
-  else if (target === "admin") { loadAdminCourses(); loadAdminTests(); showScreen("admin"); }
+  else if (target === "admin") { loadAdminCourses(); showScreen("admin"); }
 }
 
 // ---------- Brand / user ----------
 
 async function loadBrand() {
   try {
+    // Brend ma'lumoti shaxsiy emas — autentifikatsiyasiz ham ochiq bo'lishi mumkin
     const res = await fetch(`${API_BASE}/api/brand`);
     const data = await res.json();
     document.getElementById("brandName").textContent = data.brand_name;
@@ -77,7 +91,7 @@ async function loadBrand() {
 
 async function loadUser() {
   try {
-    const res = await fetch(`${API_BASE}/api/user?telegram_id=${tgUser.id}&first_name=${encodeURIComponent(tgUser.first_name)}`);
+    const res = await apiFetch(`/api/user`);
     const user = await res.json();
     document.getElementById("helloName").textContent = `${user.first_name}, salom 👋`;
     document.getElementById("coinsBadge").textContent = `🪙 ${user.coins}`;
@@ -85,7 +99,7 @@ async function loadUser() {
 }
 
 async function refreshCoins() {
-  const res = await fetch(`${API_BASE}/api/user?telegram_id=${tgUser.id}&first_name=${encodeURIComponent(tgUser.first_name)}`);
+  const res = await apiFetch(`/api/user`);
   const user = await res.json();
   document.getElementById("coinsBadge").textContent = `🪙 ${user.coins}`;
 }
@@ -96,7 +110,7 @@ async function loadCourseList() {
   const container = document.getElementById("courseList");
   container.innerHTML = `<div class="empty-msg">Yuklanmoqda...</div>`;
   try {
-    const res = await fetch(`${API_BASE}/api/courses?resource_type=${currentListType}&telegram_id=${tgUser.id}`);
+    const res = await apiFetch(`/api/courses?resource_type=${currentListType}`);
     const data = await res.json();
     allCourses = data.courses;
     buildSubjectFilters();
@@ -197,7 +211,7 @@ async function openCourseDetail(courseId) {
   showScreen("detail");
 
   try {
-    const res = await fetch(`${API_BASE}/api/course/${courseId}?telegram_id=${tgUser.id}`);
+    const res = await apiFetch(`/api/course/${courseId}`);
     const course = await res.json();
     currentCourse = course;
     document.getElementById("detailTitle").textContent = course.title;
@@ -305,28 +319,6 @@ function openParagraph(paragraphId) {
 
 // ---------- Video pleyer ----------
 
-// To'liq ekran rejimida video 16:9 proporsiyasini saqlab, ekranga eng katta
-// sig'adigan o'lchamda markazda ko'rsatilishini ta'minlaydi (letterbox usuli) —
-// shu orqali video cho'zilib, buzilib ketmaydi.
-function updateFsVideoSize(wrap) {
-  const screenW = window.innerWidth;
-  const screenH = window.innerHeight;
-  const targetRatio = 16 / 9;
-
-  let w, h;
-  if (screenW / screenH > targetRatio) {
-    // Ekran videoga nisbatan kengroq — balandlikni to'liq ishlatamiz
-    h = screenH;
-    w = h * targetRatio;
-  } else {
-    // Ekran videoga nisbatan torroq (yoki teng) — kenglikni to'liq ishlatamiz
-    w = screenW;
-    h = w / targetRatio;
-  }
-  wrap.style.setProperty("--fs-video-w", `${w}px`);
-  wrap.style.setProperty("--fs-video-h", `${h}px`);
-}
-
 function extractYoutubeId(url) {
   try {
     const patterns = [
@@ -348,11 +340,6 @@ function playLesson(lesson) {
   document.getElementById("lessonTitle").textContent = lesson.title;
   const content = document.getElementById("lessonContent");
 
-  const siblingLessons = currentParagraph ? currentParagraph.lessons : [];
-  const currentIndex = siblingLessons.findIndex(l => l.id === lesson.id);
-  const prevLesson = currentIndex > 0 ? siblingLessons[currentIndex - 1] : null;
-  const nextLesson = currentIndex >= 0 && currentIndex < siblingLessons.length - 1 ? siblingLessons[currentIndex + 1] : null;
-
   let videoHtml = "";
   const url = (lesson.video_url || "").trim();
   const isYoutube = url.includes("youtube.com") || url.includes("youtu.be");
@@ -366,10 +353,10 @@ function playLesson(lesson) {
           <button class="gold-btn" onclick="window.open('${url}', '_blank')">▶ YouTube'da ochish</button>
         </div>`;
     } else {
-      const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1&playsinline=1&fs=0`;
+      const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1&playsinline=1`;
       videoHtml = `
         <div class="video-wrap" id="videoWrap">
-          <iframe src="${embedUrl}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>
+          <iframe src="${embedUrl}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen></iframe>
           <button class="fullscreen-btn" id="fullscreenBtn">⛶</button>
         </div>
         <div class="video-fallback">Video ochilmayaptimi? <a href="${url}" target="_blank" rel="noopener">To'g'ridan-to'g'ri YouTube'da ochish</a></div>`;
@@ -396,30 +383,7 @@ function playLesson(lesson) {
         ? `<div class="watched-confirmed">✓ Bu dars ko'rildi — coin qo'shildi</div>`
         : `<button class="gold-btn" id="markWatchedBtn">✓ Ko'rib bo'ldim (+1 🪙)</button>`}
     </div>
-    ${lesson.image_url ? `
-    <div style="margin:10px 16px 0;">
-      <button class="solution-btn" id="viewSolutionBtn">📄 Yechimni ko'rish</button>
-    </div>` : ""}
-    <div class="lesson-nav-row">
-      <button class="lesson-nav-btn" id="prevLessonBtn" ${prevLesson ? "" : "disabled"}>← Oldingi dars</button>
-      <button class="lesson-nav-btn primary" id="nextLessonBtn" ${nextLesson ? "" : "disabled"}>Keyingi dars →</button>
-    </div>
-    <div style="margin:10px 16px 0;">
-      <button class="lesson-nav-btn full" id="backToListBtn">☰ Barcha darslar ro'yxati</button>
-    </div>
   `;
-
-  const viewSolutionBtn = document.getElementById("viewSolutionBtn");
-  if (viewSolutionBtn) viewSolutionBtn.addEventListener("click", () => openSolution(lesson));
-
-  const backToListBtn = document.getElementById("backToListBtn");
-  if (backToListBtn) backToListBtn.addEventListener("click", () => handleNav("back-to-paragraph"));
-
-  const prevBtn = document.getElementById("prevLessonBtn");
-  if (prevBtn && prevLesson) prevBtn.addEventListener("click", () => playLesson(prevLesson));
-
-  const nextBtn = document.getElementById("nextLessonBtn");
-  if (nextBtn && nextLesson) nextBtn.addEventListener("click", () => playLesson(nextLesson));
 
   const fsBtn = document.getElementById("fullscreenBtn");
   if (fsBtn) {
@@ -428,23 +392,11 @@ function playLesson(lesson) {
       const isActive = wrap.classList.toggle("fs-active");
       fsBtn.textContent = isActive ? "✕" : "⛶";
       document.body.classList.toggle("no-scroll", isActive);
-
-      if (isActive) {
-        updateFsVideoSize(wrap);
-        window.addEventListener("resize", fsResizeHandler);
-        if (screen.orientation && screen.orientation.lock) {
-          screen.orientation.lock("landscape").catch(() => {});
-        }
-      } else {
-        window.removeEventListener("resize", fsResizeHandler);
-        wrap.style.removeProperty("--fs-video-w");
-        wrap.style.removeProperty("--fs-video-h");
-        if (screen.orientation && screen.orientation.unlock) {
-          try { screen.orientation.unlock(); } catch (e) {}
-        }
+      if (isActive && screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock("landscape").catch(() => {});
+      } else if (!isActive && screen.orientation && screen.orientation.unlock) {
+        try { screen.orientation.unlock(); } catch (e) {}
       }
-
-      function fsResizeHandler() { updateFsVideoSize(wrap); }
     });
   }
 
@@ -454,11 +406,7 @@ function playLesson(lesson) {
       markBtn.disabled = true;
       markBtn.textContent = "...";
       try {
-        const res = await fetch(`${API_BASE}/api/lesson/${lesson.id}/watched`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ telegram_id: tgUser.id })
-        });
+        const res = await apiFetch(`/api/lesson/${lesson.id}/watched`, { method: "POST" });
         const data = await res.json();
         lesson.watched = true;
         document.getElementById("watchedBtnWrap").innerHTML = `<div class="watched-confirmed">✓ Bu dars ko'rildi — coin qo'shildi</div>`;
@@ -477,87 +425,11 @@ function playLesson(lesson) {
   showScreen("lesson");
 }
 
-// ---------- Yechim rasmini ko'rish (kattalashtirish, sudrab ko'rish) ----------
-
-let solutionZoom = 100;
-let solutionDrag = { active: false, startX: 0, startY: 0, scrollLeft: 0, scrollTop: 0 };
-
-function openSolution(lesson) {
-  currentLesson = lesson;
-  document.getElementById("solutionTitle").textContent = `Yechim — ${lesson.title}`;
-  solutionZoom = 100;
-
-  const siblingLessons = currentParagraph ? currentParagraph.lessons : [];
-  const currentIndex = siblingLessons.findIndex(l => l.id === lesson.id);
-  const prevLesson = currentIndex > 0 ? siblingLessons[currentIndex - 1] : null;
-  const nextLesson = currentIndex >= 0 && currentIndex < siblingLessons.length - 1 ? siblingLessons[currentIndex + 1] : null;
-
-  document.getElementById("solutionContent").innerHTML = `
-    <div class="zoom-bar">
-      <button class="zoom-btn" id="zoomOutBtn">－</button>
-      <span class="zoom-label" id="zoomLabel">100%</span>
-      <button class="zoom-btn" id="zoomInBtn">＋</button>
-    </div>
-    <div class="solution-image-wrap" id="solutionImageWrap">
-      <img src="${lesson.image_url}" id="solutionImage" alt="Yechim rasmi">
-    </div>
-    <div class="lesson-nav-row">
-      <button class="lesson-nav-btn" id="prevSolutionBtn" ${prevLesson ? "" : "disabled"}>← Oldingi yechim</button>
-      <button class="lesson-nav-btn primary" id="nextSolutionBtn" ${nextLesson ? "" : "disabled"}>Keyingi yechim →</button>
-    </div>
-    <div style="margin:10px 16px 0;">
-      <button class="lesson-nav-btn full" id="solutionBackToListBtn">☰ Barcha darslar ro'yxati</button>
-    </div>
-  `;
-
-  applySolutionZoom();
-
-  document.getElementById("zoomInBtn").addEventListener("click", () => {
-    solutionZoom = Math.min(400, solutionZoom + 25);
-    applySolutionZoom();
-  });
-  document.getElementById("zoomOutBtn").addEventListener("click", () => {
-    solutionZoom = Math.max(50, solutionZoom - 25);
-    applySolutionZoom();
-  });
-
-  document.getElementById("prevSolutionBtn").addEventListener("click", () => { if (prevLesson) openSolution(prevLesson); });
-  document.getElementById("nextSolutionBtn").addEventListener("click", () => { if (nextLesson) openSolution(nextLesson); });
-  document.getElementById("solutionBackToListBtn").addEventListener("click", () => handleNav("back-to-paragraph"));
-
-  // Kompyuterda sichqoncha bilan rasmni sudrab ko'rish (mobil qurilmalarda barmoq bilan
-  // tabiiy scroll ishlaydi, kompyuterda esa shu qo'shimcha qulaylik kerak)
-  const wrap = document.getElementById("solutionImageWrap");
-  wrap.addEventListener("mousedown", (e) => {
-    solutionDrag = { active: true, startX: e.pageX, startY: e.pageY, scrollLeft: wrap.scrollLeft, scrollTop: wrap.scrollTop };
-    wrap.classList.add("dragging");
-  });
-  window.addEventListener("mousemove", (e) => {
-    if (!solutionDrag.active) return;
-    e.preventDefault();
-    wrap.scrollLeft = solutionDrag.scrollLeft - (e.pageX - solutionDrag.startX);
-    wrap.scrollTop = solutionDrag.scrollTop - (e.pageY - solutionDrag.startY);
-  });
-  window.addEventListener("mouseup", () => {
-    solutionDrag.active = false;
-    wrap.classList.remove("dragging");
-  });
-
-  showScreen("solution");
-}
-
-function applySolutionZoom() {
-  const img = document.getElementById("solutionImage");
-  const label = document.getElementById("zoomLabel");
-  if (img) img.style.width = solutionZoom + "%";
-  if (label) label.textContent = solutionZoom + "%";
-}
-
 // ---------- Referal ----------
 
 async function loadReferral() {
   try {
-    const res = await fetch(`${API_BASE}/api/referral-link?telegram_id=${tgUser.id}`);
+    const res = await apiFetch(`/api/referral-link`);
     const data = await res.json();
     document.getElementById("referralCount").textContent = data.confirmed_referrals;
     document.getElementById("referralLinkInput").value = data.link;
@@ -582,229 +454,6 @@ async function loadReferral() {
   } catch (e) { console.error(e); }
 }
 
-// ---------- TESTLAR ----------
-
-let allTests = [];
-let activeTestSubjectFilter = "Hammasi";
-let currentTest = null;
-let currentTestAttemptId = null;
-let currentTestQuestions = [];
-let currentQuestionIndex = 0;
-let testTimerInterval = null;
-let testTimeLeft = 0;
-let testScoreSoFar = 0;
-
-async function loadTests() {
-  const box = document.getElementById("testList");
-  box.innerHTML = `<div class="empty-msg">Yuklanmoqda...</div>`;
-  try {
-    const res = await fetch(`${API_BASE}/api/tests?telegram_id=${tgUser.id}`);
-    const data = await res.json();
-    allTests = data.tests;
-    buildTestSubjectFilters();
-    renderTestList();
-  } catch (e) {
-    console.error(e);
-    box.innerHTML = `<div class="empty-msg">Xatolik yuz berdi</div>`;
-  }
-}
-
-function buildTestSubjectFilters() {
-  const row = document.getElementById("testSubjectFilterRow");
-  const subjects = ["Hammasi", ...new Set(allTests.map(t => t.subject))];
-  row.innerHTML = "";
-  subjects.forEach(subj => {
-    const chip = document.createElement("button");
-    chip.className = "filter-chip" + (subj === activeTestSubjectFilter ? " active" : "");
-    chip.textContent = subj;
-    chip.onclick = () => {
-      activeTestSubjectFilter = subj;
-      document.querySelectorAll("#testSubjectFilterRow .filter-chip").forEach(c => c.classList.remove("active"));
-      chip.classList.add("active");
-      renderTestList();
-    };
-    row.appendChild(chip);
-  });
-}
-
-const DIFFICULTY_LABELS = { oson: "🟢 Oson", orta: "🟡 O'rta", qiyin: "🔴 Qiyin" };
-
-function renderTestList() {
-  const box = document.getElementById("testList");
-  box.innerHTML = "";
-  const filtered = allTests.filter(t => activeTestSubjectFilter === "Hammasi" || t.subject === activeTestSubjectFilter);
-  if (filtered.length === 0) {
-    box.innerHTML = `<div class="empty-msg">Bu fandan hozircha test yo'q</div>`;
-    return;
-  }
-  filtered.forEach(test => {
-    const minutes = Math.round(test.time_limit_seconds / 60);
-    const card = document.createElement("div");
-    card.className = "course-card";
-    card.innerHTML = `
-      <div class="course-emoji">📝</div>
-      <div class="course-info">
-        <span class="course-tag">${test.subject}</span>
-        <div class="course-title">${test.title}</div>
-        <div class="course-meta">
-          <span>${DIFFICULTY_LABELS[test.difficulty] || test.difficulty}</span>
-          <span>❓ ${test.question_count} savol</span>
-          <span>⏱ ${minutes} daqiqa</span>
-        </div>
-      </div>
-    `;
-    card.addEventListener("click", () => openTestIntro(test));
-    box.appendChild(card);
-  });
-}
-
-function openTestIntro(test) {
-  currentTest = test;
-  document.getElementById("testPlayTitle").textContent = test.title;
-  const minutes = Math.round(test.time_limit_seconds / 60);
-  document.getElementById("testPlayContent").innerHTML = `
-    <div class="detail-hero">
-      <span class="course-tag">${test.subject}</span>
-      <h1>${test.title}</h1>
-      <p>${DIFFICULTY_LABELS[test.difficulty] || test.difficulty} · ${test.question_count} ta savol · ${minutes} daqiqa vaqt beriladi</p>
-    </div>
-    <div style="margin:0 16px;">
-      <button class="gold-btn" id="startTestBtn">▶ Testni boshlash</button>
-    </div>
-  `;
-  document.getElementById("startTestBtn").addEventListener("click", () => startTest(test));
-  showScreen("test-play");
-}
-
-async function startTest(test) {
-  try {
-    const res = await fetch(`${API_BASE}/api/test/${test.id}?telegram_id=${tgUser.id}`);
-    const fullTest = await res.json();
-    currentTestQuestions = fullTest.questions;
-
-    if (currentTestQuestions.length === 0) {
-      document.getElementById("testPlayContent").innerHTML = `<div class="empty-msg">Bu testda hozircha savollar yo'q</div>`;
-      return;
-    }
-
-    const startRes = await fetch(`${API_BASE}/api/test/${test.id}/start`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ telegram_id: tgUser.id })
-    });
-    const startData = await startRes.json();
-    currentTestAttemptId = startData.attempt_id;
-
-    currentQuestionIndex = 0;
-    testScoreSoFar = 0;
-    testTimeLeft = test.time_limit_seconds;
-
-    if (testTimerInterval) clearInterval(testTimerInterval);
-    testTimerInterval = setInterval(() => {
-      testTimeLeft--;
-      updateTimerDisplay();
-      if (testTimeLeft <= 0) {
-        clearInterval(testTimerInterval);
-        finishTest();
-      }
-    }, 1000);
-
-    renderQuestion();
-  } catch (e) {
-    console.error(e);
-  }
-}
-
-function updateTimerDisplay() {
-  const el = document.getElementById("testTimer");
-  if (!el) return;
-  const m = Math.floor(testTimeLeft / 60);
-  const s = testTimeLeft % 60;
-  el.textContent = `⏱ ${m}:${String(s).padStart(2, "0")}`;
-  el.classList.toggle("timer-warning", testTimeLeft <= 30);
-}
-
-function renderQuestion() {
-  const q = currentTestQuestions[currentQuestionIndex];
-  const options = [q.option_1, q.option_2, q.option_3, q.option_4].filter(o => o && o.trim() !== "");
-
-  let html = `
-    <div class="test-timer-bar">
-      <span>Savol ${currentQuestionIndex + 1} / ${currentTestQuestions.length}</span>
-      <span id="testTimer">⏱ --:--</span>
-    </div>
-    <div class="question-card">
-      ${q.image_url ? `<img src="${q.image_url}" class="question-image" alt="">` : ""}
-      <div class="question-text">${q.question_text}</div>
-      <div class="option-list">
-  `;
-  options.forEach((opt, idx) => {
-    html += `<button class="option-btn" data-idx="${idx + 1}">${opt}</button>`;
-  });
-  html += `</div></div>`;
-
-  document.getElementById("testPlayContent").innerHTML = html;
-  updateTimerDisplay();
-
-  document.querySelectorAll(".option-btn").forEach(btn => {
-    btn.addEventListener("click", () => selectAnswer(q.id, parseInt(btn.getAttribute("data-idx")), btn));
-  });
-}
-
-async function selectAnswer(questionId, selectedIndex, btnEl) {
-  document.querySelectorAll(".option-btn").forEach(b => b.disabled = true);
-  btnEl.classList.add("selected");
-
-  try {
-    const res = await fetch(`${API_BASE}/api/attempt/${currentTestAttemptId}/answer`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ telegram_id: tgUser.id, question_id: questionId, selected_index: selectedIndex })
-    });
-    const result = await res.json();
-    if (result.correct) testScoreSoFar++;
-  } catch (e) { console.error(e); }
-
-  setTimeout(() => {
-    currentQuestionIndex++;
-    if (currentQuestionIndex < currentTestQuestions.length) {
-      renderQuestion();
-    } else {
-      finishTest();
-    }
-  }, 350);
-}
-
-async function finishTest() {
-  if (testTimerInterval) clearInterval(testTimerInterval);
-  try {
-    await fetch(`${API_BASE}/api/attempt/${currentTestAttemptId}/finish`, { method: "POST" });
-  } catch (e) { console.error(e); }
-
-  refreshCoins();
-
-  const total = currentTestQuestions.length;
-  const percent = total > 0 ? Math.round((testScoreSoFar / total) * 100) : 0;
-
-  document.getElementById("testResultContent").innerHTML = `
-    <div class="referral-box">
-      <div class="referral-icon">${percent >= 70 ? "🏆" : percent >= 40 ? "👍" : "📚"}</div>
-      <h3 class="referral-hook">${testScoreSoFar} / ${total} to'g'ri javob</h3>
-      <p>Natijangiz: ${percent}%. Har bir to'g'ri javob uchun coin qo'shildi.</p>
-      <button class="gold-btn" id="retakeTestBtn" style="margin-bottom:10px;">🔁 Testni qayta ishlash</button>
-      <button class="share-btn" id="nextTestBtn">Keyingi test →</button>
-    </div>
-  `;
-
-  document.getElementById("retakeTestBtn").addEventListener("click", () => startTest(currentTest));
-  document.getElementById("nextTestBtn").addEventListener("click", () => {
-    const idx = allTests.findIndex(t => t.id === currentTest.id);
-    const next = allTests[idx + 1] || allTests[0];
-    if (next) openTestIntro(next);
-    else handleNav("tests");
-  });
-
-  showScreen("test-result");
-}
-
 // ---------- Reyting (Natijalar) ----------
 
 async function loadLeaderboard() {
@@ -812,7 +461,7 @@ async function loadLeaderboard() {
   const rankBox = document.getElementById("myRankBox");
   box.innerHTML = `<div class="empty-msg">Yuklanmoqda...</div>`;
   try {
-    const res = await fetch(`${API_BASE}/api/leaderboard?telegram_id=${tgUser.id}`);
+    const res = await apiFetch(`/api/leaderboard`);
     const data = await res.json();
     rankBox.innerHTML = `<div class="my-rank-label">Sizning o'rningiz</div><div class="my-rank-num">#${data.my_rank || "—"}</div>`;
 
@@ -850,8 +499,8 @@ async function loadProfile() {
   content.innerHTML = `<div class="empty-msg">Yuklanmoqda...</div>`;
   try {
     const [userRes, enrollRes] = await Promise.all([
-      fetch(`${API_BASE}/api/user?telegram_id=${tgUser.id}&first_name=${encodeURIComponent(tgUser.first_name)}`),
-      fetch(`${API_BASE}/api/my-enrollments?telegram_id=${tgUser.id}`)
+      apiFetch(`/api/user`),
+      apiFetch(`/api/my-enrollments`)
     ]);
     const user = await userRes.json();
     const enrollData = await enrollRes.json();
@@ -916,17 +565,18 @@ async function loadProfile() {
 }
 
 // ---------- ADMIN ----------
+//
+// Eslatma: adminHeaders() endi alohida narsa qo'shmaydi — apiFetch() barcha
+// so'rovlarga initData'ni avtomatik qo'shadi va server buni ADMIN_TELEGRAM_IDS
+// ro'yxati bilan solishtiradi (server.py -> require_admin). Shu sababli admin
+// bo'limi faqat oldindan ro'yxatga olingan Telegram foydalanuvchilariga ko'rinadi.
 
 let isAdmin = false;
 let currentAdminCourses = [];
 
-function adminHeaders() {
-  return { "Content-Type": "application/json", "X-Telegram-Id": String(tgUser.id) };
-}
-
 async function checkIsAdmin() {
   try {
-    const res = await fetch(`${API_BASE}/api/is-admin?telegram_id=${tgUser.id}`);
+    const res = await apiFetch(`/api/is-admin`);
     const data = await res.json();
     isAdmin = data.is_admin;
     if (isAdmin) document.getElementById("adminGearBtn").classList.remove("hidden");
@@ -940,7 +590,7 @@ async function loadAdminCourses() {
   const box = document.getElementById("adminCoursesList");
   box.innerHTML = `<div class="empty-msg">Yuklanmoqda...</div>`;
   try {
-    const res = await fetch(`${API_BASE}/api/admin/courses`, { headers: adminHeaders() });
+    const res = await apiFetch(`/api/admin/courses`);
     const data = await res.json();
     currentAdminCourses = data.courses;
     box.innerHTML = "";
@@ -1025,15 +675,15 @@ document.getElementById("courseFormEl").addEventListener("submit", async (e) => 
     order_num: parseInt(document.getElementById("ac_order_num").value),
     is_active: parseInt(document.getElementById("ac_is_active").value)
   };
-  if (id) await fetch(`${API_BASE}/api/admin/courses/${id}`, { method: "PUT", headers: adminHeaders(), body: JSON.stringify(data) });
-  else await fetch(`${API_BASE}/api/admin/courses`, { method: "POST", headers: adminHeaders(), body: JSON.stringify(data) });
+  if (id) await apiFetch(`/api/admin/courses/${id}`, { method: "PUT", body: JSON.stringify(data) });
+  else await apiFetch(`/api/admin/courses`, { method: "POST", body: JSON.stringify(data) });
   document.getElementById("adminCourseForm").classList.add("hidden");
   loadAdminCourses();
 });
 
 async function deleteAdminCourse(id) {
   if (!confirm("Bu kursni butunlay o'chirmoqchimisiz? Barcha bo'lim va darslar ham o'chadi.")) return;
-  await fetch(`${API_BASE}/api/admin/courses/${id}`, { method: "DELETE", headers: adminHeaders() });
+  await apiFetch(`/api/admin/courses/${id}`, { method: "DELETE" });
   loadAdminCourses();
 }
 
@@ -1057,7 +707,7 @@ async function openAdminParagraphs(courseId, title) {
 }
 
 async function renderAdminParagraphs(courseId) {
-  const res = await fetch(`${API_BASE}/api/admin/courses/${courseId}/paragraphs`, { headers: adminHeaders() });
+  const res = await apiFetch(`/api/admin/courses/${courseId}/paragraphs`);
   const data = await res.json();
   const box = document.getElementById("adminParagraphsList");
   box.innerHTML = "";
@@ -1081,7 +731,7 @@ async function renderAdminParagraphs(courseId) {
     };
     row.querySelector('[data-a="delete"]').onclick = async () => {
       if (!confirm("Bu bo'limni o'chirmoqchimisiz? Ichidagi videolar ham o'chadi.")) return;
-      await fetch(`${API_BASE}/api/admin/paragraphs/${p.id}`, { method: "DELETE", headers: adminHeaders() });
+      await apiFetch(`/api/admin/paragraphs/${p.id}`, { method: "DELETE" });
       renderAdminParagraphs(courseId);
       loadAdminCourses();
     };
@@ -1098,8 +748,8 @@ document.getElementById("paragraphFormEl").addEventListener("submit", async (e) 
     title: document.getElementById("ap_title").value,
     order_num: parseInt(document.getElementById("ap_order_num").value)
   };
-  if (id) await fetch(`${API_BASE}/api/admin/paragraphs/${id}`, { method: "PUT", headers: adminHeaders(), body: JSON.stringify(data) });
-  else await fetch(`${API_BASE}/api/admin/paragraphs`, { method: "POST", headers: adminHeaders(), body: JSON.stringify(data) });
+  if (id) await apiFetch(`/api/admin/paragraphs/${id}`, { method: "PUT", body: JSON.stringify(data) });
+  else await apiFetch(`/api/admin/paragraphs`, { method: "POST", body: JSON.stringify(data) });
   document.getElementById("ap_id").value = "";
   document.getElementById("ap_title").value = "";
   document.getElementById("ap_order_num").value = 0;
@@ -1118,14 +768,13 @@ async function openAdminLessons(paragraphId, title) {
   document.getElementById("al_id").value = "";
   document.getElementById("al_title").value = "";
   document.getElementById("al_video_url").value = "";
-  document.getElementById("al_image_url").value = "";
   document.getElementById("al_description").value = "";
   document.getElementById("al_order_num").value = 0;
   await renderAdminLessons(paragraphId);
 }
 
 async function renderAdminLessons(paragraphId) {
-  const res = await fetch(`${API_BASE}/api/admin/paragraphs/${paragraphId}/lessons`, { headers: adminHeaders() });
+  const res = await apiFetch(`/api/admin/paragraphs/${paragraphId}/lessons`);
   const data = await res.json();
   const box = document.getElementById("adminLessonsList");
   box.innerHTML = "";
@@ -1134,7 +783,7 @@ async function renderAdminLessons(paragraphId) {
     const row = document.createElement("div");
     row.className = "admin-row";
     row.innerHTML = `
-      <div class="info"><div class="t">${idx + 1}. ${l.title}${l.image_url ? " 📄" : ""}</div></div>
+      <div class="info"><div class="t">${idx + 1}. ${l.title}</div></div>
       <div class="row-actions">
         <button data-a="edit">Tahrirlash / Almashtirish</button>
         <button data-a="delete" class="danger">O'chirish</button>
@@ -1144,13 +793,12 @@ async function renderAdminLessons(paragraphId) {
       document.getElementById("al_id").value = l.id;
       document.getElementById("al_title").value = l.title;
       document.getElementById("al_video_url").value = l.video_url || "";
-      document.getElementById("al_image_url").value = l.image_url || "";
       document.getElementById("al_description").value = l.description || "";
       document.getElementById("al_order_num").value = l.order_num;
     };
     row.querySelector('[data-a="delete"]').onclick = async () => {
       if (!confirm("Bu videoni o'chirmoqchimisiz?")) return;
-      await fetch(`${API_BASE}/api/admin/lessons/${l.id}`, { method: "DELETE", headers: adminHeaders() });
+      await apiFetch(`/api/admin/lessons/${l.id}`, { method: "DELETE" });
       renderAdminLessons(paragraphId);
       loadAdminCourses();
     };
@@ -1166,16 +814,14 @@ document.getElementById("lessonFormEl").addEventListener("submit", async (e) => 
     paragraph_id: parseInt(paragraphId),
     title: document.getElementById("al_title").value,
     video_url: document.getElementById("al_video_url").value,
-    image_url: document.getElementById("al_image_url").value,
     description: document.getElementById("al_description").value,
     order_num: parseInt(document.getElementById("al_order_num").value)
   };
-  if (id) await fetch(`${API_BASE}/api/admin/lessons/${id}`, { method: "PUT", headers: adminHeaders(), body: JSON.stringify(data) });
-  else await fetch(`${API_BASE}/api/admin/lessons`, { method: "POST", headers: adminHeaders(), body: JSON.stringify(data) });
+  if (id) await apiFetch(`/api/admin/lessons/${id}`, { method: "PUT", body: JSON.stringify(data) });
+  else await apiFetch(`/api/admin/lessons`, { method: "POST", body: JSON.stringify(data) });
   document.getElementById("al_id").value = "";
   document.getElementById("al_title").value = "";
   document.getElementById("al_video_url").value = "";
-  document.getElementById("al_image_url").value = "";
   document.getElementById("al_description").value = "";
   document.getElementById("al_order_num").value = 0;
   renderAdminLessons(paragraphId);
@@ -1191,173 +837,10 @@ document.getElementById("enrollFormEl").addEventListener("submit", async (e) => 
     course_id: parseInt(document.getElementById("en_course_id").value),
     duration_days: document.getElementById("en_duration_days").value || null
   };
-  await fetch(`${API_BASE}/api/admin/enroll`, { method: "POST", headers: adminHeaders(), body: JSON.stringify(data) });
+  await apiFetch(`/api/admin/enroll`, { method: "POST", body: JSON.stringify(data) });
   tg.showAlert ? tg.showAlert("✅ Obuna berildi!") : alert("Obuna berildi!");
   document.getElementById("en_telegram_id").value = "";
   document.getElementById("en_duration_days").value = "";
-});
-
-// ---------- ADMIN: testlar CRUD ----------
-
-let currentAdminTests = [];
-
-async function loadAdminTests() {
-  document.getElementById("adminTestForm").classList.add("hidden");
-  document.getElementById("adminQuestionsPanel").classList.add("hidden");
-  const box = document.getElementById("adminTestsList");
-  box.innerHTML = `<div class="empty-msg">Yuklanmoqda...</div>`;
-  try {
-    const res = await fetch(`${API_BASE}/api/admin/tests`, { headers: adminHeaders() });
-    const data = await res.json();
-    currentAdminTests = data.tests;
-    box.innerHTML = "";
-    currentAdminTests.forEach(t => {
-      const row = document.createElement("div");
-      row.className = "admin-row";
-      row.innerHTML = `
-        <div class="emoji">📝</div>
-        <div class="info">
-          <div class="t">${t.title}${t.is_active ? "" : " (yashirin)"}</div>
-          <div class="s">${t.subject} · ${DIFFICULTY_LABELS[t.difficulty] || t.difficulty} · ${t.question_count} savol</div>
-        </div>
-        <div class="row-actions">
-          <button data-a="questions">Savollar</button>
-          <button data-a="edit">Tahrirlash</button>
-          <button data-a="delete" class="danger">O'chirish</button>
-        </div>
-      `;
-      row.querySelector('[data-a="questions"]').onclick = () => openAdminQuestions(t.id, t.title);
-      row.querySelector('[data-a="edit"]').onclick = () => openAdminTestForm(t);
-      row.querySelector('[data-a="delete"]').onclick = () => deleteAdminTest(t.id);
-      box.appendChild(row);
-    });
-  } catch (e) {
-    console.error(e);
-    box.innerHTML = `<div class="empty-msg">Xatolik yuz berdi</div>`;
-  }
-}
-
-document.getElementById("adminNewTestBtn").addEventListener("click", () => openAdminTestForm(null));
-document.getElementById("adminCloseTestForm").addEventListener("click", () => document.getElementById("adminTestForm").classList.add("hidden"));
-
-function openAdminTestForm(test) {
-  document.getElementById("adminTestForm").classList.remove("hidden");
-  document.getElementById("adminQuestionsPanel").classList.add("hidden");
-  document.getElementById("adminTestFormTitle").textContent = test ? "Testni tahrirlash" : "Yangi test";
-  document.getElementById("at_id").value = test ? test.id : "";
-  document.getElementById("at_subject").value = test ? test.subject : "";
-  document.getElementById("at_title").value = test ? test.title : "";
-  document.getElementById("at_difficulty").value = test ? test.difficulty : "orta";
-  document.getElementById("at_time_limit").value = test ? test.time_limit_seconds : "";
-  document.getElementById("at_order_num").value = test ? test.order_num : 0;
-  document.getElementById("at_is_active").value = test ? String(test.is_active) : "1";
-}
-
-document.getElementById("testFormEl").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const id = document.getElementById("at_id").value;
-  const data = {
-    subject: document.getElementById("at_subject").value,
-    title: document.getElementById("at_title").value,
-    difficulty: document.getElementById("at_difficulty").value,
-    time_limit_seconds: document.getElementById("at_time_limit").value || null,
-    order_num: parseInt(document.getElementById("at_order_num").value),
-    is_active: parseInt(document.getElementById("at_is_active").value)
-  };
-  if (id) await fetch(`${API_BASE}/api/admin/tests/${id}`, { method: "PUT", headers: adminHeaders(), body: JSON.stringify(data) });
-  else await fetch(`${API_BASE}/api/admin/tests`, { method: "POST", headers: adminHeaders(), body: JSON.stringify(data) });
-  document.getElementById("adminTestForm").classList.add("hidden");
-  loadAdminTests();
-});
-
-async function deleteAdminTest(id) {
-  if (!confirm("Bu testni butunlay o'chirmoqchimisiz? Barcha savollar ham o'chadi.")) return;
-  await fetch(`${API_BASE}/api/admin/tests/${id}`, { method: "DELETE", headers: adminHeaders() });
-  loadAdminTests();
-}
-
-// --- Admin questions ---
-
-document.getElementById("adminCloseQuestions").addEventListener("click", () => document.getElementById("adminQuestionsPanel").classList.add("hidden"));
-
-async function openAdminQuestions(testId, title) {
-  document.getElementById("adminQuestionsPanel").classList.remove("hidden");
-  document.getElementById("adminTestForm").classList.add("hidden");
-  document.getElementById("adminQuestionsTitle").textContent = `Savollar — ${title}`;
-  document.getElementById("aq_test_id").value = testId;
-  resetQuestionForm();
-  await renderAdminQuestions(testId);
-}
-
-function resetQuestionForm() {
-  document.getElementById("aq_id").value = "";
-  document.getElementById("aq_question_text").value = "";
-  document.getElementById("aq_image_url").value = "";
-  document.getElementById("aq_option_1").value = "";
-  document.getElementById("aq_option_2").value = "";
-  document.getElementById("aq_option_3").value = "";
-  document.getElementById("aq_option_4").value = "";
-  document.getElementById("aq_correct_index").value = "1";
-  document.getElementById("aq_order_num").value = 0;
-}
-
-async function renderAdminQuestions(testId) {
-  const res = await fetch(`${API_BASE}/api/admin/tests/${testId}/questions`, { headers: adminHeaders() });
-  const data = await res.json();
-  const box = document.getElementById("adminQuestionsList");
-  box.innerHTML = "";
-  if (data.questions.length === 0) box.innerHTML = `<div class="empty-msg">Hali savol qo'shilmagan</div>`;
-  data.questions.forEach((q, idx) => {
-    const row = document.createElement("div");
-    row.className = "admin-row";
-    row.innerHTML = `
-      <div class="info"><div class="t">${idx + 1}. ${q.question_text}</div></div>
-      <div class="row-actions">
-        <button data-a="edit">Tahrirlash</button>
-        <button data-a="delete" class="danger">O'chirish</button>
-      </div>
-    `;
-    row.querySelector('[data-a="edit"]').onclick = () => {
-      document.getElementById("aq_id").value = q.id;
-      document.getElementById("aq_question_text").value = q.question_text;
-      document.getElementById("aq_image_url").value = q.image_url || "";
-      document.getElementById("aq_option_1").value = q.option_1 || "";
-      document.getElementById("aq_option_2").value = q.option_2 || "";
-      document.getElementById("aq_option_3").value = q.option_3 || "";
-      document.getElementById("aq_option_4").value = q.option_4 || "";
-      document.getElementById("aq_correct_index").value = q.correct_index;
-      document.getElementById("aq_order_num").value = q.order_num;
-    };
-    row.querySelector('[data-a="delete"]').onclick = async () => {
-      if (!confirm("Bu savolni o'chirmoqchimisiz?")) return;
-      await fetch(`${API_BASE}/api/admin/questions/${q.id}`, { method: "DELETE", headers: adminHeaders() });
-      renderAdminQuestions(testId);
-      loadAdminTests();
-    };
-    box.appendChild(row);
-  });
-}
-
-document.getElementById("questionFormEl").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const id = document.getElementById("aq_id").value;
-  const testId = document.getElementById("aq_test_id").value;
-  const data = {
-    test_id: parseInt(testId),
-    question_text: document.getElementById("aq_question_text").value,
-    image_url: document.getElementById("aq_image_url").value,
-    option_1: document.getElementById("aq_option_1").value,
-    option_2: document.getElementById("aq_option_2").value,
-    option_3: document.getElementById("aq_option_3").value,
-    option_4: document.getElementById("aq_option_4").value,
-    correct_index: parseInt(document.getElementById("aq_correct_index").value),
-    order_num: parseInt(document.getElementById("aq_order_num").value)
-  };
-  if (id) await fetch(`${API_BASE}/api/admin/questions/${id}`, { method: "PUT", headers: adminHeaders(), body: JSON.stringify(data) });
-  else await fetch(`${API_BASE}/api/admin/questions`, { method: "POST", headers: adminHeaders(), body: JSON.stringify(data) });
-  resetQuestionForm();
-  renderAdminQuestions(testId);
-  loadAdminTests();
 });
 
 // ---------- Boshlanish ----------

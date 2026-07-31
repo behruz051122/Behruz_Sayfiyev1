@@ -1,0 +1,17 @@
+# Maxfiy sozlamalar — HECH QACHON commit qilinmasin
+.env
+
+# Ma'lumotlar bazasi (lokal test uchun; production'da Railway Volume ishlatiladi)
+database.db
+*.db-journal
+
+# Python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Muharrir/OS fayllari
+.vscode/
+.DS_Store
+Thumbs.db

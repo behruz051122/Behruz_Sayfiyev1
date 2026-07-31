@@ -1,4 +1,4 @@
-// app.js — Mini App logikasi (v4.0 — paragraf tuzilishi, coin, reyting, obuna)
+// app.js — Mini App logikasi (v5 — xavfsizlashtirilgan: initData bilan tasdiqlangan so'rovlar)
 
 const tg = window.Telegram.WebApp;
 tg.expand();
@@ -15,6 +15,29 @@ let activeStatusFilter = "all";
 let activeSubjectFilter = "Hammasi";
 let botUsername = "";
 let adminContact = "";
+
+// ---------- Xavfsiz API chaqiruvi ----------
+//
+// MUHIM: tgUser.id (yuqorida) faqat INTERFEYSDA ko'rsatish uchun ishlatiladi
+// (masalan darhol ismni chiqarish). Har qanday MA'LUMOT o'zgartiruvchi yoki
+// shaxsiy ma'lumot so'rovida server tg.initData'ni qayta tekshiradi — shuning
+// uchun tgUser.id'ni to'g'ridan-to'g'ri so'rovlarga "ishonchli manba" sifatida
+// yubormaymiz, buning o'rniga har doim apiFetch() orqali initData yuboriladi.
+
+async function apiFetch(path, options = {}) {
+  const headers = Object.assign(
+    { "Content-Type": "application/json" },
+    options.headers || {},
+    { "X-Telegram-Init-Data": tg.initData || "" }
+  );
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  if (res.status === 401) {
+    const msg = "Xavfsizlik tekshiruvidan o'tmadi. Ilovani Telegram ichida qayta oching.";
+    if (tg.showAlert) tg.showAlert(msg); else alert(msg);
+    throw new Error("Unauthorized (401)");
+  }
+  return res;
+}
 
 // ---------- Navigatsiya ----------
 
@@ -56,6 +79,7 @@ function handleNav(target) {
 
 async function loadBrand() {
   try {
+    // Brend ma'lumoti shaxsiy emas — autentifikatsiyasiz ham ochiq bo'lishi mumkin
     const res = await fetch(`${API_BASE}/api/brand`);
     const data = await res.json();
     document.getElementById("brandName").textContent = data.brand_name;
@@ -67,7 +91,7 @@ async function loadBrand() {
 
 async function loadUser() {
   try {
-    const res = await fetch(`${API_BASE}/api/user?telegram_id=${tgUser.id}&first_name=${encodeURIComponent(tgUser.first_name)}`);
+    const res = await apiFetch(`/api/user`);
     const user = await res.json();
     document.getElementById("helloName").textContent = `${user.first_name}, salom 👋`;
     document.getElementById("coinsBadge").textContent = `🪙 ${user.coins}`;
@@ -75,7 +99,7 @@ async function loadUser() {
 }
 
 async function refreshCoins() {
-  const res = await fetch(`${API_BASE}/api/user?telegram_id=${tgUser.id}&first_name=${encodeURIComponent(tgUser.first_name)}`);
+  const res = await apiFetch(`/api/user`);
   const user = await res.json();
   document.getElementById("coinsBadge").textContent = `🪙 ${user.coins}`;
 }
@@ -86,7 +110,7 @@ async function loadCourseList() {
   const container = document.getElementById("courseList");
   container.innerHTML = `<div class="empty-msg">Yuklanmoqda...</div>`;
   try {
-    const res = await fetch(`${API_BASE}/api/courses?resource_type=${currentListType}&telegram_id=${tgUser.id}`);
+    const res = await apiFetch(`/api/courses?resource_type=${currentListType}`);
     const data = await res.json();
     allCourses = data.courses;
     buildSubjectFilters();
@@ -187,7 +211,7 @@ async function openCourseDetail(courseId) {
   showScreen("detail");
 
   try {
-    const res = await fetch(`${API_BASE}/api/course/${courseId}?telegram_id=${tgUser.id}`);
+    const res = await apiFetch(`/api/course/${courseId}`);
     const course = await res.json();
     currentCourse = course;
     document.getElementById("detailTitle").textContent = course.title;
@@ -382,11 +406,7 @@ function playLesson(lesson) {
       markBtn.disabled = true;
       markBtn.textContent = "...";
       try {
-        const res = await fetch(`${API_BASE}/api/lesson/${lesson.id}/watched`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ telegram_id: tgUser.id })
-        });
+        const res = await apiFetch(`/api/lesson/${lesson.id}/watched`, { method: "POST" });
         const data = await res.json();
         lesson.watched = true;
         document.getElementById("watchedBtnWrap").innerHTML = `<div class="watched-confirmed">✓ Bu dars ko'rildi — coin qo'shildi</div>`;
@@ -409,7 +429,7 @@ function playLesson(lesson) {
 
 async function loadReferral() {
   try {
-    const res = await fetch(`${API_BASE}/api/referral-link?telegram_id=${tgUser.id}`);
+    const res = await apiFetch(`/api/referral-link`);
     const data = await res.json();
     document.getElementById("referralCount").textContent = data.confirmed_referrals;
     document.getElementById("referralLinkInput").value = data.link;
@@ -441,7 +461,7 @@ async function loadLeaderboard() {
   const rankBox = document.getElementById("myRankBox");
   box.innerHTML = `<div class="empty-msg">Yuklanmoqda...</div>`;
   try {
-    const res = await fetch(`${API_BASE}/api/leaderboard?telegram_id=${tgUser.id}`);
+    const res = await apiFetch(`/api/leaderboard`);
     const data = await res.json();
     rankBox.innerHTML = `<div class="my-rank-label">Sizning o'rningiz</div><div class="my-rank-num">#${data.my_rank || "—"}</div>`;
 
@@ -479,8 +499,8 @@ async function loadProfile() {
   content.innerHTML = `<div class="empty-msg">Yuklanmoqda...</div>`;
   try {
     const [userRes, enrollRes] = await Promise.all([
-      fetch(`${API_BASE}/api/user?telegram_id=${tgUser.id}&first_name=${encodeURIComponent(tgUser.first_name)}`),
-      fetch(`${API_BASE}/api/my-enrollments?telegram_id=${tgUser.id}`)
+      apiFetch(`/api/user`),
+      apiFetch(`/api/my-enrollments`)
     ]);
     const user = await userRes.json();
     const enrollData = await enrollRes.json();
@@ -545,17 +565,18 @@ async function loadProfile() {
 }
 
 // ---------- ADMIN ----------
+//
+// Eslatma: adminHeaders() endi alohida narsa qo'shmaydi — apiFetch() barcha
+// so'rovlarga initData'ni avtomatik qo'shadi va server buni ADMIN_TELEGRAM_IDS
+// ro'yxati bilan solishtiradi (server.py -> require_admin). Shu sababli admin
+// bo'limi faqat oldindan ro'yxatga olingan Telegram foydalanuvchilariga ko'rinadi.
 
 let isAdmin = false;
 let currentAdminCourses = [];
 
-function adminHeaders() {
-  return { "Content-Type": "application/json", "X-Telegram-Id": String(tgUser.id) };
-}
-
 async function checkIsAdmin() {
   try {
-    const res = await fetch(`${API_BASE}/api/is-admin?telegram_id=${tgUser.id}`);
+    const res = await apiFetch(`/api/is-admin`);
     const data = await res.json();
     isAdmin = data.is_admin;
     if (isAdmin) document.getElementById("adminGearBtn").classList.remove("hidden");
@@ -569,7 +590,7 @@ async function loadAdminCourses() {
   const box = document.getElementById("adminCoursesList");
   box.innerHTML = `<div class="empty-msg">Yuklanmoqda...</div>`;
   try {
-    const res = await fetch(`${API_BASE}/api/admin/courses`, { headers: adminHeaders() });
+    const res = await apiFetch(`/api/admin/courses`);
     const data = await res.json();
     currentAdminCourses = data.courses;
     box.innerHTML = "";
@@ -654,15 +675,15 @@ document.getElementById("courseFormEl").addEventListener("submit", async (e) => 
     order_num: parseInt(document.getElementById("ac_order_num").value),
     is_active: parseInt(document.getElementById("ac_is_active").value)
   };
-  if (id) await fetch(`${API_BASE}/api/admin/courses/${id}`, { method: "PUT", headers: adminHeaders(), body: JSON.stringify(data) });
-  else await fetch(`${API_BASE}/api/admin/courses`, { method: "POST", headers: adminHeaders(), body: JSON.stringify(data) });
+  if (id) await apiFetch(`/api/admin/courses/${id}`, { method: "PUT", body: JSON.stringify(data) });
+  else await apiFetch(`/api/admin/courses`, { method: "POST", body: JSON.stringify(data) });
   document.getElementById("adminCourseForm").classList.add("hidden");
   loadAdminCourses();
 });
 
 async function deleteAdminCourse(id) {
   if (!confirm("Bu kursni butunlay o'chirmoqchimisiz? Barcha bo'lim va darslar ham o'chadi.")) return;
-  await fetch(`${API_BASE}/api/admin/courses/${id}`, { method: "DELETE", headers: adminHeaders() });
+  await apiFetch(`/api/admin/courses/${id}`, { method: "DELETE" });
   loadAdminCourses();
 }
 
@@ -686,7 +707,7 @@ async function openAdminParagraphs(courseId, title) {
 }
 
 async function renderAdminParagraphs(courseId) {
-  const res = await fetch(`${API_BASE}/api/admin/courses/${courseId}/paragraphs`, { headers: adminHeaders() });
+  const res = await apiFetch(`/api/admin/courses/${courseId}/paragraphs`);
   const data = await res.json();
   const box = document.getElementById("adminParagraphsList");
   box.innerHTML = "";
@@ -710,7 +731,7 @@ async function renderAdminParagraphs(courseId) {
     };
     row.querySelector('[data-a="delete"]').onclick = async () => {
       if (!confirm("Bu bo'limni o'chirmoqchimisiz? Ichidagi videolar ham o'chadi.")) return;
-      await fetch(`${API_BASE}/api/admin/paragraphs/${p.id}`, { method: "DELETE", headers: adminHeaders() });
+      await apiFetch(`/api/admin/paragraphs/${p.id}`, { method: "DELETE" });
       renderAdminParagraphs(courseId);
       loadAdminCourses();
     };
@@ -727,8 +748,8 @@ document.getElementById("paragraphFormEl").addEventListener("submit", async (e) 
     title: document.getElementById("ap_title").value,
     order_num: parseInt(document.getElementById("ap_order_num").value)
   };
-  if (id) await fetch(`${API_BASE}/api/admin/paragraphs/${id}`, { method: "PUT", headers: adminHeaders(), body: JSON.stringify(data) });
-  else await fetch(`${API_BASE}/api/admin/paragraphs`, { method: "POST", headers: adminHeaders(), body: JSON.stringify(data) });
+  if (id) await apiFetch(`/api/admin/paragraphs/${id}`, { method: "PUT", body: JSON.stringify(data) });
+  else await apiFetch(`/api/admin/paragraphs`, { method: "POST", body: JSON.stringify(data) });
   document.getElementById("ap_id").value = "";
   document.getElementById("ap_title").value = "";
   document.getElementById("ap_order_num").value = 0;
@@ -753,7 +774,7 @@ async function openAdminLessons(paragraphId, title) {
 }
 
 async function renderAdminLessons(paragraphId) {
-  const res = await fetch(`${API_BASE}/api/admin/paragraphs/${paragraphId}/lessons`, { headers: adminHeaders() });
+  const res = await apiFetch(`/api/admin/paragraphs/${paragraphId}/lessons`);
   const data = await res.json();
   const box = document.getElementById("adminLessonsList");
   box.innerHTML = "";
@@ -777,7 +798,7 @@ async function renderAdminLessons(paragraphId) {
     };
     row.querySelector('[data-a="delete"]').onclick = async () => {
       if (!confirm("Bu videoni o'chirmoqchimisiz?")) return;
-      await fetch(`${API_BASE}/api/admin/lessons/${l.id}`, { method: "DELETE", headers: adminHeaders() });
+      await apiFetch(`/api/admin/lessons/${l.id}`, { method: "DELETE" });
       renderAdminLessons(paragraphId);
       loadAdminCourses();
     };
@@ -796,8 +817,8 @@ document.getElementById("lessonFormEl").addEventListener("submit", async (e) => 
     description: document.getElementById("al_description").value,
     order_num: parseInt(document.getElementById("al_order_num").value)
   };
-  if (id) await fetch(`${API_BASE}/api/admin/lessons/${id}`, { method: "PUT", headers: adminHeaders(), body: JSON.stringify(data) });
-  else await fetch(`${API_BASE}/api/admin/lessons`, { method: "POST", headers: adminHeaders(), body: JSON.stringify(data) });
+  if (id) await apiFetch(`/api/admin/lessons/${id}`, { method: "PUT", body: JSON.stringify(data) });
+  else await apiFetch(`/api/admin/lessons`, { method: "POST", body: JSON.stringify(data) });
   document.getElementById("al_id").value = "";
   document.getElementById("al_title").value = "";
   document.getElementById("al_video_url").value = "";
@@ -816,7 +837,7 @@ document.getElementById("enrollFormEl").addEventListener("submit", async (e) => 
     course_id: parseInt(document.getElementById("en_course_id").value),
     duration_days: document.getElementById("en_duration_days").value || null
   };
-  await fetch(`${API_BASE}/api/admin/enroll`, { method: "POST", headers: adminHeaders(), body: JSON.stringify(data) });
+  await apiFetch(`/api/admin/enroll`, { method: "POST", body: JSON.stringify(data) });
   tg.showAlert ? tg.showAlert("✅ Obuna berildi!") : alert("Obuna berildi!");
   document.getElementById("en_telegram_id").value = "";
   document.getElementById("en_duration_days").value = "";
