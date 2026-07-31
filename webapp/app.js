@@ -16,6 +16,13 @@ let activeSubjectFilter = "Hammasi";
 let botUsername = "";
 let adminContact = "";
 
+// --- Test tizimi holati ---
+let allTests = [];
+let activeTestSubjectFilter = "Hammasi";
+let myTestResults = [];
+let currentTestMeta = null;      // ro'yxatdagi test kartasi ma'lumoti (title, difficulty, va h.k.)
+let currentAttempt = null;       // { id, testId, questions, index, correctCount, coinsEarned, timeLeft, timerHandle, finished }
+
 // ---------- Xavfsiz API chaqiruvi ----------
 //
 // MUHIM: tgUser.id (yuqorida) faqat INTERFEYSDA ko'rsatish uchun ishlatiladi
@@ -66,13 +73,18 @@ function handleNav(target) {
     document.getElementById("listTitle").textContent = "Kitoblar";
     loadCourseList(); showScreen("list");
   } else if (target === "referral") { loadReferral(); showScreen("referral"); }
-  else if (target === "tests") { showScreen("tests"); }
+  else if (target === "tests") {
+    stopTestTimer();
+    currentAttempt = null;
+    activeTestSubjectFilter = "Hammasi";
+    loadTestList(); showScreen("tests");
+  }
   else if (target === "leaderboard") { loadLeaderboard(); showScreen("leaderboard"); }
   else if (target === "profile") { loadProfile(); showScreen("profile"); }
   else if (target === "back-to-list") showScreen("list");
   else if (target === "back-to-course") openCourseDetail(currentCourse.id);
   else if (target === "back-to-paragraph") openParagraph(currentParagraph.id);
-  else if (target === "admin") { loadAdminCourses(); showScreen("admin"); }
+  else if (target === "admin") { loadAdminCourses(); loadAdminTests(); showScreen("admin"); }
 }
 
 // ---------- Brand / user ----------
@@ -564,6 +576,378 @@ async function loadProfile() {
   }
 }
 
+// ---------- TESTLAR ----------
+
+const DIFFICULTY_LABELS = { oson: "Oson", orta: "O'rta", qiyin: "Qiyin" };
+
+function formatSeconds(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+async function loadTestList() {
+  const container = document.getElementById("testList");
+  container.innerHTML = `<div class="empty-msg">Yuklanmoqda...</div>`;
+  try {
+    const [testsRes, resultsRes] = await Promise.all([
+      apiFetch(`/api/tests`),
+      apiFetch(`/api/my-test-results`)
+    ]);
+    const testsData = await testsRes.json();
+    const resultsData = await resultsRes.json();
+    allTests = testsData.tests;
+    myTestResults = resultsData.results;
+    buildTestSubjectFilters();
+    renderTestList();
+  } catch (e) {
+    console.error(e);
+    container.innerHTML = `<div class="empty-msg">Xatolik yuz berdi</div>`;
+  }
+}
+
+function buildTestSubjectFilters() {
+  const row = document.getElementById("testSubjectFilterRow");
+  const subjects = ["Hammasi", ...new Set(allTests.map(t => t.subject))];
+  row.innerHTML = "";
+  subjects.forEach(subj => {
+    const chip = document.createElement("button");
+    chip.className = "filter-chip" + (subj === activeTestSubjectFilter ? " active" : "");
+    chip.textContent = subj;
+    chip.onclick = () => {
+      activeTestSubjectFilter = subj;
+      document.querySelectorAll("#testSubjectFilterRow .filter-chip").forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
+      renderTestList();
+    };
+    row.appendChild(chip);
+  });
+}
+
+function bestResultForTest(testId) {
+  return myTestResults.find(r => r.test_id === testId) || null;
+}
+
+function renderTestList() {
+  const container = document.getElementById("testList");
+  container.innerHTML = "";
+
+  const filtered = activeTestSubjectFilter === "Hammasi"
+    ? allTests
+    : allTests.filter(t => t.subject === activeTestSubjectFilter);
+
+  if (filtered.length === 0) {
+    container.innerHTML = `<div class="empty-msg">Bu fan bo'yicha hozircha test yo'q</div>`;
+    return;
+  }
+
+  filtered.forEach(test => {
+    const best = bestResultForTest(test.id);
+    const card = document.createElement("div");
+    card.className = "test-card";
+    card.innerHTML = `
+      <div class="test-card-top">
+        <div class="test-card-title">${test.title}</div>
+        <span class="difficulty-badge difficulty-${test.difficulty}">${DIFFICULTY_LABELS[test.difficulty] || test.difficulty}</span>
+      </div>
+      <div class="test-card-meta">
+        <span class="course-tag">${test.subject}</span>
+        <span>❓ ${test.question_count} savol</span>
+        <span>⏱ ${formatSeconds(test.time_limit_seconds)}</span>
+      </div>
+      ${best ? `<div class="test-card-best">🏆 Eng yaxshi natija: ${best.best_score}/${best.total_questions}</div>` : ""}
+    `;
+    card.addEventListener("click", () => openTestDetail(test));
+    container.appendChild(card);
+  });
+}
+
+function openTestDetail(test) {
+  currentTestMeta = test;
+  document.getElementById("testDetailTitle").textContent = test.subject;
+  const best = bestResultForTest(test.id);
+
+  const content = document.getElementById("testDetailContent");
+  content.innerHTML = `
+    <div class="test-detail-hero">
+      <span class="difficulty-badge difficulty-${test.difficulty}">${DIFFICULTY_LABELS[test.difficulty] || test.difficulty}</span>
+      <h1>${test.title}</h1>
+      <div class="test-detail-stats">
+        <div class="test-detail-stat"><div class="num">${test.question_count}</div><div class="lbl">savol</div></div>
+        <div class="test-detail-stat"><div class="num">${formatSeconds(test.time_limit_seconds)}</div><div class="lbl">vaqt</div></div>
+      </div>
+    </div>
+    ${best ? `<div class="test-detail-prev-best">🏆 Oldingi eng yaxshi natijangiz: ${best.best_score}/${best.total_questions}</div>` : ""}
+    <div class="test-detail-actions">
+      <button class="gold-btn" id="startTestBtn">${best ? "🔁 Qayta urinish" : "▶ Testni boshlash"}</button>
+    </div>
+    <p style="text-align:center;color:var(--text-dim);font-size:11px;margin-top:14px;">
+      Har bir savolga birinchi marta to'g'ri javob bersangiz — 1 🪙 coin olasiz. Vaqt tugasa, test avtomatik yakunlanadi.
+    </p>
+  `;
+  document.getElementById("startTestBtn").addEventListener("click", () => startTest(test));
+
+  showScreen("test-detail");
+}
+
+async function startTest(test) {
+  const btn = document.getElementById("startTestBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "Tayyorlanmoqda..."; }
+  try {
+    const [startRes, fullTestRes] = await Promise.all([
+      apiFetch(`/api/test/${test.id}/start`, { method: "POST" }),
+      apiFetch(`/api/test/${test.id}`)
+    ]);
+    const startData = await startRes.json();
+    const fullTest = await fullTestRes.json();
+
+    if (!fullTest.questions || fullTest.questions.length === 0) {
+      tg.showAlert ? tg.showAlert("Bu testda hozircha savollar yo'q") : alert("Bu testda hozircha savollar yo'q");
+      if (btn) { btn.disabled = false; btn.textContent = "▶ Testni boshlash"; }
+      return;
+    }
+
+    currentAttempt = {
+      id: startData.attempt_id,
+      test: fullTest,
+      index: 0,
+      correctCount: 0,
+      coinsEarned: 0,
+      timeLeft: fullTest.time_limit_seconds,
+      timerHandle: null,
+      finished: false,
+    };
+
+    showScreen("test-taking");
+    renderCurrentQuestion();
+    startTestTimer();
+  } catch (e) {
+    console.error(e);
+    if (btn) { btn.disabled = false; btn.textContent = "▶ Testni boshlash"; }
+  }
+}
+
+function startTestTimer() {
+  stopTestTimer();
+  updateTimerDisplay();
+  currentAttempt.timerHandle = setInterval(() => {
+    currentAttempt.timeLeft -= 1;
+    updateTimerDisplay();
+    if (currentAttempt.timeLeft <= 0) {
+      stopTestTimer();
+      finishTest(true);
+    }
+  }, 1000);
+}
+
+function stopTestTimer() {
+  if (currentAttempt && currentAttempt.timerHandle) {
+    clearInterval(currentAttempt.timerHandle);
+    currentAttempt.timerHandle = null;
+  }
+}
+
+function updateTimerDisplay() {
+  const el = document.getElementById("testTimer");
+  if (!el || !currentAttempt) return;
+  el.textContent = formatSeconds(Math.max(0, currentAttempt.timeLeft));
+  el.classList.toggle("timer-warning", currentAttempt.timeLeft <= 30);
+}
+
+function renderCurrentQuestion() {
+  const { test, index } = currentAttempt;
+  const question = test.questions[index];
+  const total = test.questions.length;
+
+  document.getElementById("testProgressFill").style.width = `${(index / total) * 100}%`;
+
+  const options = [
+    ["1", question.option_1], ["2", question.option_2],
+    ["3", question.option_3], ["4", question.option_4]
+  ];
+
+  const content = document.getElementById("testTakingContent");
+  content.innerHTML = `
+    <div class="question-counter">${index + 1} / ${total}-SAVOL</div>
+    <div class="question-card">
+      <div class="question-text">${question.question_text}</div>
+      ${question.image_url ? `<img class="question-image" src="${question.image_url}" alt="Savol rasmi">` : ""}
+    </div>
+    <div class="option-list" id="optionList">
+      ${options.map(([idx, text]) => `
+        <button class="option-btn" data-option-index="${idx}">
+          <span class="option-letter">${idx}</span><span>${text}</span>
+        </button>
+      `).join("")}
+    </div>
+    <div id="answerFeedbackWrap"></div>
+    <div class="next-question-wrap hidden" id="nextQuestionWrap">
+      <button class="gold-btn" id="nextQuestionBtn">${index + 1 === total ? "Yakunlash →" : "Keyingi savol →"}</button>
+    </div>
+  `;
+
+  const questionImg = content.querySelector(".question-image");
+  if (questionImg) questionImg.addEventListener("click", () => openLightbox(questionImg.src));
+
+  document.querySelectorAll("#optionList .option-btn").forEach(btn => {
+    btn.addEventListener("click", () => selectOption(parseInt(btn.getAttribute("data-option-index"))));
+  });
+
+  const nextBtn = document.getElementById("nextQuestionBtn");
+  nextBtn.addEventListener("click", () => {
+    currentAttempt.index += 1;
+    if (currentAttempt.index >= total) finishTest(false);
+    else renderCurrentQuestion();
+  });
+}
+
+async function selectOption(selectedIndex) {
+  const { test, index, id: attemptId } = currentAttempt;
+  const question = test.questions[index];
+
+  document.querySelectorAll("#optionList .option-btn").forEach(b => b.disabled = true);
+
+  let result;
+  try {
+    const res = await apiFetch(`/api/attempt/${attemptId}/answer`, {
+      method: "POST",
+      body: JSON.stringify({ question_id: question.id, selected_index: selectedIndex })
+    });
+    result = await res.json();
+  } catch (e) {
+    console.error(e);
+    document.querySelectorAll("#optionList .option-btn").forEach(b => b.disabled = false);
+    return;
+  }
+
+  if (result.correct) currentAttempt.correctCount += 1;
+  if (result.coin_awarded) currentAttempt.coinsEarned += 1;
+
+  document.querySelectorAll("#optionList .option-btn").forEach(btn => {
+    const idx = parseInt(btn.getAttribute("data-option-index"));
+    if (idx === selectedIndex) btn.classList.add(result.correct ? "option-correct" : "option-wrong");
+    else if (idx === result.correct_index) btn.classList.add("option-correct");
+    else btn.classList.add("option-dim");
+  });
+
+  document.getElementById("answerFeedbackWrap").innerHTML = `
+    <div class="answer-feedback ${result.correct ? "feedback-correct" : "feedback-wrong"}">
+      ${result.correct ? "✓ To'g'ri javob!" + (result.coin_awarded ? " (+1 🪙)" : "") : "✗ Noto'g'ri. To'g'ri javob yashil rangda ko'rsatildi."}
+    </div>
+  `;
+  document.getElementById("nextQuestionWrap").classList.remove("hidden");
+
+  if (result.coin_awarded) refreshCoins();
+}
+
+async function finishTest(timedOut) {
+  stopTestTimer();
+  if (!currentAttempt || currentAttempt.finished) return;
+  currentAttempt.finished = true;
+
+  let finalResult = null;
+  try {
+    const res = await apiFetch(`/api/attempt/${currentAttempt.id}/finish`, { method: "POST" });
+    finalResult = await res.json();
+  } catch (e) {
+    console.error(e);
+  }
+
+  const total = currentAttempt.test.questions.length;
+  const score = finalResult ? finalResult.score : currentAttempt.correctCount;
+  const percent = total > 0 ? Math.round((score / total) * 100) : 0;
+
+  const content = document.getElementById("testResultContent");
+  content.innerHTML = `
+    <div class="test-result-content">
+      <div class="result-score-circle">
+        <div class="score-num">${score}/${total}</div>
+        <div class="score-total">${percent}%</div>
+      </div>
+      <div class="result-title">${timedOut ? "⏰ Vaqt tugadi" : "🎉 Test yakunlandi"}</div>
+      <div class="result-sub">${percentToComment(percent)}</div>
+      ${currentAttempt.coinsEarned > 0 ? `<div class="result-coins-badge">+${currentAttempt.coinsEarned} 🪙 coin qo'lga kiritdingiz</div>` : ""}
+      <div class="result-actions">
+        <button class="gold-btn" id="retakeTestBtn">🔁 Qayta urinish</button>
+        <button class="secondary-btn" id="backToTestsBtn">Testlar ro'yxatiga qaytish</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("retakeTestBtn").addEventListener("click", () => {
+    const testRef = currentTestMeta;
+    startTest(testRef);
+  });
+  document.getElementById("backToTestsBtn").addEventListener("click", () => handleNav("tests"));
+
+  showScreen("test-result");
+  refreshCoins();
+}
+
+function percentToComment(percent) {
+  if (percent === 100) return "Ajoyib! Barcha savollarga to'g'ri javob berdingiz.";
+  if (percent >= 80) return "Zo'r natija! Yana bir oz mashq qilsangiz — mukammal bo'ladi.";
+  if (percent >= 50) return "Yaxshi urinish. Xato javoblaringizni qayta ko'rib chiqing.";
+  return "Bu mavzuni yana bir bor o'rganib, qayta urinib ko'ring.";
+}
+
+document.getElementById("exitTestBtn").addEventListener("click", () => {
+  const ok = confirm("Testdan chiqmoqchimisiz? Joriy urinishingiz saqlanmaydi.");
+  if (!ok) return;
+  stopTestTimer();
+  currentAttempt = null;
+  handleNav("tests");
+});
+
+// --- Mening natijalarim ---
+
+document.getElementById("myResultsBtn").addEventListener("click", async () => {
+  showScreen("test-results");
+  const box = document.getElementById("testResultsList");
+  box.innerHTML = `<div class="empty-msg">Yuklanmoqda...</div>`;
+  try {
+    const res = await apiFetch(`/api/my-test-results`);
+    const data = await res.json();
+    myTestResults = data.results;
+    box.innerHTML = "";
+    if (myTestResults.length === 0) {
+      box.innerHTML = `<div class="empty-msg">Hali birorta test topshirmagansiz</div>`;
+      return;
+    }
+    myTestResults.forEach(r => {
+      const percent = r.total_questions > 0 ? Math.round((r.best_score / r.total_questions) * 100) : 0;
+      const row = document.createElement("div");
+      row.className = "test-result-row";
+      row.innerHTML = `
+        <div class="test-result-row-top">
+          <div class="test-result-row-title">${r.title}</div>
+          <div class="test-result-row-score">${r.best_score}/${r.total_questions}</div>
+        </div>
+        <div class="score-bar-track"><div class="score-bar-fill" style="width:${percent}%"></div></div>
+      `;
+      box.appendChild(row);
+    });
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = `<div class="empty-msg">Xatolik yuz berdi</div>`;
+  }
+});
+
+// --- Rasm lightbox ---
+
+function openLightbox(src) {
+  document.getElementById("lightboxImg").src = src;
+  document.getElementById("imageLightbox").classList.remove("hidden");
+}
+function closeLightbox() {
+  document.getElementById("imageLightbox").classList.add("hidden");
+  document.getElementById("lightboxImg").src = "";
+}
+document.getElementById("lightboxClose").addEventListener("click", closeLightbox);
+document.getElementById("imageLightbox").addEventListener("click", (e) => {
+  if (e.target.id === "imageLightbox") closeLightbox();
+});
+
 // ---------- ADMIN ----------
 //
 // Eslatma: adminHeaders() endi alohida narsa qo'shmaydi — apiFetch() barcha
@@ -841,6 +1225,173 @@ document.getElementById("enrollFormEl").addEventListener("submit", async (e) => 
   tg.showAlert ? tg.showAlert("✅ Obuna berildi!") : alert("Obuna berildi!");
   document.getElementById("en_telegram_id").value = "";
   document.getElementById("en_duration_days").value = "";
+});
+
+// --- Admin: Testlar ---
+
+let currentAdminTests = [];
+
+document.getElementById("adminNewTestBtn").addEventListener("click", () => openAdminTestForm(null));
+document.getElementById("adminCloseTestForm").addEventListener("click", () => document.getElementById("adminTestForm").classList.add("hidden"));
+
+async function loadAdminTests() {
+  document.getElementById("adminTestForm").classList.add("hidden");
+  document.getElementById("adminQuestionsPanel").classList.add("hidden");
+  const box = document.getElementById("adminTestsList");
+  box.innerHTML = `<div class="empty-msg">Yuklanmoqda...</div>`;
+  try {
+    const res = await apiFetch(`/api/admin/tests`);
+    const data = await res.json();
+    currentAdminTests = data.tests;
+    box.innerHTML = "";
+    if (currentAdminTests.length === 0) box.innerHTML = `<div class="empty-msg">Hali test qo'shilmagan</div>`;
+    currentAdminTests.forEach(t => {
+      const row = document.createElement("div");
+      row.className = "admin-row";
+      row.innerHTML = `
+        <div class="info">
+          <div class="t">${t.title}${t.is_active ? "" : " (yashirin)"}</div>
+          <div class="s">${t.subject} · ${DIFFICULTY_LABELS[t.difficulty] || t.difficulty} · ${t.question_count} savol · ${formatSeconds(t.time_limit_seconds)}</div>
+        </div>
+        <div class="row-actions">
+          <button data-a="questions">Savollar</button>
+          <button data-a="edit">Tahrirlash</button>
+          <button data-a="delete" class="danger">O'chirish</button>
+        </div>
+      `;
+      row.querySelector('[data-a="questions"]').onclick = () => openAdminQuestions(t.id, t.title);
+      row.querySelector('[data-a="edit"]').onclick = () => openAdminTestForm(t);
+      row.querySelector('[data-a="delete"]').onclick = () => deleteAdminTest(t.id);
+      box.appendChild(row);
+    });
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = `<div class="empty-msg">Xatolik yuz berdi</div>`;
+  }
+}
+
+function openAdminTestForm(test) {
+  document.getElementById("adminTestForm").classList.remove("hidden");
+  document.getElementById("adminQuestionsPanel").classList.add("hidden");
+  document.getElementById("adminTestFormTitle").textContent = test ? "Testni tahrirlash" : "Yangi test";
+  document.getElementById("at_id").value = test ? test.id : "";
+  document.getElementById("at_subject").value = test ? test.subject : "";
+  document.getElementById("at_title").value = test ? test.title : "";
+  document.getElementById("at_difficulty").value = test ? test.difficulty : "orta";
+  document.getElementById("at_time_limit").value = test ? test.time_limit_seconds : "";
+  document.getElementById("at_order_num").value = test ? test.order_num : 0;
+  document.getElementById("at_is_active").value = test ? String(test.is_active) : "1";
+}
+
+const DIFFICULTY_DEFAULT_SECONDS = { oson: 300, orta: 600, qiyin: 900 };
+
+document.getElementById("testFormEl").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = document.getElementById("at_id").value;
+  const difficulty = document.getElementById("at_difficulty").value;
+  const rawTimeLimit = document.getElementById("at_time_limit").value;
+  const data = {
+    subject: document.getElementById("at_subject").value,
+    title: document.getElementById("at_title").value,
+    difficulty: difficulty,
+    time_limit_seconds: rawTimeLimit ? parseInt(rawTimeLimit) : DIFFICULTY_DEFAULT_SECONDS[difficulty],
+    order_num: parseInt(document.getElementById("at_order_num").value),
+    is_active: parseInt(document.getElementById("at_is_active").value)
+  };
+  if (id) await apiFetch(`/api/admin/tests/${id}`, { method: "PUT", body: JSON.stringify(data) });
+  else await apiFetch(`/api/admin/tests`, { method: "POST", body: JSON.stringify(data) });
+  document.getElementById("adminTestForm").classList.add("hidden");
+  loadAdminTests();
+});
+
+async function deleteAdminTest(id) {
+  if (!confirm("Bu testni butunlay o'chirmoqchimisiz? Barcha savollar ham o'chadi.")) return;
+  await apiFetch(`/api/admin/tests/${id}`, { method: "DELETE" });
+  loadAdminTests();
+}
+
+// --- Admin: Savollar ---
+
+document.getElementById("adminCloseQuestions").addEventListener("click", () => document.getElementById("adminQuestionsPanel").classList.add("hidden"));
+
+async function openAdminQuestions(testId, title) {
+  document.getElementById("adminQuestionsPanel").classList.remove("hidden");
+  document.getElementById("adminTestForm").classList.add("hidden");
+  document.getElementById("adminQuestionsTitle").textContent = `Savollar — ${title}`;
+  document.getElementById("aq_test_id").value = testId;
+  resetQuestionForm();
+  await renderAdminQuestions(testId);
+}
+
+function resetQuestionForm() {
+  document.getElementById("aq_id").value = "";
+  document.getElementById("aq_question_text").value = "";
+  document.getElementById("aq_image_url").value = "";
+  document.getElementById("aq_option_1").value = "";
+  document.getElementById("aq_option_2").value = "";
+  document.getElementById("aq_option_3").value = "";
+  document.getElementById("aq_option_4").value = "";
+  document.getElementById("aq_correct_index").value = "1";
+  document.getElementById("aq_order_num").value = 0;
+}
+
+async function renderAdminQuestions(testId) {
+  const res = await apiFetch(`/api/admin/tests/${testId}/questions`);
+  const data = await res.json();
+  const box = document.getElementById("adminQuestionsList");
+  box.innerHTML = "";
+  if (data.questions.length === 0) box.innerHTML = `<div class="empty-msg">Hali savol qo'shilmagan</div>`;
+  data.questions.forEach((q, idx) => {
+    const row = document.createElement("div");
+    row.className = "admin-row";
+    row.innerHTML = `
+      <div class="info"><div class="t">${idx + 1}. ${q.question_text.slice(0, 60)}${q.question_text.length > 60 ? "…" : ""}</div><div class="s">To'g'ri javob: ${q.correct_index}-variant</div></div>
+      <div class="row-actions">
+        <button data-a="edit">Tahrirlash</button>
+        <button data-a="delete" class="danger">O'chirish</button>
+      </div>
+    `;
+    row.querySelector('[data-a="edit"]').onclick = () => {
+      document.getElementById("aq_id").value = q.id;
+      document.getElementById("aq_question_text").value = q.question_text;
+      document.getElementById("aq_image_url").value = q.image_url || "";
+      document.getElementById("aq_option_1").value = q.option_1 || "";
+      document.getElementById("aq_option_2").value = q.option_2 || "";
+      document.getElementById("aq_option_3").value = q.option_3 || "";
+      document.getElementById("aq_option_4").value = q.option_4 || "";
+      document.getElementById("aq_correct_index").value = String(q.correct_index);
+      document.getElementById("aq_order_num").value = q.order_num;
+    };
+    row.querySelector('[data-a="delete"]').onclick = async () => {
+      if (!confirm("Bu savolni o'chirmoqchimisiz?")) return;
+      await apiFetch(`/api/admin/questions/${q.id}`, { method: "DELETE" });
+      renderAdminQuestions(testId);
+      loadAdminTests();
+    };
+    box.appendChild(row);
+  });
+}
+
+document.getElementById("questionFormEl").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = document.getElementById("aq_id").value;
+  const testId = document.getElementById("aq_test_id").value;
+  const data = {
+    test_id: parseInt(testId),
+    question_text: document.getElementById("aq_question_text").value,
+    image_url: document.getElementById("aq_image_url").value,
+    option_1: document.getElementById("aq_option_1").value,
+    option_2: document.getElementById("aq_option_2").value,
+    option_3: document.getElementById("aq_option_3").value,
+    option_4: document.getElementById("aq_option_4").value,
+    correct_index: parseInt(document.getElementById("aq_correct_index").value),
+    order_num: parseInt(document.getElementById("aq_order_num").value)
+  };
+  if (id) await apiFetch(`/api/admin/questions/${id}`, { method: "PUT", body: JSON.stringify(data) });
+  else await apiFetch(`/api/admin/questions`, { method: "POST", body: JSON.stringify(data) });
+  resetQuestionForm();
+  renderAdminQuestions(testId);
+  loadAdminTests();
 });
 
 // ---------- Boshlanish ----------

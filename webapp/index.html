@@ -109,15 +109,6 @@
       <div id="lessonContent"></div>
     </section>
 
-    <!-- YECHIM RASMI (faqat rasm yuklangan darslarda ko'rinadi) -->
-    <section id="screen-solution" class="screen hidden">
-      <div class="screen-header">
-        <button class="back-btn" data-nav="back-to-lesson">←</button>
-        <h2 id="solutionTitle">Yechim</h2>
-      </div>
-      <div id="solutionContent"></div>
-    </section>
-
     <!-- REFERRAL -->
     <section id="screen-referral" class="screen hidden">
       <div class="screen-header">
@@ -141,34 +132,49 @@
       </div>
     </section>
 
-    <!-- TESTLAR (placeholder — 2-bosqichda to'liq quriladi) -->
+    <!-- TESTLAR RO'YXATI -->
     <section id="screen-tests" class="screen hidden">
       <div class="screen-header">
         <button class="back-btn" data-nav="home">←</button>
-        <h2>Testlar</h2>
+        <h2>📝 Testlar</h2>
       </div>
+      <button id="myResultsBtn" class="results-link-btn">📊 Mening natijalarim ›</button>
       <div class="filter-row" id="testSubjectFilterRow"></div>
-      <div id="testList" class="course-list"></div>
+      <div id="testList" class="test-list"></div>
     </section>
 
-    <!-- TEST TOPSHIRISH -->
-    <section id="screen-test-play" class="screen hidden">
+    <!-- MENING NATIJALARIM -->
+    <section id="screen-test-results" class="screen hidden">
       <div class="screen-header">
         <button class="back-btn" data-nav="tests">←</button>
-        <h2 id="testPlayTitle">Test</h2>
+        <h2>📊 Mening natijalarim</h2>
       </div>
-      <div id="testPlayContent"></div>
+      <div id="testResultsList" class="test-results-list"></div>
+    </section>
+
+    <!-- TEST HAQIDA (boshlashdan oldin) -->
+    <section id="screen-test-detail" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="tests">←</button>
+        <h2 id="testDetailTitle">Test</h2>
+      </div>
+      <div id="testDetailContent"></div>
+    </section>
+
+    <!-- TEST TOPSHIRISH (vaqtli) -->
+    <section id="screen-test-taking" class="screen hidden">
+      <div class="test-taking-header">
+        <button id="exitTestBtn" class="exit-test-btn" aria-label="Testdan chiqish">✕</button>
+        <div class="test-progress-bar"><div id="testProgressFill" class="test-progress-fill"></div></div>
+        <div id="testTimer" class="test-timer">--:--</div>
+      </div>
+      <div id="testTakingContent"></div>
     </section>
 
     <!-- TEST NATIJASI -->
     <section id="screen-test-result" class="screen hidden">
-      <div class="screen-header">
-        <button class="back-btn" data-nav="tests">←</button>
-        <h2>Natija</h2>
-      </div>
       <div id="testResultContent"></div>
     </section>
-
 
     <!-- NATIJALAR (leaderboard) -->
     <section id="screen-leaderboard" class="screen hidden">
@@ -269,7 +275,6 @@
           <input type="hidden" id="al_paragraph_id">
           <label>Dars nomi <input id="al_title" required></label>
           <label>Video havolasi (YouTube yoki mp4) <input id="al_video_url"></label>
-          <label>Yechim rasmi havolasi (ixtiyoriy — to'ldirilsa, o'quvchiga "Yechimni ko'rish" tugmasi chiqadi) <input id="al_image_url" placeholder="https://..."></label>
           <label>Tavsif <textarea id="al_description"></textarea></label>
           <label>Tartib raqami <input id="al_order_num" type="number" value="0"></label>
           <button type="submit" class="gold-btn">Darsni saqlash</button>
@@ -308,16 +313,16 @@
         </div>
         <form id="testFormEl" class="admin-form">
           <input type="hidden" id="at_id">
-          <label>Fan <input id="at_subject" required placeholder="Kimyo yoki Biologiya"></label>
-          <label>Test nomi <input id="at_title" required></label>
-          <label>Murakkablik darajasi
+          <label>Fan <input id="at_subject" required placeholder="Masalan: Kimyo"></label>
+          <label>Test nomi <input id="at_title" required placeholder="Masalan: 1-mavzu. Atom tuzilishi"></label>
+          <label>Qiyinlik darajasi
             <select id="at_difficulty">
               <option value="oson">Oson (5 daqiqa)</option>
               <option value="orta" selected>O'rta (10 daqiqa)</option>
               <option value="qiyin">Qiyin (15 daqiqa)</option>
             </select>
           </label>
-          <label>Vaqt chegarasi, soniya (bo'sh = darajaga qarab avtomatik) <input id="at_time_limit" type="number" min="30"></label>
+          <label>Vaqt chegarasi, soniya (bo'sh qoldirsangiz — qiyinlik darajasiga qarab avtomatik belgilanadi) <input id="at_time_limit" type="number" min="30"></label>
           <label>Tartib raqami <input id="at_order_num" type="number" value="0"></label>
           <label>Faolmi?
             <select id="at_is_active">
@@ -339,11 +344,11 @@
           <input type="hidden" id="aq_id">
           <input type="hidden" id="aq_test_id">
           <label>Savol matni <textarea id="aq_question_text" required></textarea></label>
-          <label>Rasm havolasi (ixtiyoriy) <input id="aq_image_url" placeholder="https://..."></label>
+          <label>Rasm havolasi (ixtiyoriy, masalan diagramma yoki formula uchun) <input id="aq_image_url"></label>
           <label>1-variant <input id="aq_option_1" required></label>
           <label>2-variant <input id="aq_option_2" required></label>
-          <label>3-variant (ixtiyoriy — Rost/Yolg'on uchun bo'sh qoldiring) <input id="aq_option_3"></label>
-          <label>4-variant (ixtiyoriy) <input id="aq_option_4"></label>
+          <label>3-variant <input id="aq_option_3" required></label>
+          <label>4-variant <input id="aq_option_4" required></label>
           <label>To'g'ri javob
             <select id="aq_correct_index">
               <option value="1">1-variant</option>
@@ -357,10 +362,16 @@
         </form>
       </div>
 
-      <div class="version-tag">Behruz Sayfiyev · nashr v5.1</div>
+      <div class="version-tag">Behruz Sayfiyev · nashr v6.0 (testlar tizimi)</div>
     </section>
 
   </main>
+
+  <!-- RASM LIGHTBOX (test savol rasmlarini kattalashtirib ko'rish uchun) -->
+  <div id="imageLightbox" class="image-lightbox hidden">
+    <button id="lightboxClose" class="lightbox-close" aria-label="Yopish">✕</button>
+    <img id="lightboxImg" src="" alt="Kattalashtirilgan rasm">
+  </div>
 
   <nav class="bottom-nav">
     <button class="nav-item active" data-nav="home">🏠<span>Bosh sahifa</span></button>
