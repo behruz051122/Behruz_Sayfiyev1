@@ -104,6 +104,12 @@ def init_db():
             )
         """)
 
+        try:
+            cur.execute("ALTER TABLE enrollments ADD COLUMN reminder_sent_at TIMESTAMP")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # ustun allaqachon mavjud — muammo emas
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS referrals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -527,6 +533,101 @@ def get_user_enrollments(telegram_id: int):
             WHERE e.telegram_id = ? ORDER BY e.created_at DESC
         """, (telegram_id,))
         return [dict(r) for r in cur.fetchall()]
+
+
+# ---------- OBUNA MUDDATI ESLATMALARI ----------
+
+REMINDER_WINDOW_DAYS = 2  # muddat tugashiga shuncha kun (yoki kamroq) qolganda eslatma yuboriladi
+
+
+def get_enrollments_needing_reminder():
+    """Muddati tez orada tugaydigan (yoki yaqinda tugagan, grace muddatida)
+    va hali eslatma yuborilmagan obunalarni topadi."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT e.id, e.telegram_id, e.course_id, e.expiry_date, c.title as course_title
+            FROM enrollments e
+            JOIN courses c ON c.id = e.course_id
+            WHERE e.expiry_date IS NOT NULL
+              AND e.reminder_sent_at IS NULL
+              AND julianday(e.expiry_date) - julianday('now') <= ?
+        """, (REMINDER_WINDOW_DAYS,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def mark_reminder_sent(enrollment_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("UPDATE enrollments SET reminder_sent_at = CURRENT_TIMESTAMP WHERE id = ?", (enrollment_id,))
+        conn.commit()
+
+
+# ---------- ANALITIKA (o'qituvchi dashboardi) ----------
+
+def get_analytics_summary():
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        cur.execute("SELECT COUNT(*) as c FROM users")
+        total_users = cur.fetchone()["c"]
+
+        cur.execute("SELECT COALESCE(SUM(coins), 0) as s FROM users")
+        total_coins = cur.fetchone()["s"]
+
+        cur.execute("SELECT COUNT(*) as c FROM lesson_progress")
+        total_lessons_watched = cur.fetchone()["c"]
+
+        cur.execute("SELECT COUNT(*) as c FROM test_attempts WHERE finished_at IS NOT NULL")
+        total_test_attempts = cur.fetchone()["c"]
+
+        cur.execute("""
+            SELECT AVG(CAST(score AS FLOAT) / NULLIF(total_questions, 0)) as avg
+            FROM test_attempts WHERE finished_at IS NOT NULL
+        """)
+        row = cur.fetchone()
+        avg_test_score_percent = round((row["avg"] or 0) * 100, 1)
+
+        cur.execute("SELECT COUNT(*) as c FROM referrals WHERE confirmed = 1")
+        confirmed_referrals = cur.fetchone()["c"]
+
+        cur.execute("""
+            SELECT c.title, COUNT(lp.id) as watch_count
+            FROM lesson_progress lp
+            JOIN lessons l ON l.id = lp.lesson_id
+            JOIN paragraphs p ON p.id = l.paragraph_id
+            JOIN courses c ON c.id = p.course_id
+            GROUP BY c.id ORDER BY watch_count DESC LIMIT 5
+        """)
+        top_courses = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("""
+            SELECT t.title, COUNT(a.id) as attempt_count
+            FROM test_attempts a JOIN tests t ON t.id = a.test_id
+            WHERE a.finished_at IS NOT NULL
+            GROUP BY t.id ORDER BY attempt_count DESC LIMIT 5
+        """)
+        top_tests = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("""
+            SELECT COUNT(*) as cnt, COALESCE(SUM(c2.price), 0) as revenue
+            FROM enrollments e JOIN courses c2 ON c2.id = e.course_id
+            WHERE c2.price > 0
+        """)
+        row = cur.fetchone()
+
+        return {
+            "total_users": total_users,
+            "total_coins": total_coins,
+            "total_lessons_watched": total_lessons_watched,
+            "total_test_attempts": total_test_attempts,
+            "avg_test_score_percent": avg_test_score_percent,
+            "confirmed_referrals": confirmed_referrals,
+            "top_courses": top_courses,
+            "top_tests": top_tests,
+            "paid_enrollments_count": row["cnt"],
+            "estimated_revenue": row["revenue"],
+        }
 
 
 GRACE_PERIOD_DAYS = 2

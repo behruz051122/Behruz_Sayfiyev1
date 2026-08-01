@@ -420,3 +420,25 @@ a:focus-visible {
   }
 }
 
+/* ================================================================
+   5-BOSQICH: ANALITIKA DASHBOARD
+   ================================================================ */
+
+.analytics-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px;
+}
+.analytics-stat-card {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 14px;
+  padding: 14px; text-align: center;
+}
+.analytics-stat-card .num { font-size: 20px; font-weight: 800; color: var(--gold); }
+.analytics-stat-card .lbl { font-size: 10px; color: var(--text-dim); margin-top: 4px; letter-spacing: 0.3px; }
+
+.analytics-top-lists { display: flex; flex-direction: column; gap: 14px; }
+.analytics-top-block h4 { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; letter-spacing: 0.5px; }
+.analytics-top-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--surface2); border-radius: 10px; padding: 9px 12px; margin-bottom: 6px; font-size: 12px;
+}
+.analytics-top-row .name { font-weight: 700; flex: 1; }
+.analytics-top-row .count { color: var(--gold); font-weight: 800; flex-shrink: 0; }

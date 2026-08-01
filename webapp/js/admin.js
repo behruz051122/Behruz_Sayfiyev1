@@ -7,6 +7,50 @@ const DIFFICULTY_DEFAULT_SECONDS = { oson: 300, orta: 600, qiyin: 900 };
 let currentAdminCourses = [];
 let currentAdminTests = [];
 
+// ---------- Statistika (dashboard) ----------
+
+export async function loadAdminAnalytics() {
+  const statsGrid = document.getElementById("analyticsStatsGrid");
+  const topLists = document.getElementById("analyticsTopLists");
+  statsGrid.innerHTML = skeletonCards(1);
+  topLists.innerHTML = "";
+  try {
+    const res = await apiFetch(`/api/admin/analytics`);
+    const a = await res.json();
+
+    statsGrid.innerHTML = `
+      <div class="analytics-stat-card"><div class="num">${a.total_users}</div><div class="lbl">Foydalanuvchilar</div></div>
+      <div class="analytics-stat-card"><div class="num">🪙 ${a.total_coins}</div><div class="lbl">Berilgan coinlar</div></div>
+      <div class="analytics-stat-card"><div class="num">${a.total_lessons_watched}</div><div class="lbl">Ko'rilgan darslar</div></div>
+      <div class="analytics-stat-card"><div class="num">${a.total_test_attempts}</div><div class="lbl">Test urinishlari</div></div>
+      <div class="analytics-stat-card"><div class="num">${a.avg_test_score_percent}%</div><div class="lbl">O'rtacha test natijasi</div></div>
+      <div class="analytics-stat-card"><div class="num">${a.confirmed_referrals}</div><div class="lbl">Tasdiqlangan takliflar</div></div>
+      <div class="analytics-stat-card"><div class="num">${a.paid_enrollments_count}</div><div class="lbl">Pullik obunalar</div></div>
+      <div class="analytics-stat-card"><div class="num">${(a.estimated_revenue || 0).toLocaleString()}</div><div class="lbl">Taxminiy tushum (so'm)</div></div>
+    `;
+
+    let html = "";
+    if (a.top_courses.length > 0) {
+      html += `<div class="analytics-top-block"><h4>📘 Eng ko'p ko'rilgan kurslar</h4>`;
+      a.top_courses.forEach(c => {
+        html += `<div class="analytics-top-row"><span class="name">${c.title}</span><span class="count">${c.watch_count} marta</span></div>`;
+      });
+      html += `</div>`;
+    }
+    if (a.top_tests.length > 0) {
+      html += `<div class="analytics-top-block"><h4>📝 Eng ko'p topshirilgan testlar</h4>`;
+      a.top_tests.forEach(t => {
+        html += `<div class="analytics-top-row"><span class="name">${t.title}</span><span class="count">${t.attempt_count} marta</span></div>`;
+      });
+      html += `</div>`;
+    }
+    topLists.innerHTML = html;
+  } catch (e) {
+    console.error(e);
+    statsGrid.innerHTML = errorHtml();
+  }
+}
+
 // ---------- Kurslar ----------
 
 export async function loadAdminCourses() {

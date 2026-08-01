@@ -14,7 +14,7 @@ from config import BOT_TOKEN, WEBAPP_URL, CHANNEL_USERNAME, CHANNEL_URL, BOT_USE
 from database import (
     init_db, get_or_create_user, add_sample_courses,
     create_pending_referral, confirm_referral, set_user_subscribed,
-    get_confirmed_referral_count
+    get_confirmed_referral_count, get_enrollments_needing_reminder, mark_reminder_sent
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -123,6 +123,38 @@ async def check_sub_handler(callback: CallbackQuery):
         )
     else:
         await callback.answer("❌ Siz hali obuna bo'lmadingiz. Avval kanalga qo'shiling.", show_alert=True)
+
+
+REMINDER_CHECK_INTERVAL_SECONDS = 6 * 60 * 60  # har 6 soatda tekshiradi
+
+
+async def send_expiry_reminders_loop():
+    """
+    Pullik kursga obunasi tez orada tugaydigan (yoki yaqinda tugagan)
+    foydalanuvchilarga Telegram orqali avtomatik eslatma yuboradi. Har bir
+    obunaga faqat BIR MARTA eslatma yuboriladi (bazadagi 'reminder_sent_at'
+    ustuni orqali nazorat qilinadi) — spam bo'lmaydi.
+    """
+    while True:
+        try:
+            pending = get_enrollments_needing_reminder()
+            for e in pending:
+                try:
+                    await bot.send_message(
+                        e["telegram_id"],
+                        f"⏳ Diqqat!\n\n\"{e['course_title']}\" kursiga obunangiz muddati "
+                        f"tez orada tugaydi (yoki tugagan).\n\n"
+                        f"Darslarga uzluksiz kirishni davom ettirish uchun obunangizni "
+                        f"yangilash bo'yicha admin bilan bog'laning."
+                    )
+                    mark_reminder_sent(e["id"])
+                    logging.info(f"Obuna eslatmasi yuborildi: telegram_id={e['telegram_id']}, kurs={e['course_title']}")
+                except Exception as send_error:
+                    logging.warning(f"Eslatma yuborilmadi (telegram_id={e['telegram_id']}): {send_error}")
+        except Exception as e:
+            logging.error(f"Eslatma tekshiruvi siklida xato: {e}")
+
+        await asyncio.sleep(REMINDER_CHECK_INTERVAL_SECONDS)
 
 
 async def start_polling_background():

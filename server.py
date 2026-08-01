@@ -19,6 +19,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 import asyncio
+import os
 
 from rate_limit import limiter
 import database as db
@@ -32,6 +33,7 @@ from routers import (
     admin_auth,
     admin_courses,
     admin_tests,
+    admin_analytics,
     diagnostics,
 )
 
@@ -49,15 +51,49 @@ app.add_middleware(
 )
 
 
+def _check_db_persistence():
+    """
+    Server ishga tushganda ma'lumotlar bazasi DOIMIY xotirada (Railway Volume)
+    saqlanayotganini tekshiradi va natijani Deploy Logs'ga aniq chiqaradi.
+
+    NEGA KERAK: Agar DB_PATH noto'g'ri sozlansa, ilova baribir xatosiz ishga
+    tushadi — lekin har bir qayta deploy'da barcha ma'lumotlar (kurslar,
+    testlar, foydalanuvchilar) jimgina o'chib ketadi. Bu xatoni oldindan,
+    "sokin" ravishda emas, balki Deploy Logs'da katta va aniq ogohlantirish
+    bilan ko'rsatish — soatlab sarflangan mehnatni yo'qotib qo'yishning oldini
+    oladi.
+    """
+    path = db.DB_PATH
+    abs_path = os.path.abspath(path)
+    looks_persistent = path.startswith("/data") or path.startswith("/mnt") or path.startswith("/vol")
+
+    print("=" * 66)
+    print(f"[BAZA DIAGNOSTIKASI] DB_PATH = {path}")
+    print(f"[BAZA DIAGNOSTIKASI] To'liq yo'l = {abs_path}")
+    if looks_persistent:
+        print("[BAZA DIAGNOSTIKASI] ✅ Doimiy xotira (Volume) yo'liga o'xshaydi.")
+    else:
+        print("[BAZA DIAGNOSTIKASI] ⚠️⚠️⚠️  DIQQAT — MUHIM OGOHLANTIRISH  ⚠️⚠️⚠️")
+        print("[BAZA DIAGNOSTIKASI] ⚠️  DB_PATH doimiy Volume yo'liga o'xshamayapti!")
+        print("[BAZA DIAGNOSTIKASI] ⚠️  Bu holatda HAR BIR qayta deploy'da BARCHA")
+        print("[BAZA DIAGNOSTIKASI] ⚠️  ma'lumotlar (kurslar, testlar, foydalanuvchilar) O'CHIB KETADI!")
+        print("[BAZA DIAGNOSTIKASI] ⚠️  Yechim: Railway -> Variables -> DB_PATH ni")
+        print("[BAZA DIAGNOSTIKASI] ⚠️  Volume mount yo'lingizga (masalan /data/database.db) sozlang.")
+    print("=" * 66)
+
+
 @app.on_event("startup")
 async def startup():
     db.init_db()
     db.add_sample_courses()
+    _check_db_persistence()
     # Telegram botini Mini App backendi bilan BITTA jarayonda, fon vazifasi
     # (background task) sifatida ishga tushiramiz — shu sababli botni alohida
     # Railway xizmati qilib joylashtirish shart emas, va ikkalasi bitta
     # ma'lumotlar bazasidan foydalanadi.
     asyncio.create_task(bot_module.start_polling_background())
+    # Obuna muddati tugayotgan foydalanuvchilarga avtomatik eslatma yuborish
+    asyncio.create_task(bot_module.send_expiry_reminders_loop())
 
 
 @app.on_event("shutdown")
@@ -74,6 +110,7 @@ app.include_router(tests.router)
 app.include_router(admin_auth.router)
 app.include_router(admin_courses.router)
 app.include_router(admin_tests.router)
+app.include_router(admin_analytics.router)
 app.include_router(diagnostics.router)
 
 
