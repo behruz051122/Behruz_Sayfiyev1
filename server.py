@@ -18,9 +18,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+import asyncio
 
 from rate_limit import limiter
 import database as db
+import bot as bot_module
 
 from routers import (
     brand,
@@ -48,9 +50,19 @@ app.add_middleware(
 
 
 @app.on_event("startup")
-def startup():
+async def startup():
     db.init_db()
     db.add_sample_courses()
+    # Telegram botini Mini App backendi bilan BITTA jarayonda, fon vazifasi
+    # (background task) sifatida ishga tushiramiz — shu sababli botni alohida
+    # Railway xizmati qilib joylashtirish shart emas, va ikkalasi bitta
+    # ma'lumotlar bazasidan foydalanadi.
+    asyncio.create_task(bot_module.start_polling_background())
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    await bot_module.bot.session.close()
 
 
 # ---------- Routerlarni ulash ----------

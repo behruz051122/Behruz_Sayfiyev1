@@ -125,11 +125,38 @@ async def check_sub_handler(callback: CallbackQuery):
         await callback.answer("❌ Siz hali obuna bo'lmadingiz. Avval kanalga qo'shiling.", show_alert=True)
 
 
+async def start_polling_background():
+    """
+    server.py shu funksiyani chaqiradi — Mini App backendi bilan bot BITTA
+    Railway xizmatida (service), bitta Python jarayonida, bitta ma'lumotlar
+    bazasi ulanishlari puli bilan ishlaydi. Shu sababli botni alohida
+    Railway service qilib joylashtirish SHART EMAS (va tavsiya etilmaydi —
+    aks holda ikkita alohida, bir-biridan bexabar ma'lumotlar bazasi hosil
+    bo'lib qoladi).
+
+    Tarmoqda vaqtincha uzilish yoki Telegram tomonidan xatolik yuz bersa,
+    jarayon butunlay to'xtab qolmasligi uchun avtomatik qayta urinadi.
+    """
+    while True:
+        try:
+            await bot.delete_webhook(drop_pending_updates=True)
+            logging.info("Telegram bot polling boshlandi (server bilan bitta jarayonda).")
+            await dp.start_polling(bot)
+        except Exception as e:
+            logging.error(f"Bot polling xatosi, 10 soniyadan keyin qayta urinamiz: {e}")
+            await asyncio.sleep(10)
+
+
 async def main():
+    """Faqat bot.py ALOHIDA, mustaqil ishga tushirilganda ishlatiladi
+    (masalan lokal kompyuteringizda `python bot.py` orqali sinash uchun).
+    Railway'ga joylashtirilgan production muhitda bu funksiya chaqirilmaydi —
+    u yerda server.py o'zi start_polling_background()ni ichkarida ishga
+    tushiradi."""
     init_db()
     add_sample_courses()
     print("Bot ishga tushdi...")
-    await dp.start_polling(bot)
+    await start_polling_background()
 
 
 if __name__ == "__main__":
