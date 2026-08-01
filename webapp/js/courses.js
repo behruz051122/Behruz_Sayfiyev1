@@ -1,7 +1,7 @@
 // js/courses.js
 import { apiFetch, tg } from "./api.js";
 import { showScreen, navigateTo } from "./navigate.js";
-import { loadingHtml, errorHtml, emptyHtml } from "./components.js";
+import { loadingHtml, errorHtml, emptyHtml, skeletonCards } from "./components.js";
 import { refreshCoins } from "./user.js";
 
 let currentListType = "course";
@@ -11,11 +11,15 @@ let currentLesson = null;
 let allCourses = [];
 let activeStatusFilter = "all";
 let activeSubjectFilter = "Hammasi";
+let searchQuery = "";
 
 export function setListType(type) {
   currentListType = type;
   activeStatusFilter = "all";
   activeSubjectFilter = "Hammasi";
+  searchQuery = "";
+  const searchInput = document.getElementById("courseSearchInput");
+  if (searchInput) searchInput.value = "";
 }
 
 export function getCurrentCourse() {
@@ -30,7 +34,8 @@ export function getCurrentParagraph() {
 
 export async function loadCourseList() {
   const container = document.getElementById("courseList");
-  container.innerHTML = loadingHtml();
+  container.innerHTML = skeletonCards(3);
+  bindSearchInput();
   try {
     const res = await apiFetch(`/api/courses?resource_type=${currentListType}`);
     const data = await res.json();
@@ -42,6 +47,16 @@ export async function loadCourseList() {
     console.error(e);
     container.innerHTML = errorHtml();
   }
+}
+
+function bindSearchInput() {
+  const input = document.getElementById("courseSearchInput");
+  if (!input || input.dataset.bound) return;
+  input.dataset.bound = "true";
+  input.addEventListener("input", () => {
+    searchQuery = input.value.trim().toLowerCase();
+    renderCourseList();
+  });
 }
 
 function bindStatusFilters() {
@@ -82,11 +97,12 @@ function renderCourseList() {
     if (activeStatusFilter === "free" && !c.is_free) return false;
     if (activeStatusFilter === "locked" && c.is_free) return false;
     if (activeSubjectFilter !== "Hammasi" && c.subject !== activeSubjectFilter) return false;
+    if (searchQuery && !(`${c.title} ${c.subject} ${c.description || ""}`.toLowerCase().includes(searchQuery))) return false;
     return true;
   });
 
   if (filtered.length === 0) {
-    container.innerHTML = emptyHtml("Bu bo'limda hozircha hech narsa yo'q");
+    container.innerHTML = emptyHtml(searchQuery ? `"${searchQuery}" bo'yicha hech narsa topilmadi` : "Bu bo'limda hozircha hech narsa yo'q");
     return;
   }
 

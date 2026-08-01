@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Behruz Sayfiyev</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%93%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
@@ -19,7 +20,7 @@
     </div>
     <div class="stats">
       <span id="coinsBadge" class="badge">🪙 0</span>
-      <button id="adminGearBtn" class="admin-gear hidden" data-nav="admin">⚙️</button>
+      <button id="adminGearBtn" class="admin-gear hidden" data-nav="admin" aria-label="Admin panel">⚙️</button>
     </div>
   </header>
 
@@ -70,8 +71,12 @@
     <!-- COURSE LIST -->
     <section id="screen-list" class="screen hidden">
       <div class="screen-header">
-        <button class="back-btn" data-nav="home">←</button>
+        <button class="back-btn" data-nav="home" aria-label="Orqaga">←</button>
         <h2 id="listTitle">Kurslar</h2>
+      </div>
+      <div class="search-box">
+        <span class="search-icon" aria-hidden="true">🔍</span>
+        <input type="search" id="courseSearchInput" class="search-input" placeholder="Kurs qidirish..." aria-label="Kurs qidirish">
       </div>
       <div class="filter-row" id="statusFilterRow">
         <button class="filter-chip active" data-filter="all">Hammasi</button>
@@ -85,7 +90,7 @@
     <!-- COURSE DETAIL (paragraphs) -->
     <section id="screen-detail" class="screen hidden">
       <div class="screen-header">
-        <button class="back-btn" data-nav="back-to-list">←</button>
+        <button class="back-btn" data-nav="back-to-list" aria-label="Orqaga">←</button>
         <h2 id="detailTitle">Kurs</h2>
       </div>
       <div id="detailContent"></div>
@@ -94,7 +99,7 @@
     <!-- PARAGRAPH DETAIL (lesson list within paragraph) -->
     <section id="screen-paragraph" class="screen hidden">
       <div class="screen-header">
-        <button class="back-btn" data-nav="back-to-course">←</button>
+        <button class="back-btn" data-nav="back-to-course" aria-label="Orqaga">←</button>
         <h2 id="paragraphTitle">Bo'lim</h2>
       </div>
       <div id="paragraphContent"></div>
@@ -103,7 +108,7 @@
     <!-- LESSON PLAYER -->
     <section id="screen-lesson" class="screen hidden">
       <div class="screen-header">
-        <button class="back-btn" data-nav="back-to-paragraph">←</button>
+        <button class="back-btn" data-nav="back-to-paragraph" aria-label="Orqaga">←</button>
         <h2 id="lessonTitle">Dars</h2>
       </div>
       <div id="lessonContent"></div>
@@ -112,7 +117,7 @@
     <!-- REFERRAL -->
     <section id="screen-referral" class="screen hidden">
       <div class="screen-header">
-        <button class="back-btn" data-nav="home">←</button>
+        <button class="back-btn" data-nav="home" aria-label="Orqaga">←</button>
         <h2>Do'st taklif qiling</h2>
       </div>
       <div class="referral-box">
@@ -135,10 +140,14 @@
     <!-- TESTLAR RO'YXATI -->
     <section id="screen-tests" class="screen hidden">
       <div class="screen-header">
-        <button class="back-btn" data-nav="home">←</button>
+        <button class="back-btn" data-nav="home" aria-label="Orqaga">←</button>
         <h2>📝 Testlar</h2>
       </div>
       <button id="myResultsBtn" class="results-link-btn">📊 Mening natijalarim ›</button>
+      <div class="search-box">
+        <span class="search-icon" aria-hidden="true">🔍</span>
+        <input type="search" id="testSearchInput" class="search-input" placeholder="Test qidirish..." aria-label="Test qidirish">
+      </div>
       <div class="filter-row" id="testSubjectFilterRow"></div>
       <div id="testList" class="test-list"></div>
     </section>
@@ -146,7 +155,7 @@
     <!-- MENING NATIJALARIM -->
     <section id="screen-test-results" class="screen hidden">
       <div class="screen-header">
-        <button class="back-btn" data-nav="tests">←</button>
+        <button class="back-btn" data-nav="tests" aria-label="Orqaga">←</button>
         <h2>📊 Mening natijalarim</h2>
       </div>
       <div id="testResultsList" class="test-results-list"></div>
@@ -155,7 +164,7 @@
     <!-- TEST HAQIDA (boshlashdan oldin) -->
     <section id="screen-test-detail" class="screen hidden">
       <div class="screen-header">
-        <button class="back-btn" data-nav="tests">←</button>
+        <button class="back-btn" data-nav="tests" aria-label="Orqaga">←</button>
         <h2 id="testDetailTitle">Test</h2>
       </div>
       <div id="testDetailContent"></div>
@@ -179,7 +188,7 @@
     <!-- NATIJALAR (leaderboard) -->
     <section id="screen-leaderboard" class="screen hidden">
       <div class="screen-header">
-        <button class="back-btn" data-nav="home">←</button>
+        <button class="back-btn" data-nav="home" aria-label="Orqaga">←</button>
         <h2>🏆 Natijalar</h2>
       </div>
       <div id="myRankBox" class="my-rank-box"></div>
@@ -189,7 +198,7 @@
     <!-- PROFIL -->
     <section id="screen-profile" class="screen hidden">
       <div class="screen-header">
-        <button class="back-btn" data-nav="home">←</button>
+        <button class="back-btn" data-nav="home" aria-label="Orqaga">←</button>
         <h2>Profilim</h2>
       </div>
       <div id="profileContent"></div>
@@ -198,7 +207,7 @@
     <!-- ADMIN -->
     <section id="screen-admin" class="screen hidden">
       <div class="screen-header">
-        <button class="back-btn" data-nav="home">←</button>
+        <button class="back-btn" data-nav="home" aria-label="Orqaga">←</button>
         <h2>⚙️ Admin panel</h2>
       </div>
 
@@ -213,7 +222,7 @@
       <div id="adminCourseForm" class="admin-section hidden">
         <div class="admin-section-head">
           <h3 id="adminCourseFormTitle">Yangi kurs</h3>
-          <button id="adminCloseCourseForm" class="icon-btn">✕</button>
+          <button id="adminCloseCourseForm" class="icon-btn" aria-label="Yopish">✕</button>
         </div>
         <form id="courseFormEl" class="admin-form">
           <input type="hidden" id="ac_id">
@@ -252,7 +261,7 @@
       <div id="adminParagraphsPanel" class="admin-section hidden">
         <div class="admin-section-head">
           <h3 id="adminParagraphsTitle">Bo'limlar (paragraflar)</h3>
-          <button id="adminCloseParagraphs" class="icon-btn">✕</button>
+          <button id="adminCloseParagraphs" class="icon-btn" aria-label="Yopish">✕</button>
         </div>
         <div id="adminParagraphsList" class="admin-list"></div>
         <form id="paragraphFormEl" class="admin-form">
@@ -267,7 +276,7 @@
       <div id="adminLessonsPanel" class="admin-section hidden">
         <div class="admin-section-head">
           <h3 id="adminLessonsTitle">Darslar</h3>
-          <button id="adminCloseLessons" class="icon-btn">✕</button>
+          <button id="adminCloseLessons" class="icon-btn" aria-label="Yopish">✕</button>
         </div>
         <div id="adminLessonsList" class="admin-list"></div>
         <form id="lessonFormEl" class="admin-form">
@@ -309,7 +318,7 @@
       <div id="adminTestForm" class="admin-section hidden">
         <div class="admin-section-head">
           <h3 id="adminTestFormTitle">Yangi test</h3>
-          <button id="adminCloseTestForm" class="icon-btn">✕</button>
+          <button id="adminCloseTestForm" class="icon-btn" aria-label="Yopish">✕</button>
         </div>
         <form id="testFormEl" class="admin-form">
           <input type="hidden" id="at_id">
@@ -337,7 +346,7 @@
       <div id="adminQuestionsPanel" class="admin-section hidden">
         <div class="admin-section-head">
           <h3 id="adminQuestionsTitle">Savollar</h3>
-          <button id="adminCloseQuestions" class="icon-btn">✕</button>
+          <button id="adminCloseQuestions" class="icon-btn" aria-label="Yopish">✕</button>
         </div>
         <div id="adminQuestionsList" class="admin-list"></div>
         <form id="questionFormEl" class="admin-form">

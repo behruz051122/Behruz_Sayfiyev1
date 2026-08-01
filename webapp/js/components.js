@@ -17,6 +17,43 @@ export function errorHtml(text = "Xatolik yuz berdi") {
   return `<div class="empty-msg">${text}</div>`;
 }
 
+// ---------- Skeleton (yuklanish) placeholder'lari ----------
+//
+// "Yuklanmoqda..." matni o'rniga, ma'lumot qanday ko'rinishda kelishini
+// oldindan ko'rsatadigan animatsion placeholder'lar. Bu foydalanuvchiga
+// ilova "muallaqlab qolmagani", balki faol ishlayotganini his qildiradi —
+// bugungi kunda ko'plab premium ilovalar shu usuldan foydalanadi.
+
+export function skeletonCards(count = 3) {
+  let html = "";
+  for (let i = 0; i < count; i++) {
+    html += `
+      <div class="skeleton-card">
+        <div class="skeleton-emoji skeleton-shimmer"></div>
+        <div class="skeleton-lines">
+          <div class="skeleton-line w-40 skeleton-shimmer"></div>
+          <div class="skeleton-line w-90 skeleton-shimmer"></div>
+          <div class="skeleton-line w-60 skeleton-shimmer"></div>
+        </div>
+      </div>
+    `;
+  }
+  return html;
+}
+
+export function skeletonRows(count = 5) {
+  let html = "";
+  for (let i = 0; i < count; i++) {
+    html += `
+      <div class="skeleton-row">
+        <div class="skeleton-circle skeleton-shimmer"></div>
+        <div class="skeleton-line skeleton-shimmer"></div>
+      </div>
+    `;
+  }
+  return html;
+}
+
 export function formatSeconds(totalSeconds) {
   const m = Math.floor(totalSeconds / 60);
   const s = totalSeconds % 60;

@@ -1,6 +1,6 @@
 // js/admin.js
 import { apiFetch, tg } from "./api.js";
-import { loadingHtml, errorHtml, emptyHtml, DIFFICULTY_LABELS, formatSeconds } from "./components.js";
+import { errorHtml, emptyHtml, DIFFICULTY_LABELS, formatSeconds, skeletonCards } from "./components.js";
 
 const DIFFICULTY_DEFAULT_SECONDS = { oson: 300, orta: 600, qiyin: 900 };
 
@@ -14,7 +14,7 @@ export async function loadAdminCourses() {
   document.getElementById("adminParagraphsPanel").classList.add("hidden");
   document.getElementById("adminLessonsPanel").classList.add("hidden");
   const box = document.getElementById("adminCoursesList");
-  box.innerHTML = loadingHtml();
+  box.innerHTML = skeletonCards(2);
   try {
     const res = await apiFetch(`/api/admin/courses`);
     const data = await res.json();
@@ -189,7 +189,7 @@ export async function loadAdminTests() {
   document.getElementById("adminTestForm").classList.add("hidden");
   document.getElementById("adminQuestionsPanel").classList.add("hidden");
   const box = document.getElementById("adminTestsList");
-  box.innerHTML = loadingHtml();
+  box.innerHTML = skeletonCards(2);
   try {
     const res = await apiFetch(`/api/admin/tests`);
     const data = await res.json();

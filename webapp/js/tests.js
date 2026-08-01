@@ -1,11 +1,12 @@
 // js/tests.js
 import { apiFetch, tg } from "./api.js";
 import { showScreen, navigateTo } from "./navigate.js";
-import { loadingHtml, errorHtml, emptyHtml, DIFFICULTY_LABELS, formatSeconds, openLightbox } from "./components.js";
+import { loadingHtml, errorHtml, emptyHtml, DIFFICULTY_LABELS, formatSeconds, openLightbox, skeletonCards } from "./components.js";
 import { refreshCoins } from "./user.js";
 
 let allTests = [];
 let activeTestSubjectFilter = "Hammasi";
+let testSearchQuery = "";
 let myTestResults = [];
 let currentTestMeta = null;      // ro'yxatdagi test kartasi ma'lumoti
 let currentAttempt = null;       // { id, test, index, correctCount, coinsEarned, timeLeft, timerHandle, finished }
@@ -14,13 +15,17 @@ export function resetTestState() {
   stopTestTimer();
   currentAttempt = null;
   activeTestSubjectFilter = "Hammasi";
+  testSearchQuery = "";
+  const searchInput = document.getElementById("testSearchInput");
+  if (searchInput) searchInput.value = "";
 }
 
 // ---------- Testlar ro'yxati ----------
 
 export async function loadTestList() {
   const container = document.getElementById("testList");
-  container.innerHTML = loadingHtml();
+  container.innerHTML = skeletonCards(3);
+  bindTestSearchInput();
   try {
     const [testsRes, resultsRes] = await Promise.all([
       apiFetch(`/api/tests`),
@@ -36,6 +41,16 @@ export async function loadTestList() {
     console.error(e);
     container.innerHTML = errorHtml();
   }
+}
+
+function bindTestSearchInput() {
+  const input = document.getElementById("testSearchInput");
+  if (!input || input.dataset.bound) return;
+  input.dataset.bound = "true";
+  input.addEventListener("input", () => {
+    testSearchQuery = input.value.trim().toLowerCase();
+    renderTestList();
+  });
 }
 
 function buildTestSubjectFilters() {
@@ -64,12 +79,14 @@ function renderTestList() {
   const container = document.getElementById("testList");
   container.innerHTML = "";
 
-  const filtered = activeTestSubjectFilter === "Hammasi"
-    ? allTests
-    : allTests.filter(t => t.subject === activeTestSubjectFilter);
+  const filtered = allTests.filter(t => {
+    if (activeTestSubjectFilter !== "Hammasi" && t.subject !== activeTestSubjectFilter) return false;
+    if (testSearchQuery && !(`${t.title} ${t.subject}`.toLowerCase().includes(testSearchQuery))) return false;
+    return true;
+  });
 
   if (filtered.length === 0) {
-    container.innerHTML = emptyHtml("Bu fan bo'yicha hozircha test yo'q");
+    container.innerHTML = emptyHtml(testSearchQuery ? `"${testSearchQuery}" bo'yicha hech narsa topilmadi` : "Bu fan bo'yicha hozircha test yo'q");
     return;
   }
 

@@ -1,11 +1,11 @@
 // js/leaderboard.js
 import { apiFetch } from "./api.js";
-import { loadingHtml, errorHtml, emptyHtml } from "./components.js";
+import { errorHtml, emptyHtml, skeletonRows } from "./components.js";
 
 export async function loadLeaderboard() {
   const box = document.getElementById("leaderboardList");
   const rankBox = document.getElementById("myRankBox");
-  box.innerHTML = loadingHtml();
+  box.innerHTML = skeletonRows(6);
   try {
     const res = await apiFetch(`/api/leaderboard`);
     const data = await res.json();
