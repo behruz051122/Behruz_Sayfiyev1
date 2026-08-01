@@ -8,6 +8,7 @@ let currentListType = "course";
 let currentCourse = null;
 let currentParagraph = null;
 let currentLesson = null;
+let lessonKeyHandler = null;
 let allCourses = [];
 let activeStatusFilter = "all";
 let activeSubjectFilter = "Hammasi";
@@ -285,6 +286,12 @@ function playLesson(lesson) {
   document.getElementById("lessonTitle").textContent = lesson.title;
   const content = document.getElementById("lessonContent");
 
+  const lessons = currentParagraph ? currentParagraph.lessons : [lesson];
+  const idx = lessons.findIndex(l => l.id === lesson.id);
+  const total = lessons.length;
+  const hasPrev = idx > 0;
+  const hasNext = idx >= 0 && idx < total - 1;
+
   let videoHtml = "";
   const url = (lesson.video_url || "").trim();
   const isYoutube = url.includes("youtube.com") || url.includes("youtu.be");
@@ -319,9 +326,15 @@ function playLesson(lesson) {
 
   content.innerHTML = `
     ${videoHtml}
+    ${idx >= 0 ? `<div class="lesson-progress-text">${idx + 1} / ${total}-DARS</div>` : ""}
     <div class="detail-hero">
       <h1>${lesson.title}</h1>
       <p>${lesson.description || ""}</p>
+    </div>
+    <div class="lesson-nav-row">
+      <button class="lesson-nav-btn" id="prevLessonBtn" ${hasPrev ? "" : "disabled"} aria-label="Oldingi dars">◀ Oldingi</button>
+      <button class="lesson-nav-btn lesson-nav-list" id="lessonListBtn" aria-label="Darslar ro'yxati">📋</button>
+      <button class="lesson-nav-btn" id="nextLessonBtn" ${hasNext ? "" : "disabled"} aria-label="Keyingi dars">Keyingi ▶</button>
     </div>
     <div style="margin:0 16px;" id="watchedBtnWrap">
       ${lesson.watched
@@ -369,6 +382,31 @@ function playLesson(lesson) {
       }
     });
   }
+
+  // --- Oldingi / Keyingi / Ro'yxat navigatsiyasi ---
+  const prevBtn = document.getElementById("prevLessonBtn");
+  if (prevBtn) prevBtn.addEventListener("click", () => { if (hasPrev) playLesson(lessons[idx - 1]); });
+
+  const nextBtn = document.getElementById("nextLessonBtn");
+  if (nextBtn) nextBtn.addEventListener("click", () => { if (hasNext) playLesson(lessons[idx + 1]); });
+
+  const listBtn = document.getElementById("lessonListBtn");
+  if (listBtn) listBtn.addEventListener("click", () => openParagraph(currentParagraph.id));
+
+  // --- Klaviatura bilan navigatsiya (asosan kompyuterda foydali) ---
+  // Faqat "dars" ekrani ochiq bo'lganda va foydalanuvchi biror input maydoniga
+  // yozmayotganda ishlaydi — boshqa ekranlarga yoki qidiruv maydonlariga
+  // xalaqit bermaydi.
+  if (lessonKeyHandler) document.removeEventListener("keydown", lessonKeyHandler);
+  lessonKeyHandler = (e) => {
+    const lessonScreen = document.getElementById("screen-lesson");
+    if (!lessonScreen || lessonScreen.classList.contains("hidden")) return;
+    const activeTag = document.activeElement ? document.activeElement.tagName : "";
+    if (activeTag === "INPUT" || activeTag === "TEXTAREA") return;
+    if (e.key === "ArrowLeft" && hasPrev) playLesson(lessons[idx - 1]);
+    else if (e.key === "ArrowRight" && hasNext) playLesson(lessons[idx + 1]);
+  };
+  document.addEventListener("keydown", lessonKeyHandler);
 
   showScreen("lesson");
 }

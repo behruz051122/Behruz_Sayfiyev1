@@ -126,6 +126,20 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 
 .watched-confirmed { text-align: center; padding: 12px; border-radius: 12px; background: rgba(45,212,191,0.12); border: 1px solid rgba(45,212,191,0.35); color: var(--teal); font-weight: 700; font-size: 13px; }
 
+/* ---------- Dars navigatsiyasi (oldingi / keyingi / ro'yxat) ---------- */
+
+.lesson-progress-text { text-align: center; font-size: 11px; font-weight: 700; color: var(--text-dim); letter-spacing: 0.5px; margin: -4px 0 12px; }
+
+.lesson-nav-row { margin: 0 16px 16px; display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; }
+.lesson-nav-btn {
+  background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 12px; padding: 12px 10px; font-size: 12px; font-weight: 700; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lesson-nav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.lesson-nav-btn:not(:disabled):hover { border-color: var(--gold); color: var(--gold); }
+.lesson-nav-btn.lesson-nav-list { background: var(--surface); font-size: 16px; padding: 12px 14px; }
+
 /* ---------- VIDEO ---------- */
 
 .video-wrap { margin: 0 16px 16px; border-radius: 16px; overflow: hidden; background: #000; aspect-ratio: 16/9; position: relative; }
@@ -396,29 +410,71 @@ a:focus-visible {
 .skeleton-row .skeleton-circle { width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; }
 .skeleton-row .skeleton-line { height: 11px; flex: 1; }
 
-/* ---------- Desktop uchun moslashuvchan (responsive) tuzilma ---------- */
-/* Telegram Mini App kompyuterda (Telegram Desktop yoki brauzer) ochilganda,
-   kontent cheksiz kenglikka cho'zilib ketmasligi uchun "telefon oynasi"
-   ko'rinishida markazga joylashtiriladi — bu ilovani professional va
-   qasddan shunday mo'ljallangandek ko'rsatadi. */
+/* ---------- Desktop uchun to'liq moslashuvchan (responsive) tuzilma ---------- */
+/* Kompyuterda (Telegram Desktop yoki brauzerda) ochilganda, ilova endi
+   "telefon oynasi" bo'lib qolmaydi — chap tomonda doimiy sidebar navigatsiya
+   paydo bo'ladi, kontent esa o'qish uchun qulay kenglikda markazlashadi,
+   kurslar/testlar ro'yxati esa keng ekranda bir nechta ustunga bo'linadi.
+   Bu — zamonaviy veb-ilovalar (Notion, Linear, Slack) qo'llaydigan andoza. */
 
-@media (min-width: 640px) {
-  html {
-    background: #060609;
+@media (min-width: 900px) {
+  html { background: #06060a; }
+
+  body { padding-bottom: 40px; padding-left: 248px; }
+
+  .topbar, #app {
+    max-width: 760px;
+    margin-left: auto;
+    margin-right: auto;
   }
-  body {
-    max-width: 480px;
-    margin: 0 auto;
-    min-height: 100vh;
-    box-shadow: 0 0 80px rgba(0, 0, 0, 0.55);
-    position: relative;
-  }
+
+  /* Pastki navigatsiya -> chap tomondagi doimiy sidebar'ga aylanadi */
   .bottom-nav {
-    max-width: 480px;
-    left: 50%;
-    transform: translateX(-50%);
+    position: fixed;
+    top: 0; left: 0; right: auto; bottom: 0;
+    width: 248px;
+    height: 100vh;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 4px;
+    padding: 28px 14px;
+    border-top: none;
+    border-right: 1px solid var(--border);
+    max-width: none;
+    transform: none;
+    overflow-y: auto;
   }
+  .nav-item {
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 14px;
+    padding: 13px 16px;
+    border-radius: 12px;
+    font-size: 19px;
+    transition: background 0.15s ease;
+  }
+  .nav-item span { font-size: 13px; font-weight: 700; }
+  .nav-item:hover { background: var(--surface2); }
+  .nav-item.active { background: rgba(212, 175, 55, 0.12); }
+
+  /* Ro'yxatlar keng ekranda bir nechta ustunga bo'linadi */
+  .course-list, .test-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 14px;
+  }
+
+  /* Video kattaroq, lekin o'qishga qulay kenglikda markazlashgan */
+  .video-wrap {
+    max-width: 720px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .video-fallback { max-width: 720px; margin-left: auto; margin-right: auto; }
 }
+
 
 /* ================================================================
    5-BOSQICH: ANALITIKA DASHBOARD
