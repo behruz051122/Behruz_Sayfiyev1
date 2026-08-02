@@ -1,26 +1,63 @@
 // js/tests.js
 import { apiFetch, tg } from "./api.js";
 import { showScreen, navigateTo } from "./navigate.js";
-import { loadingHtml, errorHtml, emptyHtml, DIFFICULTY_LABELS, formatSeconds, openLightbox, skeletonCards } from "./components.js";
+import {
+  loadingHtml, errorHtml, emptyHtml, DIFFICULTY_LABELS, formatSeconds,
+  openLightbox, skeletonCards, renderProgressChart
+} from "./components.js";
 import { refreshCoins } from "./user.js";
 
+// ---------- Oddiy testlar holati ----------
 let allTests = [];
 let activeTestSubjectFilter = "Hammasi";
 let testSearchQuery = "";
 let myTestResults = [];
-let currentTestMeta = null;      // ro'yxatdagi test kartasi ma'lumoti
-let currentAttempt = null;       // { id, test, index, correctCount, coinsEarned, timeLeft, timerHandle, finished }
+let currentTestMeta = null;
+
+// ---------- Simulyator holati ----------
+let allSimulators = [];
+let simulatorsLoaded = false;
+let currentSimulatorMeta = null;
+let activeTestsTab = "tests";
+
+// ---------- Topshirish jarayoni (testlar VA simulyator uchun umumiy) ----------
+// mode: "test" | "simulator"
+let currentAttempt = null;
 
 export function resetTestState() {
   stopTestTimer();
   currentAttempt = null;
   activeTestSubjectFilter = "Hammasi";
   testSearchQuery = "";
+  activeTestsTab = "tests";
   const searchInput = document.getElementById("testSearchInput");
   if (searchInput) searchInput.value = "";
+  switchTestsTab("tests");
 }
 
-// ---------- Testlar ro'yxati ----------
+function attemptApiBase() {
+  return currentAttempt.mode === "simulator" ? "/api/simulator/attempt" : "/api/attempt";
+}
+
+// ================================================================
+// TAB ALMASHTIRISH (Testlar / Simulyator)
+// ================================================================
+
+function switchTestsTab(tab) {
+  activeTestsTab = tab;
+  document.getElementById("tabBtnTests").classList.toggle("active", tab === "tests");
+  document.getElementById("tabBtnSimulator").classList.toggle("active", tab === "simulator");
+  document.getElementById("testsTabContent").classList.toggle("hidden", tab !== "tests");
+  document.getElementById("simulatorTabContent").classList.toggle("hidden", tab !== "simulator");
+
+  if (tab === "simulator" && !simulatorsLoaded) {
+    loadSimulatorList();
+  }
+}
+
+// ================================================================
+// ODDIY TESTLAR RO'YXATI
+// ================================================================
 
 export async function loadTestList() {
   const container = document.getElementById("testList");
@@ -111,8 +148,6 @@ function renderTestList() {
   });
 }
 
-// ---------- Test tafsiloti ----------
-
 function openTestDetail(test) {
   currentTestMeta = test;
   document.getElementById("testDetailTitle").textContent = test.subject;
@@ -141,8 +176,6 @@ function openTestDetail(test) {
   showScreen("test-detail");
 }
 
-// ---------- Testni boshlash va topshirish ----------
-
 async function startTest(test) {
   const btn = document.getElementById("startTestBtn");
   if (btn) { btn.disabled = true; btn.textContent = "Tayyorlanmoqda..."; }
@@ -161,6 +194,7 @@ async function startTest(test) {
     }
 
     currentAttempt = {
+      mode: "test",
       id: startData.attempt_id,
       test: fullTest,
       index: 0,
@@ -180,6 +214,129 @@ async function startTest(test) {
   }
 }
 
+// ================================================================
+// DTM SIMULYATORI RO'YXATI VA TAFSILOTI
+// ================================================================
+
+async function loadSimulatorList() {
+  const container = document.getElementById("simulatorList");
+  container.innerHTML = skeletonCards(2);
+  try {
+    const res = await apiFetch(`/api/simulators`);
+    const data = await res.json();
+    allSimulators = data.simulators;
+    simulatorsLoaded = true;
+    renderSimulatorList();
+  } catch (e) {
+    console.error(e);
+    container.innerHTML = errorHtml();
+  }
+}
+
+function renderSimulatorList() {
+  const container = document.getElementById("simulatorList");
+  container.innerHTML = "";
+
+  if (allSimulators.length === 0) {
+    container.innerHTML = emptyHtml("Hozircha DTM simulyatori qo'shilmagan");
+    return;
+  }
+
+  allSimulators.forEach(sim => {
+    const card = document.createElement("div");
+    card.className = "test-card";
+    const subjectsChips = sim.subjects.map(s => `<span class="simulator-subject-chip">${s.subject}: ${s.question_count} ta</span>`).join("");
+    card.innerHTML = `
+      <div class="test-card-top">
+        <div class="test-card-title">${sim.title}</div>
+        <span class="difficulty-badge difficulty-qiyin">DTM</span>
+      </div>
+      <div class="test-card-meta">
+        <span>❓ ${sim.total_questions} savol</span>
+        <span>⏱ ${formatSeconds(sim.time_limit_seconds)}</span>
+      </div>
+      <div class="simulator-subjects-row">${subjectsChips}</div>
+    `;
+    card.addEventListener("click", () => openSimulatorDetail(sim));
+    container.appendChild(card);
+  });
+}
+
+function openSimulatorDetail(sim) {
+  currentSimulatorMeta = sim;
+  const content = document.getElementById("simulatorDetailContent");
+  const subjectsList = sim.subjects.map(s => `<div class="analytics-top-row"><span class="name">${s.subject}</span><span class="count">${s.question_count} ta savol</span></div>`).join("");
+
+  content.innerHTML = `
+    <div class="test-detail-hero">
+      <span class="difficulty-badge difficulty-qiyin">DTM SIMULYATORI</span>
+      <h1>${sim.title}</h1>
+      ${sim.description ? `<p style="color:var(--text-dim);font-size:12px;margin-top:6px;">${sim.description}</p>` : ""}
+      <div class="test-detail-stats">
+        <div class="test-detail-stat"><div class="num">${sim.total_questions}</div><div class="lbl">savol</div></div>
+        <div class="test-detail-stat"><div class="num">${formatSeconds(sim.time_limit_seconds)}</div><div class="lbl">vaqt</div></div>
+      </div>
+    </div>
+    <div class="admin-section-head" style="margin:0 16px 8px;"><h3 style="font-size:12px;color:var(--text-dim);">Fanlar tarkibi</h3></div>
+    <div style="margin:0 16px 16px;">${subjectsList}</div>
+    <div class="test-detail-actions">
+      <button class="gold-btn" id="startSimulatorBtn">▶ Simulyatorni boshlash</button>
+    </div>
+    <p style="text-align:center;color:var(--text-dim);font-size:11px;margin-top:14px;">
+      Savollar har safar TASODIFIY tanlanadi — bir xil urinishni ikki marta topshirsangiz ham, savollar farqli bo'lishi mumkin.
+      Vaqt tugasa, simulyator avtomatik yakunlanadi.
+    </p>
+  `;
+  document.getElementById("startSimulatorBtn").addEventListener("click", () => startSimulator(sim));
+
+  showScreen("simulator-detail");
+}
+
+async function startSimulator(sim) {
+  const btn = document.getElementById("startSimulatorBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "Tayyorlanmoqda..."; }
+  try {
+    const startRes = await apiFetch(`/api/simulator/${sim.id}/start`, { method: "POST" });
+    if (!startRes.ok) {
+      const errData = await startRes.json().catch(() => ({}));
+      tg.showAlert ? tg.showAlert(errData.detail || "Simulyatorni boshlab bo'lmadi") : alert(errData.detail || "Xatolik");
+      if (btn) { btn.disabled = false; btn.textContent = "▶ Simulyatorni boshlash"; }
+      return;
+    }
+    const startData = await startRes.json();
+
+    const questionsRes = await apiFetch(`/api/simulator/attempt/${startData.attempt_id}/questions`);
+    const questionsData = await questionsRes.json();
+
+    currentAttempt = {
+      mode: "simulator",
+      id: startData.attempt_id,
+      test: {
+        title: startData.title,
+        time_limit_seconds: startData.time_limit_seconds,
+        questions: questionsData.questions,
+      },
+      index: 0,
+      correctCount: 0,
+      coinsEarned: 0,
+      timeLeft: startData.time_limit_seconds,
+      timerHandle: null,
+      finished: false,
+    };
+
+    showScreen("test-taking");
+    renderCurrentQuestion();
+    startTestTimer();
+  } catch (e) {
+    console.error(e);
+    if (btn) { btn.disabled = false; btn.textContent = "▶ Simulyatorni boshlash"; }
+  }
+}
+
+// ================================================================
+// TOPSHIRISH JARAYONI (testlar VA simulyator uchun UMUMIY)
+// ================================================================
+
 function startTestTimer() {
   stopTestTimer();
   updateTimerDisplay();
@@ -188,7 +345,7 @@ function startTestTimer() {
     updateTimerDisplay();
     if (currentAttempt.timeLeft <= 0) {
       stopTestTimer();
-      finishTest(true);
+      finishAttempt(true);
     }
   }, 1000);
 }
@@ -219,9 +376,11 @@ function renderCurrentQuestion() {
     ["3", question.option_3], ["4", question.option_4]
   ];
 
+  const subjectSuffix = question.subject ? ` · ${question.subject}` : "";
+
   const content = document.getElementById("testTakingContent");
   content.innerHTML = `
-    <div class="question-counter">${index + 1} / ${total}-SAVOL</div>
+    <div class="question-counter">${index + 1} / ${total}-SAVOL${subjectSuffix}</div>
     <div class="question-card">
       <div class="question-text">${question.question_text}</div>
       ${question.image_url ? `<img class="question-image" src="${question.image_url}" alt="Savol rasmi">` : ""}
@@ -249,7 +408,7 @@ function renderCurrentQuestion() {
   const nextBtn = document.getElementById("nextQuestionBtn");
   nextBtn.addEventListener("click", () => {
     currentAttempt.index += 1;
-    if (currentAttempt.index >= total) finishTest(false);
+    if (currentAttempt.index >= total) finishAttempt(false);
     else renderCurrentQuestion();
   });
 }
@@ -262,7 +421,7 @@ async function selectOption(selectedIndex) {
 
   let result;
   try {
-    const res = await apiFetch(`/api/attempt/${attemptId}/answer`, {
+    const res = await apiFetch(`${attemptApiBase()}/${attemptId}/answer`, {
       method: "POST",
       body: JSON.stringify({ question_id: question.id, selected_index: selectedIndex })
     });
@@ -293,14 +452,15 @@ async function selectOption(selectedIndex) {
   if (result.coin_awarded) refreshCoins();
 }
 
-async function finishTest(timedOut) {
+async function finishAttempt(timedOut) {
   stopTestTimer();
   if (!currentAttempt || currentAttempt.finished) return;
   currentAttempt.finished = true;
+  const mode = currentAttempt.mode;
 
   let finalResult = null;
   try {
-    const res = await apiFetch(`/api/attempt/${currentAttempt.id}/finish`, { method: "POST" });
+    const res = await apiFetch(`${attemptApiBase()}/${currentAttempt.id}/finish`, { method: "POST" });
     finalResult = await res.json();
   } catch (e) {
     console.error(e);
@@ -317,18 +477,24 @@ async function finishTest(timedOut) {
         <div class="score-num">${score}/${total}</div>
         <div class="score-total">${percent}%</div>
       </div>
-      <div class="result-title">${timedOut ? "⏰ Vaqt tugadi" : "🎉 Test yakunlandi"}</div>
+      <div class="result-title">${timedOut ? "⏰ Vaqt tugadi" : (mode === "simulator" ? "🎯 Simulyator yakunlandi" : "🎉 Test yakunlandi")}</div>
       <div class="result-sub">${percentToComment(percent)}</div>
       ${currentAttempt.coinsEarned > 0 ? `<div class="result-coins-badge">+${currentAttempt.coinsEarned} 🪙 coin qo'lga kiritdingiz</div>` : ""}
       <div class="result-actions">
         <button class="gold-btn" id="retakeTestBtn">🔁 Qayta urinish</button>
-        <button class="secondary-btn" id="backToTestsBtn">Testlar ro'yxatiga qaytish</button>
+        <button class="secondary-btn" id="backToTestsBtn">${mode === "simulator" ? "Simulyatorlar ro'yxatiga qaytish" : "Testlar ro'yxatiga qaytish"}</button>
       </div>
     </div>
   `;
 
-  document.getElementById("retakeTestBtn").addEventListener("click", () => startTest(currentTestMeta));
-  document.getElementById("backToTestsBtn").addEventListener("click", () => navigateTo("tests"));
+  document.getElementById("retakeTestBtn").addEventListener("click", () => {
+    if (mode === "simulator") startSimulator(currentSimulatorMeta);
+    else startTest(currentTestMeta);
+  });
+  document.getElementById("backToTestsBtn").addEventListener("click", () => {
+    activeTestsTab = mode === "simulator" ? "simulator" : "tests";
+    navigateTo("tests");
+  });
 
   showScreen("test-result");
   refreshCoins();
@@ -341,44 +507,73 @@ function percentToComment(percent) {
   return "Bu mavzuni yana bir bor o'rganib, qayta urinib ko'ring.";
 }
 
-// ---------- Mening natijalarim ----------
+// ================================================================
+// MENING NATIJALARIM (testlar + simulyator + progress grafigi)
+// ================================================================
 
 async function loadMyResults() {
   showScreen("test-results");
-  const box = document.getElementById("testResultsList");
-  box.innerHTML = loadingHtml();
+  const chartBox = document.getElementById("progressChartWrap");
+  const testBox = document.getElementById("testResultsList");
+  const simBox = document.getElementById("simulatorResultsList");
+  chartBox.innerHTML = loadingHtml();
+  testBox.innerHTML = loadingHtml();
+  simBox.innerHTML = loadingHtml();
+
   try {
-    const res = await apiFetch(`/api/my-test-results`);
-    const data = await res.json();
-    myTestResults = data.results;
-    box.innerHTML = "";
-    if (myTestResults.length === 0) {
-      box.innerHTML = emptyHtml("Hali birorta test topshirmagansiz");
-      return;
+    const [historyRes, testResultsRes, simResultsRes] = await Promise.all([
+      apiFetch(`/api/my-progress-history`),
+      apiFetch(`/api/my-test-results`),
+      apiFetch(`/api/my-simulator-results`)
+    ]);
+    const history = (await historyRes.json()).history;
+    const testResults = (await testResultsRes.json()).results;
+    const simResults = (await simResultsRes.json()).results;
+
+    chartBox.innerHTML = renderProgressChart(history);
+
+    testBox.innerHTML = "";
+    if (testResults.length === 0) {
+      testBox.innerHTML = emptyHtml("Hali birorta test topshirmagansiz");
+    } else {
+      testResults.forEach(r => testBox.appendChild(buildResultRow(r.title, r.best_score, r.total_questions)));
     }
-    myTestResults.forEach(r => {
-      const percent = r.total_questions > 0 ? Math.round((r.best_score / r.total_questions) * 100) : 0;
-      const row = document.createElement("div");
-      row.className = "test-result-row";
-      row.innerHTML = `
-        <div class="test-result-row-top">
-          <div class="test-result-row-title">${r.title}</div>
-          <div class="test-result-row-score">${r.best_score}/${r.total_questions}</div>
-        </div>
-        <div class="score-bar-track"><div class="score-bar-fill" style="width:${percent}%"></div></div>
-      `;
-      box.appendChild(row);
-    });
+
+    simBox.innerHTML = "";
+    if (simResults.length === 0) {
+      simBox.innerHTML = emptyHtml("Hali birorta simulyator topshirmagansiz");
+    } else {
+      simResults.forEach(r => simBox.appendChild(buildResultRow(r.title, r.best_score, r.total_questions)));
+    }
   } catch (e) {
     console.error(e);
-    box.innerHTML = errorHtml();
+    chartBox.innerHTML = errorHtml();
   }
 }
 
-// ---------- Modulni ishga tushirish (bir marta chaqiriladi) ----------
+function buildResultRow(title, bestScore, totalQuestions) {
+  const percent = totalQuestions > 0 ? Math.round((bestScore / totalQuestions) * 100) : 0;
+  const row = document.createElement("div");
+  row.className = "test-result-row";
+  row.innerHTML = `
+    <div class="test-result-row-top">
+      <div class="test-result-row-title">${title}</div>
+      <div class="test-result-row-score">${bestScore}/${totalQuestions}</div>
+    </div>
+    <div class="score-bar-track"><div class="score-bar-fill" style="width:${percent}%"></div></div>
+  `;
+  return row;
+}
+
+// ================================================================
+// Modulni ishga tushirish (bir marta chaqiriladi)
+// ================================================================
 
 export function initTestsModule() {
   document.getElementById("myResultsBtn").addEventListener("click", loadMyResults);
+
+  document.getElementById("tabBtnTests").addEventListener("click", () => switchTestsTab("tests"));
+  document.getElementById("tabBtnSimulator").addEventListener("click", () => switchTestsTab("simulator"));
 
   document.getElementById("exitTestBtn").addEventListener("click", () => {
     const ok = confirm("Testdan chiqmoqchimisiz? Joriy urinishingiz saqlanmaydi.");

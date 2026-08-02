@@ -51,6 +51,118 @@ export async function loadAdminAnalytics() {
   }
 }
 
+// ---------- DTM Simulyatorlari ----------
+
+let currentAdminSimulators = [];
+
+export async function loadAdminSimulators() {
+  document.getElementById("adminSimulatorForm").classList.add("hidden");
+  document.getElementById("adminSimSubjectsPanel").classList.add("hidden");
+  const box = document.getElementById("adminSimulatorsList");
+  box.innerHTML = skeletonCards(2);
+  try {
+    const res = await apiFetch(`/api/admin/simulators`);
+    const data = await res.json();
+    currentAdminSimulators = data.simulators;
+    box.innerHTML = "";
+    if (currentAdminSimulators.length === 0) box.innerHTML = emptyHtml("Hali simulyator qo'shilmagan");
+    currentAdminSimulators.forEach(s => {
+      const totalQ = s.subjects.reduce((a, x) => a + x.question_count, 0);
+      const row = document.createElement("div");
+      row.className = "admin-row";
+      row.innerHTML = `
+        <div class="info">
+          <div class="t">${s.title}${s.is_active ? "" : " (yashirin)"}</div>
+          <div class="s">${s.subjects.length} ta fan · ${totalQ} savol · ${formatSeconds(s.time_limit_seconds)}</div>
+        </div>
+        <div class="row-actions">
+          <button data-a="subjects">Fanlar</button>
+          <button data-a="edit">Tahrirlash</button>
+          <button data-a="delete" class="danger">O'chirish</button>
+        </div>
+      `;
+      row.querySelector('[data-a="subjects"]').onclick = () => openAdminSimSubjects(s.id, s.title);
+      row.querySelector('[data-a="edit"]').onclick = () => openAdminSimulatorForm(s);
+      row.querySelector('[data-a="delete"]').onclick = () => deleteAdminSimulator(s.id);
+      box.appendChild(row);
+    });
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml();
+  }
+}
+
+function openAdminSimulatorForm(sim) {
+  document.getElementById("adminSimulatorForm").classList.remove("hidden");
+  document.getElementById("adminSimSubjectsPanel").classList.add("hidden");
+  document.getElementById("adminSimulatorFormTitle").textContent = sim ? "Simulyatorni tahrirlash" : "Yangi simulyator";
+  document.getElementById("as_id").value = sim ? sim.id : "";
+  document.getElementById("as_title").value = sim ? sim.title : "";
+  document.getElementById("as_description").value = sim ? (sim.description || "") : "";
+  document.getElementById("as_time_limit").value = sim ? sim.time_limit_seconds : 10800;
+  document.getElementById("as_order_num").value = sim ? sim.order_num : 0;
+  document.getElementById("as_is_active").value = sim ? String(sim.is_active) : "1";
+}
+
+async function deleteAdminSimulator(id) {
+  if (!confirm("Bu simulyatorni butunlay o'chirmoqchimisiz? Fanlar tarkibi ham o'chadi.")) return;
+  await apiFetch(`/api/admin/simulators/${id}`, { method: "DELETE" });
+  loadAdminSimulators();
+}
+
+// ---------- Simulyator fanlari tarkibi ----------
+
+let currentSimSubjectsSimId = null;
+
+async function openAdminSimSubjects(simulatorId, title) {
+  currentSimSubjectsSimId = simulatorId;
+  document.getElementById("adminSimSubjectsPanel").classList.remove("hidden");
+  document.getElementById("adminSimulatorForm").classList.add("hidden");
+  document.getElementById("adminSimSubjectsTitle").textContent = `Fanlar tarkibi — ${title}`;
+  document.getElementById("ass_simulator_id").value = simulatorId;
+  document.getElementById("ass_subject").value = "";
+  document.getElementById("ass_question_count").value = 10;
+  document.getElementById("ass_order_num").value = 0;
+  await renderAdminSimSubjects(simulatorId);
+}
+
+async function renderAdminSimSubjects(simulatorId) {
+  const res = await apiFetch(`/api/admin/simulators/${simulatorId}/subjects`);
+  const data = await res.json();
+  const box = document.getElementById("adminSimSubjectsList");
+  box.innerHTML = "";
+
+  const poolMap = {};
+  data.subject_pools.forEach(p => { poolMap[p.subject] = p.question_count; });
+
+  const datalist = document.getElementById("subjectPoolOptions");
+  datalist.innerHTML = data.subject_pools.map(p => `<option value="${p.subject}">`).join("");
+
+  if (data.subjects.length === 0) box.innerHTML = emptyHtml("Hali fan qo'shilmagan");
+  data.subjects.forEach(s => {
+    const available = poolMap[s.subject] || 0;
+    const isEnough = available >= s.question_count;
+    const row = document.createElement("div");
+    row.className = "admin-row";
+    row.innerHTML = `
+      <div class="info">
+        <div class="t">${s.subject}</div>
+        <div class="s">${s.question_count} ta so'raladi · pool'da ${available} ta bor ${isEnough ? "✅" : "⚠️ YETARLI EMAS"}</div>
+      </div>
+      <div class="row-actions">
+        <button data-a="delete" class="danger">O'chirish</button>
+      </div>
+    `;
+    row.querySelector('[data-a="delete"]').onclick = async () => {
+      if (!confirm(`"${s.subject}" fanini simulyatordan o'chirmoqchimisiz?`)) return;
+      await apiFetch(`/api/admin/simulator-subjects/${s.id}`, { method: "DELETE" });
+      renderAdminSimSubjects(simulatorId);
+      loadAdminSimulators();
+    };
+    box.appendChild(row);
+  });
+}
+
 // ---------- Kurslar ----------
 
 export async function loadAdminCourses() {
@@ -475,5 +587,45 @@ export function initAdminModule() {
     resetQuestionForm();
     renderAdminQuestions(testId);
     loadAdminTests();
+  });
+
+  // --- DTM Simulyatorlari ---
+
+  document.getElementById("adminNewSimulatorBtn").addEventListener("click", () => openAdminSimulatorForm(null));
+  document.getElementById("adminCloseSimulatorForm").addEventListener("click", () => document.getElementById("adminSimulatorForm").classList.add("hidden"));
+
+  document.getElementById("simulatorFormEl").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const id = document.getElementById("as_id").value;
+    const data = {
+      title: document.getElementById("as_title").value,
+      description: document.getElementById("as_description").value,
+      time_limit_seconds: parseInt(document.getElementById("as_time_limit").value || 10800),
+      order_num: parseInt(document.getElementById("as_order_num").value),
+      is_active: parseInt(document.getElementById("as_is_active").value)
+    };
+    if (id) await apiFetch(`/api/admin/simulators/${id}`, { method: "PUT", body: JSON.stringify(data) });
+    else await apiFetch(`/api/admin/simulators`, { method: "POST", body: JSON.stringify(data) });
+    document.getElementById("adminSimulatorForm").classList.add("hidden");
+    loadAdminSimulators();
+  });
+
+  document.getElementById("adminCloseSimSubjects").addEventListener("click", () => document.getElementById("adminSimSubjectsPanel").classList.add("hidden"));
+
+  document.getElementById("simSubjectFormEl").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const simulatorId = parseInt(document.getElementById("ass_simulator_id").value);
+    const data = {
+      simulator_id: simulatorId,
+      subject: document.getElementById("ass_subject").value.trim(),
+      question_count: parseInt(document.getElementById("ass_question_count").value || 10),
+      order_num: parseInt(document.getElementById("ass_order_num").value)
+    };
+    await apiFetch(`/api/admin/simulator-subjects`, { method: "POST", body: JSON.stringify(data) });
+    document.getElementById("ass_subject").value = "";
+    document.getElementById("ass_question_count").value = 10;
+    document.getElementById("ass_order_num").value = 0;
+    renderAdminSimSubjects(simulatorId);
+    loadAdminSimulators();
   });
 }

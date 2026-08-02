@@ -144,12 +144,25 @@
         <h2>📝 Testlar</h2>
       </div>
       <button id="myResultsBtn" class="results-link-btn">📊 Mening natijalarim ›</button>
-      <div class="search-box">
-        <span class="search-icon" aria-hidden="true">🔍</span>
-        <input type="search" id="testSearchInput" class="search-input" placeholder="Test qidirish..." aria-label="Test qidirish">
+
+      <div class="tab-row" id="testsTabRow">
+        <button class="tab-btn active" id="tabBtnTests" data-testtab="tests">📝 Testlar</button>
+        <button class="tab-btn" id="tabBtnSimulator" data-testtab="simulator">🎯 DTM Simulyatori</button>
       </div>
-      <div class="filter-row" id="testSubjectFilterRow"></div>
-      <div id="testList" class="test-list"></div>
+
+      <div id="testsTabContent">
+        <div class="search-box">
+          <span class="search-icon" aria-hidden="true">🔍</span>
+          <input type="search" id="testSearchInput" class="search-input" placeholder="Test qidirish..." aria-label="Test qidirish">
+        </div>
+        <div class="filter-row" id="testSubjectFilterRow"></div>
+        <div id="testList" class="test-list"></div>
+      </div>
+
+      <div id="simulatorTabContent" class="hidden">
+        <p class="simulator-intro">Bir nechta fandan tasodifiy tanlangan savollar bilan, real imtihon formatida vaqtli sinov.</p>
+        <div id="simulatorList" class="test-list"></div>
+      </div>
     </section>
 
     <!-- MENING NATIJALARIM -->
@@ -158,7 +171,12 @@
         <button class="back-btn" data-nav="tests" aria-label="Orqaga">←</button>
         <h2>📊 Mening natijalarim</h2>
       </div>
+      <div class="admin-section-head" style="margin:0 16px 8px;"><h3 style="font-size:13px;color:var(--text-dim);">📈 Natijalar dinamikasi</h3></div>
+      <div id="progressChartWrap" class="progress-chart-container"></div>
+      <div class="admin-section-head" style="margin:20px 16px 8px;"><h3 style="font-size:13px;color:var(--text-dim);">📝 Testlar bo'yicha</h3></div>
       <div id="testResultsList" class="test-results-list"></div>
+      <div class="admin-section-head" style="margin:20px 16px 8px;"><h3 style="font-size:13px;color:var(--text-dim);">🎯 Simulyatorlar bo'yicha</h3></div>
+      <div id="simulatorResultsList" class="test-results-list"></div>
     </section>
 
     <!-- TEST HAQIDA (boshlashdan oldin) -->
@@ -170,7 +188,16 @@
       <div id="testDetailContent"></div>
     </section>
 
-    <!-- TEST TOPSHIRISH (vaqtli) -->
+    <!-- SIMULYATOR HAQIDA (boshlashdan oldin) -->
+    <section id="screen-simulator-detail" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="tests" aria-label="Orqaga">←</button>
+        <h2>🎯 DTM Simulyatori</h2>
+      </div>
+      <div id="simulatorDetailContent"></div>
+    </section>
+
+    <!-- TEST TOPSHIRISH (vaqtli) — testlar VA simulyator uchun umumiy -->
     <section id="screen-test-taking" class="screen hidden">
       <div class="test-taking-header">
         <button id="exitTestBtn" class="exit-test-btn" aria-label="Testdan chiqish">✕</button>
@@ -379,7 +406,57 @@
         </form>
       </div>
 
-      <div class="version-tag">Behruz Sayfiyev · nashr v6.0 (testlar tizimi)</div>
+      <div class="admin-section">
+        <div class="admin-section-head">
+          <h3>🎯 DTM Simulyatorlari</h3>
+          <button id="adminNewSimulatorBtn" class="gold-btn small">+ Yangi simulyator</button>
+        </div>
+        <div id="adminSimulatorsList" class="admin-list"></div>
+      </div>
+
+      <div id="adminSimulatorForm" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3 id="adminSimulatorFormTitle">Yangi simulyator</h3>
+          <button id="adminCloseSimulatorForm" class="icon-btn" aria-label="Yopish">✕</button>
+        </div>
+        <form id="simulatorFormEl" class="admin-form">
+          <input type="hidden" id="as_id">
+          <label>Nomi <input id="as_title" required placeholder="Masalan: DTM Simulyatori #1"></label>
+          <label>Tavsif (ixtiyoriy) <textarea id="as_description"></textarea></label>
+          <label>Umumiy vaqt chegarasi, soniya (masalan 10800 = 3 soat) <input id="as_time_limit" type="number" min="60" value="10800"></label>
+          <label>Tartib raqami <input id="as_order_num" type="number" value="0"></label>
+          <label>Faolmi?
+            <select id="as_is_active">
+              <option value="1">Ha</option>
+              <option value="0">Yo'q (yashirilgan)</option>
+            </select>
+          </label>
+          <button type="submit" class="gold-btn">Simulyatorni saqlash</button>
+        </form>
+      </div>
+
+      <div id="adminSimSubjectsPanel" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3 id="adminSimSubjectsTitle">Fanlar tarkibi</h3>
+          <button id="adminCloseSimSubjects" class="icon-btn" aria-label="Yopish">✕</button>
+        </div>
+        <p style="font-size:11px;color:var(--text-dim);margin-bottom:10px;">
+          Har bir fandan nechta savol tasodifiy tanlanishini belgilang. Fan nomi
+          mavjud testlaringizdagi fan nomlari bilan AYNAN bir xil yozilishi kerak
+          (masalan "Kimyo", "Biologiya").
+        </p>
+        <div id="adminSimSubjectsList" class="admin-list"></div>
+        <form id="simSubjectFormEl" class="admin-form">
+          <input type="hidden" id="ass_simulator_id">
+          <label>Fan nomi <input id="ass_subject" required placeholder="Masalan: Kimyo" list="subjectPoolOptions"></label>
+          <datalist id="subjectPoolOptions"></datalist>
+          <label>Nechta savol <input id="ass_question_count" type="number" min="1" value="10"></label>
+          <label>Tartib raqami <input id="ass_order_num" type="number" value="0"></label>
+          <button type="submit" class="gold-btn">Fanni qo'shish</button>
+        </form>
+      </div>
+
+      <div class="version-tag">Behruz Sayfiyev · nashr v7.0 (DTM simulyatori)</div>
     </section>
 
   </main>

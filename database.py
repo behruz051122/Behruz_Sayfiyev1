@@ -182,9 +182,70 @@ def init_db():
             )
         """)
 
+        # ---------- DTM/Milliy sertifikat SIMULYATORI ----------
+        # Bir nechta fandan tasodifiy tanlangan savollarni birlashtirib,
+        # yagona vaqtli imtihon sifatida topshirish tizimi.
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS simulators (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                description TEXT,
+                time_limit_seconds INTEGER DEFAULT 10800,
+                order_num INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS simulator_subjects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                simulator_id INTEGER NOT NULL,
+                subject TEXT NOT NULL,
+                question_count INTEGER NOT NULL DEFAULT 10,
+                order_num INTEGER DEFAULT 0,
+                FOREIGN KEY (simulator_id) REFERENCES simulators (id) ON DELETE CASCADE
+            )
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS simulator_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                simulator_id INTEGER NOT NULL,
+                score INTEGER DEFAULT 0,
+                total_questions INTEGER DEFAULT 0,
+                started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                finished_at TIMESTAMP
+            )
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS simulator_attempt_questions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                attempt_id INTEGER NOT NULL,
+                question_id INTEGER NOT NULL,
+                subject TEXT NOT NULL,
+                order_num INTEGER DEFAULT 0,
+                FOREIGN KEY (attempt_id) REFERENCES simulator_attempts (id) ON DELETE CASCADE
+            )
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS simulator_answers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                attempt_id INTEGER NOT NULL,
+                question_id INTEGER NOT NULL,
+                selected_index INTEGER,
+                is_correct INTEGER DEFAULT 0,
+                FOREIGN KEY (attempt_id) REFERENCES simulator_attempts (id) ON DELETE CASCADE
+            )
+        """)
+
         conn.commit()
-    print("Baza tayyor (v4 — ulanishlar puli bilan): users, courses, paragraphs, lessons, "
-          "lesson_progress, enrollments, referrals, tests.")
+    print("Baza tayyor (v5 — DTM simulyatori bilan): users, courses, paragraphs, lessons, "
+          "lesson_progress, enrollments, referrals, tests, simulators.")
 
 
 # ---------- USERS ----------
@@ -920,3 +981,260 @@ def add_sample_courses():
             cur.execute("INSERT INTO paragraphs (course_id, title, order_num) VALUES (?, ?, ?)",
                         (course_id, "1-§. Kirish", 1))
             conn.commit()
+
+
+# ---------- DTM/MILLIY SERTIFIKAT SIMULYATORI ----------
+
+def get_subject_pools():
+    """Har bir fan bo'yicha savollar to'plamida jami nechta savol borligini
+    qaytaradi — admin simulyator sozlashda "yetarlimi" ni ko'rish uchun."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT t.subject as subject, COUNT(q.id) as question_count
+            FROM tests t JOIN test_questions q ON q.test_id = t.id
+            GROUP BY t.subject ORDER BY t.subject
+        """)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_all_simulators(only_active: bool = True):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = "SELECT * FROM simulators WHERE 1=1"
+        if only_active:
+            query += " AND is_active = 1"
+        query += " ORDER BY order_num ASC, id ASC"
+        cur.execute(query)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_simulator(simulator_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM simulators WHERE id = ?", (simulator_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def create_simulator(data: dict) -> int:
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO simulators (title, description, time_limit_seconds, order_num, is_active)
+            VALUES (?, ?, ?, ?, ?)
+        """, (
+            data.get("title", ""), data.get("description", ""),
+            int(data.get("time_limit_seconds", 10800)),
+            int(data.get("order_num", 0)), int(data.get("is_active", 1))
+        ))
+        conn.commit()
+        return cur.lastrowid
+
+
+def update_simulator(simulator_id: int, data: dict):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        fields, values = [], []
+        for key in ["title", "description", "time_limit_seconds", "order_num", "is_active"]:
+            if key in data:
+                fields.append(f"{key} = ?")
+                values.append(data[key])
+        if fields:
+            values.append(simulator_id)
+            cur.execute(f"UPDATE simulators SET {', '.join(fields)} WHERE id = ?", values)
+            conn.commit()
+
+
+def delete_simulator(simulator_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM simulators WHERE id = ?", (simulator_id,))
+        conn.commit()
+
+
+def get_simulator_subjects(simulator_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT * FROM simulator_subjects WHERE simulator_id = ? ORDER BY order_num ASC, id ASC
+        """, (simulator_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def add_simulator_subject(data: dict) -> int:
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO simulator_subjects (simulator_id, subject, question_count, order_num)
+            VALUES (?, ?, ?, ?)
+        """, (
+            int(data["simulator_id"]), data.get("subject", ""),
+            int(data.get("question_count", 10)), int(data.get("order_num", 0))
+        ))
+        conn.commit()
+        return cur.lastrowid
+
+
+def delete_simulator_subject(entry_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM simulator_subjects WHERE id = ?", (entry_id,))
+        conn.commit()
+
+
+def start_simulator_attempt(telegram_id: int, simulator_id: int):
+    """Har bir fandan tasodifiy savollarni tanlab, yangi simulyator urinishini
+    boshlaydi. Tanlangan savollar 'suratga olinadi' (snapshot) — shu bilan
+    urinish davomida savollar o'zgarmasligi va to'g'ri baholash kafolatlanadi."""
+    subjects = get_simulator_subjects(simulator_id)
+    if not subjects:
+        return None
+
+    selected_questions = []  # [(question_id, subject), ...]
+    with get_connection() as conn:
+        cur = conn.cursor()
+        for s in subjects:
+            cur.execute("""
+                SELECT q.id FROM test_questions q
+                JOIN tests t ON t.id = q.test_id
+                WHERE t.subject = ?
+                ORDER BY RANDOM() LIMIT ?
+            """, (s["subject"], s["question_count"]))
+            for row in cur.fetchall():
+                selected_questions.append((row["id"], s["subject"]))
+
+        if not selected_questions:
+            return None
+
+        cur.execute("""
+            INSERT INTO simulator_attempts (telegram_id, simulator_id, total_questions)
+            VALUES (?, ?, ?)
+        """, (telegram_id, simulator_id, len(selected_questions)))
+        attempt_id = cur.lastrowid
+
+        for idx, (question_id, subject) in enumerate(selected_questions):
+            cur.execute("""
+                INSERT INTO simulator_attempt_questions (attempt_id, question_id, subject, order_num)
+                VALUES (?, ?, ?, ?)
+            """, (attempt_id, question_id, subject, idx))
+        conn.commit()
+
+    return {"attempt_id": attempt_id, "total_questions": len(selected_questions)}
+
+
+def get_simulator_attempt_questions(attempt_id: int):
+    """Shu urinish uchun 'suratga olingan' savollarni, to'g'ri javobsiz, tartib
+    bo'yicha qaytaradi (foydalanuvchiga ko'rsatish uchun xavfsiz)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT saq.order_num, saq.subject, q.id, q.question_text, q.image_url,
+                   q.option_1, q.option_2, q.option_3, q.option_4
+            FROM simulator_attempt_questions saq
+            JOIN test_questions q ON q.id = saq.question_id
+            WHERE saq.attempt_id = ?
+            ORDER BY saq.order_num ASC
+        """, (attempt_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def submit_simulator_answer(telegram_id: int, attempt_id: int, question_id: int, selected_index: int):
+    """Oddiy testlardagi bilan bir xil mantiq — coin berish uchun ham xuddi
+    shu 'user_question_progress' jadvali ishlatiladi, shuning uchun bir marta
+    biror savolga (oddiy testda yoki simulyatorda) to'g'ri javob berilgan
+    bo'lsa, ikkinchisida qayta coin berilmaydi (adolatli va izchil)."""
+    question = get_question(question_id)
+    if not question:
+        return {"correct": False, "correct_index": None, "coin_awarded": False}
+
+    is_correct = int(selected_index) == int(question["correct_index"])
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO simulator_answers (attempt_id, question_id, selected_index, is_correct)
+            VALUES (?, ?, ?, ?)
+        """, (attempt_id, question_id, selected_index, 1 if is_correct else 0))
+        if is_correct:
+            cur.execute("UPDATE simulator_attempts SET score = score + 1 WHERE id = ?", (attempt_id,))
+        conn.commit()
+
+    coin_awarded = False
+    if is_correct:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM user_question_progress WHERE telegram_id = ? AND question_id = ?",
+                        (telegram_id, question_id))
+            already = cur.fetchone()
+            if already is None:
+                cur.execute("INSERT INTO user_question_progress (telegram_id, question_id, coin_awarded) VALUES (?, ?, 1)",
+                            (telegram_id, question_id))
+                conn.commit()
+                coin_awarded = True
+        if coin_awarded:
+            add_coins(telegram_id, 1)
+
+    return {"correct": is_correct, "correct_index": question["correct_index"], "coin_awarded": coin_awarded}
+
+
+def finish_simulator_attempt(attempt_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("UPDATE simulator_attempts SET finished_at = CURRENT_TIMESTAMP WHERE id = ?", (attempt_id,))
+        conn.commit()
+        cur.execute("SELECT * FROM simulator_attempts WHERE id = ?", (attempt_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def get_simulator_attempt(attempt_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM simulator_attempts WHERE id = ?", (attempt_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def get_user_simulator_results(telegram_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT s.id as simulator_id, s.title, MAX(a.score) as best_score, a.total_questions
+            FROM simulator_attempts a
+            JOIN simulators s ON s.id = a.simulator_id
+            WHERE a.telegram_id = ? AND a.finished_at IS NOT NULL
+            GROUP BY s.id
+            ORDER BY s.order_num ASC
+        """, (telegram_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+# ---------- NATIJALAR DINAMIKASI (progress grafigi) ----------
+
+def get_user_progress_history(telegram_id: int, limit: int = 30):
+    """Oddiy testlar VA simulyator urinishlarini birlashtirib, xronologik
+    tartibda (eng eskisidan eng yangisigacha) qaytaradi — 'natijalar
+    dinamikasi' grafigini chizish uchun."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT a.finished_at as finished_at, a.score as score,
+                   a.total_questions as total_questions, t.title as title, 'test' as kind
+            FROM test_attempts a JOIN tests t ON t.id = a.test_id
+            WHERE a.telegram_id = ? AND a.finished_at IS NOT NULL
+
+            UNION ALL
+
+            SELECT sa.finished_at as finished_at, sa.score as score,
+                   sa.total_questions as total_questions, s.title as title, 'simulator' as kind
+            FROM simulator_attempts sa JOIN simulators s ON s.id = sa.simulator_id
+            WHERE sa.telegram_id = ? AND sa.finished_at IS NOT NULL
+
+            ORDER BY finished_at ASC
+            LIMIT ?
+        """, (telegram_id, telegram_id, limit))
+        rows = [dict(r) for r in cur.fetchall()]
+        for r in rows:
+            r["percent"] = round((r["score"] / r["total_questions"]) * 100, 1) if r["total_questions"] else 0
+        return rows

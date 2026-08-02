@@ -498,3 +498,30 @@ a:focus-visible {
 }
 .analytics-top-row .name { font-weight: 700; flex: 1; }
 .analytics-top-row .count { color: var(--gold); font-weight: 800; flex-shrink: 0; }
+
+/* ================================================================
+   7-BOSQICH: DTM SIMULYATORI + NATIJALAR DINAMIKASI
+   ================================================================ */
+
+/* ---------- Tab tugmalari (Testlar / Simulyator) ---------- */
+
+.tab-row { display: flex; gap: 8px; margin: 0 16px 14px; background: var(--surface2); border-radius: 12px; padding: 4px; }
+.tab-btn { flex: 1; background: none; border: none; color: var(--text-dim); padding: 10px 8px; border-radius: 9px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.tab-btn.active { background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: #1a1a1a; }
+
+.simulator-intro { margin: 0 16px 14px; font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+
+/* ---------- Simulyator kartasi (test-card bilan bir xil bazaviy uslub, qo'shimchalar) ---------- */
+
+.simulator-subjects-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.simulator-subject-chip { font-size: 10px; font-weight: 700; background: rgba(124,92,255,0.15); color: var(--purple); padding: 4px 9px; border-radius: 20px; }
+
+/* ---------- Natijalar dinamikasi grafigi ---------- */
+
+.progress-chart-container { margin: 0 16px 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px; }
+.progress-chart-svg { width: 100%; height: auto; display: block; }
+.progress-chart-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-dim); margin-top: 6px; font-weight: 700; }
+
+/* ---------- Admin: fanlar pool holati (datalist yordamchi) ---------- */
+
+.subject-pool-hint { font-size: 10px; color: var(--text-dim); margin-top: -4px; margin-bottom: 4px; }

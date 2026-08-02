@@ -30,10 +30,12 @@ from routers import (
     user,
     courses,
     tests,
+    simulators,
     admin_auth,
     admin_courses,
     admin_tests,
     admin_analytics,
+    admin_simulators,
     diagnostics,
 )
 
@@ -107,10 +109,12 @@ app.include_router(brand.router)
 app.include_router(user.router)
 app.include_router(courses.router)
 app.include_router(tests.router)
+app.include_router(simulators.router)
 app.include_router(admin_auth.router)
 app.include_router(admin_courses.router)
 app.include_router(admin_tests.router)
 app.include_router(admin_analytics.router)
+app.include_router(admin_simulators.router)
 app.include_router(diagnostics.router)
 
 
