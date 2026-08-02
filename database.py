@@ -987,13 +987,15 @@ def add_sample_courses():
 
 def get_subject_pools():
     """Har bir fan bo'yicha savollar to'plamida jami nechta savol borligini
-    qaytaradi — admin simulyator sozlashda "yetarlimi" ni ko'rish uchun."""
+    qaytaradi — admin simulyator sozlashda "yetarlimi" ni ko'rish uchun.
+    Fan nomlari registr va bo'shliqqa sezgir bo'lmasdan birlashtiriladi
+    (masalan "Kimyo" va "kimyo " bir xil fan sifatida hisoblanadi)."""
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
-            SELECT t.subject as subject, COUNT(q.id) as question_count
+            SELECT TRIM(t.subject) as subject, COUNT(q.id) as question_count
             FROM tests t JOIN test_questions q ON q.test_id = t.id
-            GROUP BY t.subject ORDER BY t.subject
+            GROUP BY LOWER(TRIM(t.subject)) ORDER BY subject
         """)
         return [dict(r) for r in cur.fetchall()]
 
@@ -1069,7 +1071,7 @@ def add_simulator_subject(data: dict) -> int:
             INSERT INTO simulator_subjects (simulator_id, subject, question_count, order_num)
             VALUES (?, ?, ?, ?)
         """, (
-            int(data["simulator_id"]), data.get("subject", ""),
+            int(data["simulator_id"]), data.get("subject", "").strip(),
             int(data.get("question_count", 10)), int(data.get("order_num", 0))
         ))
         conn.commit()
@@ -1098,7 +1100,7 @@ def start_simulator_attempt(telegram_id: int, simulator_id: int):
             cur.execute("""
                 SELECT q.id FROM test_questions q
                 JOIN tests t ON t.id = q.test_id
-                WHERE t.subject = ?
+                WHERE LOWER(TRIM(t.subject)) = LOWER(TRIM(?))
                 ORDER BY RANDOM() LIMIT ?
             """, (s["subject"], s["question_count"]))
             for row in cur.fetchall():

@@ -133,14 +133,14 @@ async function renderAdminSimSubjects(simulatorId) {
   box.innerHTML = "";
 
   const poolMap = {};
-  data.subject_pools.forEach(p => { poolMap[p.subject] = p.question_count; });
+  data.subject_pools.forEach(p => { poolMap[p.subject.trim().toLowerCase()] = p.question_count; });
 
   const datalist = document.getElementById("subjectPoolOptions");
   datalist.innerHTML = data.subject_pools.map(p => `<option value="${p.subject}">`).join("");
 
   if (data.subjects.length === 0) box.innerHTML = emptyHtml("Hali fan qo'shilmagan");
   data.subjects.forEach(s => {
-    const available = poolMap[s.subject] || 0;
+    const available = poolMap[s.subject.trim().toLowerCase()] || 0;
     const isEnough = available >= s.question_count;
     const row = document.createElement("div");
     row.className = "admin-row";
