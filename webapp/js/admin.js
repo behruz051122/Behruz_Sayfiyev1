@@ -355,9 +355,10 @@ export async function loadAdminTests() {
     currentAdminTests.forEach(t => {
       const row = document.createElement("div");
       row.className = "admin-row";
+      const controlBadge = t.is_control_test ? `<span class="control-badge">🎓 NAZORAT</span>` : "";
       row.innerHTML = `
         <div class="info">
-          <div class="t">${t.title}${t.is_active ? "" : " (yashirin)"}</div>
+          <div class="t">${t.title}${t.is_active ? "" : " (yashirin)"}${controlBadge}</div>
           <div class="s">${t.subject} · ${DIFFICULTY_LABELS[t.difficulty] || t.difficulty} · ${t.question_count} savol · ${formatSeconds(t.time_limit_seconds)}</div>
         </div>
         <div class="row-actions">
@@ -377,6 +378,17 @@ export async function loadAdminTests() {
   }
 }
 
+function populateControlCourseSelect() {
+  const select = document.getElementById("at_course_id");
+  select.innerHTML = "";
+  currentAdminCourses.forEach(c => {
+    const opt = document.createElement("option");
+    opt.value = c.id;
+    opt.textContent = `${c.title} (${c.subject})`;
+    select.appendChild(opt);
+  });
+}
+
 function openAdminTestForm(test) {
   document.getElementById("adminTestForm").classList.remove("hidden");
   document.getElementById("adminQuestionsPanel").classList.add("hidden");
@@ -388,6 +400,12 @@ function openAdminTestForm(test) {
   document.getElementById("at_time_limit").value = test ? test.time_limit_seconds : "";
   document.getElementById("at_order_num").value = test ? test.order_num : 0;
   document.getElementById("at_is_active").value = test ? String(test.is_active) : "1";
+
+  populateControlCourseSelect();
+  const isControl = test ? Boolean(test.is_control_test) : false;
+  document.getElementById("at_is_control_test").checked = isControl;
+  document.getElementById("atControlCourseWrap").classList.toggle("hidden", !isControl);
+  if (test && test.course_id) document.getElementById("at_course_id").value = String(test.course_id);
 }
 
 async function deleteAdminTest(id) {
@@ -546,18 +564,25 @@ export function initAdminModule() {
   document.getElementById("adminNewTestBtn").addEventListener("click", () => openAdminTestForm(null));
   document.getElementById("adminCloseTestForm").addEventListener("click", () => document.getElementById("adminTestForm").classList.add("hidden"));
 
+  document.getElementById("at_is_control_test").addEventListener("change", (e) => {
+    document.getElementById("atControlCourseWrap").classList.toggle("hidden", !e.target.checked);
+  });
+
   document.getElementById("testFormEl").addEventListener("submit", async (e) => {
     e.preventDefault();
     const id = document.getElementById("at_id").value;
     const difficulty = document.getElementById("at_difficulty").value;
     const rawTimeLimit = document.getElementById("at_time_limit").value;
+    const isControlTest = document.getElementById("at_is_control_test").checked;
     const data = {
       subject: document.getElementById("at_subject").value,
       title: document.getElementById("at_title").value,
       difficulty: difficulty,
       time_limit_seconds: rawTimeLimit ? parseInt(rawTimeLimit) : DIFFICULTY_DEFAULT_SECONDS[difficulty],
       order_num: parseInt(document.getElementById("at_order_num").value),
-      is_active: parseInt(document.getElementById("at_is_active").value)
+      is_active: parseInt(document.getElementById("at_is_active").value),
+      is_control_test: isControlTest ? 1 : 0,
+      course_id: isControlTest ? parseInt(document.getElementById("at_course_id").value) : null
     };
     if (id) await apiFetch(`/api/admin/tests/${id}`, { method: "PUT", body: JSON.stringify(data) });
     else await apiFetch(`/api/admin/tests`, { method: "POST", body: JSON.stringify(data) });

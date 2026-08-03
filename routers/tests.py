@@ -7,9 +7,25 @@ import database as db
 router = APIRouter(prefix="/api", tags=["tests"])
 
 
+def _ensure_control_test_access(test: dict, telegram_id: int):
+    """Nazorat testi faqat bog'langan kursga yozilgan (yoki bepul bo'lsa —
+    ochiq) o'quvchilarga ruxsat berilishini serverning o'zida tekshiradi.
+    Bu — frontend'dagi ro'yxat filtri buzilsa ham (masalan brauzer konsolidan
+    to'g'ridan-to'g'ri so'rov yuborilsa ham) ishlaydigan haqiqiy himoya."""
+    course_id = test.get("course_id")
+    if not course_id:
+        raise HTTPException(status_code=403, detail="Bu nazorat testi hech qanday kursga bog'lanmagan")
+    course = db.get_course(course_id)
+    if not course:
+        raise HTTPException(status_code=403, detail="Bog'langan kurs topilmadi")
+    access = db.compute_course_access(telegram_id, course)
+    if not access["unlocked"]:
+        raise HTTPException(status_code=403, detail="Bu nazorat testi faqat tegishli kursga yozilgan o'quvchilar uchun ochiq")
+
+
 @router.get("/tests")
 def api_get_tests(subject: str = None, user=Depends(get_verified_telegram_user)):
-    tests = db.get_all_tests(subject=subject)
+    tests = db.get_all_tests(subject=subject, include_control=False)
     for t in tests:
         t["question_count"] = db.count_test_questions(t["id"])
     return {"tests": tests}
@@ -20,6 +36,8 @@ def api_get_test(test_id: int, user=Depends(get_verified_telegram_user)):
     test = db.get_test(test_id)
     if not test:
         raise HTTPException(status_code=404, detail="Test topilmadi")
+    if test.get("is_control_test"):
+        _ensure_control_test_access(test, user["telegram_id"])
     questions = db.get_questions(test_id)
     safe_questions = []
     for q in questions:
@@ -34,6 +52,11 @@ def api_get_test(test_id: int, user=Depends(get_verified_telegram_user)):
 
 @router.post("/test/{test_id}/start")
 def api_start_test(test_id: int, user=Depends(get_verified_telegram_user)):
+    test = db.get_test(test_id)
+    if not test:
+        raise HTTPException(status_code=404, detail="Test topilmadi")
+    if test.get("is_control_test"):
+        _ensure_control_test_access(test, user["telegram_id"])
     telegram_id = user["telegram_id"]
     db.get_or_create_user(telegram_id, user["first_name"], user.get("username"))
     attempt_id = db.start_attempt(telegram_id, test_id)
@@ -70,6 +93,14 @@ def api_finish_attempt(attempt_id: int, user=Depends(get_verified_telegram_user)
     if not result:
         raise HTTPException(status_code=404, detail="Urinish topilmadi")
     return result
+
+
+@router.get("/attempt/{attempt_id}/grid")
+def api_get_attempt_grid(attempt_id: int, user=Depends(get_verified_telegram_user)):
+    """Nazorat testi yakunlangach, har bir savol bo'yicha to'g'ri/noto'g'ri
+    katakchalar jadvalini qaytaradi (natija ekranidagi 'Savollar natijasi')."""
+    _get_owned_attempt_or_403(attempt_id, user["telegram_id"])
+    return {"grid": db.get_attempt_answers_grid(attempt_id)}
 
 
 @router.get("/my-test-results")

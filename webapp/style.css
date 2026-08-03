@@ -525,3 +525,42 @@ a:focus-visible {
 /* ---------- Admin: fanlar pool holati (datalist yordamchi) ---------- */
 
 .subject-pool-hint { font-size: 10px; color: var(--text-dim); margin-top: -4px; margin-bottom: 4px; }
+
+/* ================================================================
+   8-BOSQICH: NAZORAT TESTLARI
+   ================================================================ */
+
+/* ---------- Admin forma: checkbox va shartli kurs tanlash ---------- */
+
+.checkbox-label { flex-direction: row !important; align-items: flex-start; gap: 10px; cursor: pointer; }
+.checkbox-label input[type="checkbox"] { width: 18px; height: 18px; margin-top: 2px; flex-shrink: 0; accent-color: var(--gold); }
+.checkbox-label span { font-size: 12px; color: var(--text); line-height: 1.4; }
+
+.control-badge { display: inline-block; font-size: 9px; font-weight: 800; background: rgba(124,92,255,0.18); color: var(--purple); padding: 2px 8px; border-radius: 20px; margin-left: 6px; vertical-align: middle; }
+
+/* ---------- Nazorat testi kartasi: qulflangan holat ---------- */
+
+.control-locked-note { font-size: 11px; font-weight: 700; color: #ffb020; margin-top: 6px; }
+
+/* ---------- Nazorat testi natija ekrani (savollar to'ri/noto'g'ri jadvali) ---------- */
+
+.control-result-stats-row { display: flex; gap: 10px; margin: 20px 16px; }
+.control-stat { flex: 1; background: var(--surface2); border-radius: 14px; padding: 14px 8px; text-align: center; }
+.control-stat .num { font-size: 20px; font-weight: 800; }
+.control-stat.correct .num { color: var(--teal); }
+.control-stat.wrong .num { color: #ff6b6b; }
+.control-stat .lbl { font-size: 10px; color: var(--text-dim); margin-top: 4px; }
+
+.control-grid-title { margin: 0 16px 10px; font-size: 13px; font-weight: 800; color: var(--text-dim); }
+.control-answers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)); gap: 8px; margin: 0 16px 22px; }
+.control-grid-cell { aspect-ratio: 1; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; }
+.control-grid-cell.correct { background: var(--teal); color: #062521; }
+.control-grid-cell.wrong { background: #ff6b6b; color: #2a0a0a; }
+
+/* Nazorat testida javob tanlanganda (to'g'ri/noto'g'ri OSHKOR QILINMAYDI, faqat tanlanган belgisi) */
+.option-btn.option-selected-neutral { border-color: var(--gold); background: rgba(212,175,55,0.08); }
+.option-btn.option-selected-neutral .option-letter { background: var(--gold); color: #1a1a1a; }
+
+/* ---------- Nazorat reytingi (leaderboard) ---------- */
+
+.control-lb-month-label { text-align: center; font-size: 12px; font-weight: 700; color: var(--text-dim); margin: 0 16px 12px; letter-spacing: 0.5px; }

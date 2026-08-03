@@ -18,6 +18,12 @@ let currentTestMeta = null;
 let allSimulators = [];
 let simulatorsLoaded = false;
 let currentSimulatorMeta = null;
+
+// ---------- Nazorat testi holati ----------
+let allControlTests = [];
+let controlTestsLoaded = false;
+let currentControlTestMeta = null;
+
 let activeTestsTab = "tests";
 
 // ---------- Topshirish jarayoni (testlar VA simulyator uchun umumiy) ----------
@@ -47,11 +53,16 @@ function switchTestsTab(tab) {
   activeTestsTab = tab;
   document.getElementById("tabBtnTests").classList.toggle("active", tab === "tests");
   document.getElementById("tabBtnSimulator").classList.toggle("active", tab === "simulator");
+  document.getElementById("tabBtnControl").classList.toggle("active", tab === "control");
   document.getElementById("testsTabContent").classList.toggle("hidden", tab !== "tests");
   document.getElementById("simulatorTabContent").classList.toggle("hidden", tab !== "simulator");
+  document.getElementById("controlTabContent").classList.toggle("hidden", tab !== "control");
 
   if (tab === "simulator" && !simulatorsLoaded) {
     loadSimulatorList();
+  }
+  if (tab === "control" && !controlTestsLoaded) {
+    loadControlTestList();
   }
 }
 
@@ -176,25 +187,32 @@ function openTestDetail(test) {
   showScreen("test-detail");
 }
 
-async function startTest(test) {
-  const btn = document.getElementById("startTestBtn");
+async function startTest(test, mode = "test") {
+  const btnId = mode === "control" ? "startControlBtn" : "startTestBtn";
+  const btn = document.getElementById(btnId);
   if (btn) { btn.disabled = true; btn.textContent = "Tayyorlanmoqda..."; }
   try {
     const [startRes, fullTestRes] = await Promise.all([
       apiFetch(`/api/test/${test.id}/start`, { method: "POST" }),
       apiFetch(`/api/test/${test.id}`)
     ]);
+    if (!startRes.ok) {
+      const errData = await startRes.json().catch(() => ({}));
+      tg.showAlert ? tg.showAlert(errData.detail || "Boshlab bo'lmadi") : alert(errData.detail || "Xatolik");
+      if (btn) { btn.disabled = false; btn.textContent = mode === "control" ? "▶ Nazorat testini boshlash" : "▶ Testni boshlash"; }
+      return;
+    }
     const startData = await startRes.json();
     const fullTest = await fullTestRes.json();
 
     if (!fullTest.questions || fullTest.questions.length === 0) {
       tg.showAlert ? tg.showAlert("Bu testda hozircha savollar yo'q") : alert("Bu testda hozircha savollar yo'q");
-      if (btn) { btn.disabled = false; btn.textContent = "▶ Testni boshlash"; }
+      if (btn) { btn.disabled = false; btn.textContent = mode === "control" ? "▶ Nazorat testini boshlash" : "▶ Testni boshlash"; }
       return;
     }
 
     currentAttempt = {
-      mode: "test",
+      mode: mode,
       id: startData.attempt_id,
       test: fullTest,
       index: 0,
@@ -210,7 +228,7 @@ async function startTest(test) {
     startTestTimer();
   } catch (e) {
     console.error(e);
-    if (btn) { btn.disabled = false; btn.textContent = "▶ Testni boshlash"; }
+    if (btn) { btn.disabled = false; btn.textContent = mode === "control" ? "▶ Nazorat testini boshlash" : "▶ Testni boshlash"; }
   }
 }
 
@@ -334,6 +352,101 @@ async function startSimulator(sim) {
 }
 
 // ================================================================
+// NAZORAT TESTLARI RO'YXATI VA TAFSILOTI
+// ================================================================
+
+async function loadControlTestList() {
+  const container = document.getElementById("controlTestList");
+  container.innerHTML = skeletonCards(2);
+  try {
+    const res = await apiFetch(`/api/control-tests`);
+    const data = await res.json();
+    allControlTests = data.tests;
+    controlTestsLoaded = true;
+    renderControlTestList();
+  } catch (e) {
+    console.error(e);
+    container.innerHTML = errorHtml();
+  }
+}
+
+function renderControlTestList() {
+  const container = document.getElementById("controlTestList");
+  container.innerHTML = "";
+
+  if (allControlTests.length === 0) {
+    container.innerHTML = emptyHtml("Hozircha nazorat testi qo'shilmagan");
+    return;
+  }
+
+  allControlTests.forEach(t => {
+    const card = document.createElement("div");
+    card.className = "test-card" + (t.unlocked ? "" : " locked-card");
+    card.innerHTML = `
+      <div class="test-card-top">
+        <div class="test-card-title">${t.title}</div>
+        <span class="difficulty-badge difficulty-${t.difficulty}">${DIFFICULTY_LABELS[t.difficulty] || t.difficulty}</span>
+      </div>
+      <div class="test-card-meta">
+        <span class="course-tag">${t.subject}</span>
+        <span>❓ ${t.question_count} savol</span>
+        <span>⏱ ${formatSeconds(t.time_limit_seconds)}</span>
+      </div>
+      ${t.unlocked
+        ? `<div class="unlock-badge">✅ Ochiq${t.course_title ? " · " + t.course_title : ""}</div>`
+        : `<div class="control-locked-note">🔒 Faqat "${t.course_title || "tegishli kurs"}" kursiga yozilganlar uchun</div>`}
+    `;
+    card.addEventListener("click", () => openControlTestDetail(t));
+    container.appendChild(card);
+  });
+}
+
+function openControlTestDetail(test) {
+  currentControlTestMeta = test;
+  const content = document.getElementById("controlDetailContent");
+
+  if (!test.unlocked) {
+    content.innerHTML = `
+      <div class="test-detail-hero">
+        <span class="difficulty-badge difficulty-qiyin">NAZORAT TESTI</span>
+        <h1>${test.title}</h1>
+      </div>
+      <div class="locked-box">
+        <div class="lock-emoji">🔒</div>
+        <h3>Bu test hali yopiq</h3>
+        <p>Bu nazorat testi faqat "${test.course_title || "tegishli"}" kursiga yozilgan o'quvchilar uchun ochiq.</p>
+        <button class="gold-btn" id="controlLockedContactBtn">Admin bilan bog'lanish</button>
+      </div>
+    `;
+    const contactBtn = document.getElementById("controlLockedContactBtn");
+    if (contactBtn) contactBtn.addEventListener("click", () => navigateTo("profile"));
+    showScreen("control-detail");
+    return;
+  }
+
+  content.innerHTML = `
+    <div class="test-detail-hero">
+      <span class="difficulty-badge difficulty-${test.difficulty}">${DIFFICULTY_LABELS[test.difficulty] || test.difficulty}</span>
+      <h1>${test.title}</h1>
+      <div class="test-detail-stats">
+        <div class="test-detail-stat"><div class="num">${test.question_count}</div><div class="lbl">savol</div></div>
+        <div class="test-detail-stat"><div class="num">${formatSeconds(test.time_limit_seconds)}</div><div class="lbl">vaqt</div></div>
+      </div>
+    </div>
+    <div class="test-detail-actions">
+      <button class="gold-btn" id="startControlBtn">▶ Nazorat testini boshlash</button>
+    </div>
+    <p style="text-align:center;color:var(--text-dim);font-size:11px;margin-top:14px;">
+      Bu — rasmiy nazorat testi. Javob berayotganda to'g'ri/noto'g'ri darhol ko'rsatilmaydi —
+      natijangizni faqat test yakunida to'liq ko'rasiz. Natijangiz oylik reytingga ta'sir qiladi.
+    </p>
+  `;
+  document.getElementById("startControlBtn").addEventListener("click", () => startTest(test, "control"));
+
+  showScreen("control-detail");
+}
+
+// ================================================================
 // TOPSHIRISH JARAYONI (testlar VA simulyator uchun UMUMIY)
 // ================================================================
 
@@ -414,7 +527,7 @@ function renderCurrentQuestion() {
 }
 
 async function selectOption(selectedIndex) {
-  const { test, index, id: attemptId } = currentAttempt;
+  const { test, index, id: attemptId, mode } = currentAttempt;
   const question = test.questions[index];
 
   document.querySelectorAll("#optionList .option-btn").forEach(b => b.disabled = true);
@@ -435,18 +548,31 @@ async function selectOption(selectedIndex) {
   if (result.correct) currentAttempt.correctCount += 1;
   if (result.coin_awarded) currentAttempt.coinsEarned += 1;
 
-  document.querySelectorAll("#optionList .option-btn").forEach(btn => {
-    const idx = parseInt(btn.getAttribute("data-option-index"));
-    if (idx === selectedIndex) btn.classList.add(result.correct ? "option-correct" : "option-wrong");
-    else if (idx === result.correct_index) btn.classList.add("option-correct");
-    else btn.classList.add("option-dim");
-  });
-
-  document.getElementById("answerFeedbackWrap").innerHTML = `
-    <div class="answer-feedback ${result.correct ? "feedback-correct" : "feedback-wrong"}">
-      ${result.correct ? "✓ To'g'ri javob!" + (result.coin_awarded ? " (+1 🪙)" : "") : "✗ Noto'g'ri. To'g'ri javob yashil rangda ko'rsatildi."}
-    </div>
-  `;
+  if (mode === "control") {
+    // Nazorat testida to'g'ri/noto'g'ri DARHOL oshkor qilinmaydi — bu rasmiy
+    // imtihon uslubi, natija faqat yakunda to'liq ko'rsatiladi.
+    document.querySelectorAll("#optionList .option-btn").forEach(btn => {
+      const idx = parseInt(btn.getAttribute("data-option-index"));
+      if (idx === selectedIndex) btn.classList.add("option-selected-neutral");
+    });
+    document.getElementById("answerFeedbackWrap").innerHTML = `
+      <div class="answer-feedback" style="background:var(--surface2);color:var(--text-dim);border:1px solid var(--border);">
+        ✓ Javobingiz qabul qilindi
+      </div>
+    `;
+  } else {
+    document.querySelectorAll("#optionList .option-btn").forEach(btn => {
+      const idx = parseInt(btn.getAttribute("data-option-index"));
+      if (idx === selectedIndex) btn.classList.add(result.correct ? "option-correct" : "option-wrong");
+      else if (idx === result.correct_index) btn.classList.add("option-correct");
+      else btn.classList.add("option-dim");
+    });
+    document.getElementById("answerFeedbackWrap").innerHTML = `
+      <div class="answer-feedback ${result.correct ? "feedback-correct" : "feedback-wrong"}">
+        ${result.correct ? "✓ To'g'ri javob!" + (result.coin_awarded ? " (+1 🪙)" : "") : "✗ Noto'g'ri. To'g'ri javob yashil rangda ko'rsatildi."}
+      </div>
+    `;
+  }
   document.getElementById("nextQuestionWrap").classList.remove("hidden");
 
   if (result.coin_awarded) refreshCoins();
@@ -469,6 +595,13 @@ async function finishAttempt(timedOut) {
   const total = currentAttempt.test.questions.length;
   const score = finalResult ? finalResult.score : currentAttempt.correctCount;
   const percent = total > 0 ? Math.round((score / total) * 100) : 0;
+
+  if (mode === "control") {
+    await renderControlResult(currentAttempt.id, score, total, percent, timedOut);
+    showScreen("test-result");
+    refreshCoins();
+    return;
+  }
 
   const content = document.getElementById("testResultContent");
   content.innerHTML = `
@@ -498,6 +631,46 @@ async function finishAttempt(timedOut) {
 
   showScreen("test-result");
   refreshCoins();
+}
+
+async function renderControlResult(attemptId, score, total, percent, timedOut) {
+  const content = document.getElementById("testResultContent");
+  content.innerHTML = `
+    <div class="test-result-content">
+      <div class="result-score-circle">
+        <div class="score-num">${score}/${total}</div>
+        <div class="score-total">${percent}%</div>
+      </div>
+      <div class="result-title">${timedOut ? "⏰ Vaqt tugadi" : "🎓 Nazorat testi yakunlandi"}</div>
+      <div class="result-sub">${percentToComment(percent)}</div>
+    </div>
+    <div class="control-result-stats-row">
+      <div class="control-stat correct"><div class="num">${score}</div><div class="lbl">To'g'ri</div></div>
+      <div class="control-stat wrong"><div class="num">${total - score}</div><div class="lbl">Noto'g'ri</div></div>
+      <div class="control-stat"><div class="num">${total}</div><div class="lbl">Jami savol</div></div>
+    </div>
+    <div class="control-grid-title" style="text-align:center;">Savollar natijasi</div>
+    <div class="control-answers-grid" id="controlAnswersGrid"></div>
+    <div class="result-actions" style="margin:0 16px;">
+      <button class="secondary-btn" id="backToTestsBtn">Nazorat testlariga qaytish</button>
+    </div>
+  `;
+
+  try {
+    const res = await apiFetch(`/api/attempt/${attemptId}/grid`);
+    const data = await res.json();
+    const gridBox = document.getElementById("controlAnswersGrid");
+    gridBox.innerHTML = data.grid.map(g =>
+      `<div class="control-grid-cell ${g.is_correct ? "correct" : "wrong"}">${g.question_number}</div>`
+    ).join("");
+  } catch (e) {
+    console.error(e);
+  }
+
+  document.getElementById("backToTestsBtn").addEventListener("click", () => {
+    activeTestsTab = "control";
+    navigateTo("tests");
+  });
 }
 
 function percentToComment(percent) {
@@ -574,6 +747,7 @@ export function initTestsModule() {
 
   document.getElementById("tabBtnTests").addEventListener("click", () => switchTestsTab("tests"));
   document.getElementById("tabBtnSimulator").addEventListener("click", () => switchTestsTab("simulator"));
+  document.getElementById("tabBtnControl").addEventListener("click", () => switchTestsTab("control"));
 
   document.getElementById("exitTestBtn").addEventListener("click", () => {
     const ok = confirm("Testdan chiqmoqchimisiz? Joriy urinishingiz saqlanmaydi.");

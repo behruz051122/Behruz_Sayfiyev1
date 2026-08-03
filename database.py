@@ -133,6 +133,22 @@ def init_db():
             )
         """)
 
+        # Nazorat testlari — o'qituvchi tomonidan o'z kursiga yozilgan
+        # o'quvchilar uchun beriladigan, alohida oylik reytingga ega maxsus
+        # testlar. Bir xil "tests" jadvalidan foydalanadi, faqat shu ikki
+        # ustun bilan ajratiladi.
+        try:
+            cur.execute("ALTER TABLE tests ADD COLUMN is_control_test INTEGER DEFAULT 0")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # ustun allaqachon mavjud — muammo emas
+
+        try:
+            cur.execute("ALTER TABLE tests ADD COLUMN course_id INTEGER")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # ustun allaqachon mavjud — muammo emas
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS test_questions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -759,7 +775,7 @@ DIFFICULTY_TIME_SECONDS = {
 }
 
 
-def get_all_tests(subject: str = None, only_active: bool = True):
+def get_all_tests(subject: str = None, only_active: bool = True, include_control: bool = True):
     with get_connection() as conn:
         cur = conn.cursor()
         query = "SELECT * FROM tests WHERE 1=1"
@@ -769,6 +785,8 @@ def get_all_tests(subject: str = None, only_active: bool = True):
             params.append(subject)
         if only_active:
             query += " AND is_active = 1"
+        if not include_control:
+            query += " AND (is_control_test IS NULL OR is_control_test = 0)"
         query += " ORDER BY order_num ASC, id ASC"
         cur.execute(query, params)
         return [dict(row) for row in cur.fetchall()]
@@ -795,11 +813,12 @@ def create_test(data: dict) -> int:
         difficulty = data.get("difficulty", "orta")
         time_limit = data.get("time_limit_seconds") or DIFFICULTY_TIME_SECONDS.get(difficulty, 600)
         cur.execute("""
-            INSERT INTO tests (subject, title, difficulty, time_limit_seconds, order_num, is_active)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO tests (subject, title, difficulty, time_limit_seconds, order_num, is_active, is_control_test, course_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             data.get("subject", ""), data.get("title", ""), difficulty, int(time_limit),
-            int(data.get("order_num", 0)), int(data.get("is_active", 1))
+            int(data.get("order_num", 0)), int(data.get("is_active", 1)),
+            int(data.get("is_control_test", 0)), data.get("course_id") or None
         ))
         conn.commit()
         return cur.lastrowid
@@ -809,10 +828,11 @@ def update_test(test_id: int, data: dict):
     with get_connection() as conn:
         cur = conn.cursor()
         fields, values = [], []
-        for key in ["subject", "title", "difficulty", "time_limit_seconds", "order_num", "is_active"]:
+        for key in ["subject", "title", "difficulty", "time_limit_seconds", "order_num", "is_active",
+                    "is_control_test", "course_id"]:
             if key in data:
                 fields.append(f"{key} = ?")
-                values.append(data[key])
+                values.append(data[key] if data[key] != "" else None)
         if fields:
             values.append(test_id)
             cur.execute(f"UPDATE tests SET {', '.join(fields)} WHERE id = ?", values)
@@ -1240,3 +1260,90 @@ def get_user_progress_history(telegram_id: int, limit: int = 30):
         for r in rows:
             r["percent"] = round((r["score"] / r["total_questions"]) * 100, 1) if r["total_questions"] else 0
         return rows
+
+
+# ---------- NAZORAT TESTLARI (kursga bog'langan, oylik reytingli) ----------
+
+def get_control_tests_for_user(telegram_id: int):
+    """Barcha faol nazorat testlarini, har biri uchun foydalanuvchining
+    bog'langan kursga kirish huquqi bor-yo'qligini hisoblab qaytaradi."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT * FROM tests
+            WHERE is_control_test = 1 AND is_active = 1
+            ORDER BY order_num ASC, id ASC
+        """)
+        rows = [dict(r) for r in cur.fetchall()]
+
+    result = []
+    for t in rows:
+        course = get_course(t["course_id"]) if t.get("course_id") else None
+        if course:
+            access = compute_course_access(telegram_id, course)
+            t["unlocked"] = access["unlocked"]
+            t["course_title"] = course["title"]
+        else:
+            t["unlocked"] = False
+            t["course_title"] = None
+        t["question_count"] = count_test_questions(t["id"])
+        result.append(t)
+    return result
+
+
+def get_attempt_answers_grid(attempt_id: int):
+    """Bitta urinishning har bir savoli bo'yicha to'g'ri/noto'g'ri holatini,
+    savol tartib raqami bilan qaytaradi — natija jadvalini (savollar
+    to'ri/noto'g'ri katakchalari) chizish uchun."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT q.order_num as order_num, ta.is_correct as is_correct
+            FROM test_answers ta
+            JOIN test_questions q ON q.id = ta.question_id
+            WHERE ta.attempt_id = ?
+            ORDER BY q.order_num ASC, ta.id ASC
+        """, (attempt_id,))
+        rows = [dict(r) for r in cur.fetchall()]
+    return [{"question_number": i + 1, "is_correct": bool(r["is_correct"])} for i, r in enumerate(rows)]
+
+
+def get_control_test_monthly_leaderboard(year: int, month: int, limit: int = 100):
+    """Berilgan oy uchun nazorat testlari bo'yicha o'rtacha foiz natijasiga
+    ko'ra reytingni qaytaradi (yuqoridan pastga, eng yaxshi natija birinchi)."""
+    month_str = f"{year:04d}-{month:02d}"
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT u.telegram_id as telegram_id, u.first_name as first_name,
+                   AVG(CAST(a.score AS FLOAT) / NULLIF(a.total_questions, 0)) * 100 as avg_percent,
+                   COUNT(a.id) as attempts_count
+            FROM test_attempts a
+            JOIN tests t ON t.id = a.test_id
+            JOIN users u ON u.telegram_id = a.telegram_id
+            WHERE t.is_control_test = 1
+              AND a.finished_at IS NOT NULL
+              AND strftime('%Y-%m', a.finished_at) = ?
+            GROUP BY u.telegram_id
+            ORDER BY avg_percent DESC
+            LIMIT ?
+        """, (month_str, limit))
+        rows = [dict(r) for r in cur.fetchall()]
+        for r in rows:
+            r["avg_percent"] = round(r["avg_percent"] or 0, 1)
+        return rows
+
+
+def get_my_control_test_rank(telegram_id: int, year: int, month: int):
+    """Foydalanuvchining shu oydagi nazorat testlari reytingidagi o'rnini
+    topadi (agar u shu oy hech narsa topshirmagan bo'lsa — None)."""
+    leaderboard = get_control_test_monthly_leaderboard(year, month, limit=100000)
+    for idx, row in enumerate(leaderboard):
+        if row["telegram_id"] == telegram_id:
+            return {
+                "rank": idx + 1,
+                "avg_percent": row["avg_percent"],
+                "attempts_count": row["attempts_count"],
+                "total_participants": len(leaderboard),
+            }
+    return None

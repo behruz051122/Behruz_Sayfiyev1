@@ -10,7 +10,7 @@ import { loadBrand, loadUser, checkIsAdmin } from "./user.js";
 import * as Courses from "./courses.js";
 import * as Tests from "./tests.js";
 import { loadReferral } from "./referral.js";
-import { loadLeaderboard } from "./leaderboard.js";
+import { loadLeaderboard, initLeaderboardModule } from "./leaderboard.js";
 import { loadProfile } from "./profile.js";
 import { loadAdminCourses, loadAdminTests, loadAdminAnalytics, loadAdminSimulators, initAdminModule } from "./admin.js";
 
@@ -68,6 +68,7 @@ function bootstrap() {
   bindStaticNav();
   initLightbox();
   Tests.initTestsModule();
+  initLeaderboardModule();
   initAdminModule();
 
   loadBrand();

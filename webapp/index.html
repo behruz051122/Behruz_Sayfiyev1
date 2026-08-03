@@ -147,7 +147,8 @@
 
       <div class="tab-row" id="testsTabRow">
         <button class="tab-btn active" id="tabBtnTests" data-testtab="tests">📝 Testlar</button>
-        <button class="tab-btn" id="tabBtnSimulator" data-testtab="simulator">🎯 DTM Simulyatori</button>
+        <button class="tab-btn" id="tabBtnSimulator" data-testtab="simulator">🎯 Simulyator</button>
+        <button class="tab-btn" id="tabBtnControl" data-testtab="control">🎓 Nazorat</button>
       </div>
 
       <div id="testsTabContent">
@@ -162,6 +163,11 @@
       <div id="simulatorTabContent" class="hidden">
         <p class="simulator-intro">Bir nechta fandan tasodifiy tanlangan savollar bilan, real imtihon formatida vaqtli sinov.</p>
         <div id="simulatorList" class="test-list"></div>
+      </div>
+
+      <div id="controlTabContent" class="hidden">
+        <p class="simulator-intro">O'qituvchingiz tomonidan berilgan nazorat testlari. Faqat tegishli kursga yozilgan o'quvchilar uchun ochiq.</p>
+        <div id="controlTestList" class="test-list"></div>
       </div>
     </section>
 
@@ -197,6 +203,15 @@
       <div id="simulatorDetailContent"></div>
     </section>
 
+    <!-- NAZORAT TESTI HAQIDA (boshlashdan oldin) -->
+    <section id="screen-control-detail" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="tests" aria-label="Orqaga">←</button>
+        <h2>🎓 Nazorat testi</h2>
+      </div>
+      <div id="controlDetailContent"></div>
+    </section>
+
     <!-- TEST TOPSHIRISH (vaqtli) — testlar VA simulyator uchun umumiy -->
     <section id="screen-test-taking" class="screen hidden">
       <div class="test-taking-header">
@@ -218,8 +233,22 @@
         <button class="back-btn" data-nav="home" aria-label="Orqaga">←</button>
         <h2>🏆 Natijalar</h2>
       </div>
-      <div id="myRankBox" class="my-rank-box"></div>
-      <div id="leaderboardList" class="leaderboard-list"></div>
+
+      <div class="tab-row" id="leaderboardTabRow">
+        <button class="tab-btn active" id="tabBtnCoinLb" data-lbtab="coin">🪙 Coin reytingi</button>
+        <button class="tab-btn" id="tabBtnControlLb" data-lbtab="control">🎓 Nazorat reytingi</button>
+      </div>
+
+      <div id="coinLbTabContent">
+        <div id="myRankBox" class="my-rank-box"></div>
+        <div id="leaderboardList" class="leaderboard-list"></div>
+      </div>
+
+      <div id="controlLbTabContent" class="hidden">
+        <div class="control-lb-month-label" id="controlLbMonthLabel"></div>
+        <div id="myControlRankBox" class="my-rank-box"></div>
+        <div id="controlLeaderboardList" class="leaderboard-list"></div>
+      </div>
     </section>
 
     <!-- PROFIL -->
@@ -374,6 +403,15 @@
               <option value="0">Yo'q (yashirilgan)</option>
             </select>
           </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="at_is_control_test">
+            <span>🎓 Bu — nazorat testi (faqat tanlangan kursga yozilganlar uchun, alohida oylik reytingga kiradi)</span>
+          </label>
+          <div id="atControlCourseWrap" class="hidden">
+            <label>Qaysi kursga bog'lansin?
+              <select id="at_course_id"></select>
+            </label>
+          </div>
           <button type="submit" class="gold-btn">Testni saqlash</button>
         </form>
       </div>
