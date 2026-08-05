@@ -419,6 +419,18 @@ def init_db():
             )
         """)
 
+        # ---------- Sertifikatlar (kurs 100% tugallanganda) ----------
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS certificates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                course_id INTEGER NOT NULL,
+                certificate_number TEXT UNIQUE NOT NULL,
+                issued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(telegram_id, course_id)
+            )
+        """)
+
         # ---------- Yutuq nishonlari (achievements) ----------
         # Nishon TA'RIFLARI (nomi, tavsifi, sharti) kodda — ACHIEVEMENT_DEFS
         # ro'yxatida — saqlanadi (hozircha admin panelidan tahrirlanmaydi,
@@ -1037,6 +1049,73 @@ def get_watched_lesson_ids(telegram_id: int, course_id: int):
             WHERE lp.telegram_id = ? AND p.course_id = ?
         """, (telegram_id, course_id))
         return [r["lesson_id"] for r in cur.fetchall()]
+
+
+# ---------- SERTIFIKATLAR (kurs 100% tugallanganda) ----------
+
+def get_course_completion(telegram_id: int, course_id: int) -> dict:
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COUNT(*) as c FROM lessons l JOIN paragraphs p ON p.id = l.paragraph_id
+            WHERE p.course_id = ?
+        """, (course_id,))
+        total = cur.fetchone()["c"]
+    watched = len(get_watched_lesson_ids(telegram_id, course_id))
+    percent = round((watched / total) * 100) if total > 0 else 0
+    return {
+        "total_lessons": total, "watched_lessons": watched,
+        "percent": percent, "is_complete": total > 0 and watched >= total,
+    }
+
+
+def _generate_certificate_number(course_id: int) -> str:
+    year = datetime.datetime.utcnow().year
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) as c FROM certificates")
+        seq = cur.fetchone()["c"] + 1
+    return f"KM-{year}-{course_id:03d}{seq:05d}"
+
+
+def get_or_issue_certificate(telegram_id: int, course_id: int):
+    """Kurs 100% tugallangan bo'lsagina sertifikat 'beradi' — ALLAQACHON
+    berilgan bo'lsa, ESKISINI qaytaradi (raqami o'zgarmaydi, qayta-qayta
+    yuklab olganda ham HAR DOIM bir xil sertifikat raqami chiqishi kerak)."""
+    completion = get_course_completion(telegram_id, course_id)
+    if not completion["is_complete"]:
+        return None
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM certificates WHERE telegram_id = ? AND course_id = ?",
+            (telegram_id, course_id)
+        )
+        row = cur.fetchone()
+        if row:
+            return dict(row)
+
+        cert_number = _generate_certificate_number(course_id)
+        cur.execute(
+            "INSERT INTO certificates (telegram_id, course_id, certificate_number) VALUES (?, ?, ?)",
+            (telegram_id, course_id, cert_number)
+        )
+        conn.commit()
+        cur.execute("SELECT * FROM certificates WHERE id = ?", (cur.lastrowid,))
+        return dict(cur.fetchone())
+
+
+def get_my_certificates(telegram_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT c.*, co.title as course_title, co.subject as course_subject
+            FROM certificates c JOIN courses co ON co.id = c.course_id
+            WHERE c.telegram_id = ?
+            ORDER BY c.issued_at DESC
+        """, (telegram_id,))
+        return [dict(r) for r in cur.fetchall()]
 
 
 # ---------- ENROLLMENTS (pullik obuna) ----------

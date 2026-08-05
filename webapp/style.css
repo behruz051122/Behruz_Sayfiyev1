@@ -163,6 +163,12 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 
 .grace-banner { margin: 0 16px 16px; padding: 12px 14px; border-radius: 12px; background: rgba(180,83,9,0.1); border: 1px solid rgba(180,83,9,0.3); color: var(--warning); font-size: 12px; font-weight: 700; line-height: 1.5; }
 
+.certificate-banner { margin: 0 16px 16px; padding: 16px; border-radius: 16px; background: linear-gradient(135deg, rgba(15,118,110,0.10), rgba(184,137,43,0.10)); border: 1px solid rgba(15,118,110,0.3); display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; }
+.cert-banner-icon { font-size: 30px; }
+.cert-banner-title { font-weight: 800; font-size: 14px; color: var(--gold); }
+.cert-banner-sub { font-size: 11.5px; color: var(--text-dim); line-height: 1.4; }
+.certificate-banner .gold-btn { margin-top: 4px; width: auto; padding: 10px 20px; }
+
 .paragraph-list { margin: 0 16px; display: flex; flex-direction: column; gap: 10px; }
 .paragraph-item { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; cursor: pointer; }
 .paragraph-num { width: 34px; height: 34px; border-radius: 10px; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: var(--gold); flex-shrink: 0; }

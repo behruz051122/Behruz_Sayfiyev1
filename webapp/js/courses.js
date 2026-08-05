@@ -177,6 +177,28 @@ export async function openCourseDetail(courseId) {
       html += `<div class="grace-banner">⏳ Obuna muddatingiz tugagan. ${course.days_left <= 0 ? Math.abs(course.days_left) : 0} kundan so'ng darslar avtomatik yopiladi — obunani yangilashni unutmang.</div>`;
     }
 
+    // Kurs 100% tugallangan bo'lsa — sertifikat yuklab olish bannerini ko'rsatamiz.
+    // To'liqlik darajasi mavjud paragraf/dars ma'lumotlaridan (client tomonda)
+    // hisoblanadi — bu qo'shimcha API so'rovisiz tezkor ko'rsatish imkonini beradi;
+    // yuklab olishda server o'zi yana bir bor tekshirib, sertifikatni "beradi".
+    if (course.unlocked) {
+      const totalLessons = course.paragraphs.reduce((a, p) => a + p.lessons_count, 0);
+      const watchedLessons = course.paragraphs.reduce((a, p) => a + (p.lessons || []).filter(l => l.watched).length, 0);
+      const isComplete = totalLessons > 0 && watchedLessons >= totalLessons;
+      if (isComplete) {
+        html += `
+          <div class="certificate-banner">
+            <div class="cert-banner-icon">🎓</div>
+            <div class="cert-banner-info">
+              <div class="cert-banner-title">Tabriklaymiz! Kurs 100% tugallandi</div>
+              <div class="cert-banner-sub">Endi shaxsiy sertifikatingizni yuklab olishingiz mumkin</div>
+            </div>
+            <button class="gold-btn" id="downloadCertificateBtn">📄 Sertifikatni yuklab olish</button>
+          </div>
+        `;
+      }
+    }
+
     if (course.unlocked) {
       html += `<div class="paragraph-list">`;
       if (course.paragraphs.length === 0) {
@@ -225,9 +247,42 @@ export async function openCourseDetail(courseId) {
     if (referralBtn) referralBtn.addEventListener("click", () => navigateTo("referral"));
     const contactBtn = document.getElementById("lockedContactBtn");
     if (contactBtn) contactBtn.addEventListener("click", () => navigateTo("profile"));
+
+    const certBtn = document.getElementById("downloadCertificateBtn");
+    if (certBtn) certBtn.addEventListener("click", () => downloadCertificate(courseId, certBtn));
   } catch (e) {
     console.error(e);
     content.innerHTML = errorHtml();
+  }
+}
+
+// ---------- Sertifikat yuklab olish ----------
+// export qilingan — Profil ekranidagi "Mening sertifikatlarim" ro'yxati ham
+// aynan shu funksiyadan foydalanadi (kod takrorlanmasin uchun).
+
+export async function downloadCertificate(courseId, btnEl) {
+  const originalText = btnEl.textContent;
+  btnEl.disabled = true;
+  btnEl.textContent = "Tayyorlanmoqda...";
+  try {
+    const res = await apiFetch(`/api/course/${courseId}/certificate/download`);
+    if (!res.ok) throw new Error("Sertifikat yaratib bo'lmadi");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `sertifikat_${courseId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    showToast("🎓 Sertifikat yuklab olindi");
+  } catch (e) {
+    console.error(e);
+    showToast("Sertifikatni yuklab bo'lmadi, qayta urinib ko'ring");
+  } finally {
+    btnEl.disabled = false;
+    btnEl.textContent = originalText;
   }
 }
 

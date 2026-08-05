@@ -47,6 +47,7 @@ from routers import (
     bookshop,
     admin_bookshop,
     games,
+    certificates,
 )
 
 app = FastAPI(title="Behruz Sayfiyev — Mini App API")
@@ -137,6 +138,7 @@ app.include_router(admin_dashboard.router)
 app.include_router(bookshop.router)
 app.include_router(admin_bookshop.router)
 app.include_router(games.router)
+app.include_router(certificates.router)
 
 
 # Admin tomonidan yuklangan rasmlar (savol grafigi/jadvali) shu yo'ldan

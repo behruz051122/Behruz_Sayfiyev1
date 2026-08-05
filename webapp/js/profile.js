@@ -2,19 +2,22 @@
 import { apiFetch, tg } from "./api.js";
 import { loadingHtml, errorHtml } from "./components.js";
 import { brandInfo } from "./user.js";
+import { downloadCertificate } from "./courses.js";
 
 export async function loadProfile() {
   const content = document.getElementById("profileContent");
   content.innerHTML = loadingHtml();
   try {
-    const [userRes, enrollRes, achRes] = await Promise.all([
+    const [userRes, enrollRes, achRes, certRes] = await Promise.all([
       apiFetch(`/api/user`),
       apiFetch(`/api/my-enrollments`),
-      apiFetch(`/api/achievements`)
+      apiFetch(`/api/achievements`),
+      apiFetch(`/api/my-certificates`)
     ]);
     const user = await userRes.json();
     const enrollData = await enrollRes.json();
     const achData = await achRes.json();
+    const certData = await certRes.json();
 
     let html = `
       <div class="profile-card">
@@ -40,6 +43,21 @@ export async function loadProfile() {
               <div class="achievement-title">${a.title}</div>
             </div>
           `).join("")}
+        </div>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-section-head"><h3>🎓 Mening sertifikatlarim</h3></div>
+        <div id="myCertificatesList">
+          ${certData.certificates.length === 0
+            ? `<div class="empty-msg">Hali sertifikatingiz yo'q — kursni 100% tugating</div>`
+            : certData.certificates.map(c => `
+              <div class="admin-row">
+                <div class="emoji">🎓</div>
+                <div class="info"><div class="t">${c.course_title}</div><div class="s">${c.course_subject} · № ${c.certificate_number}</div></div>
+                <button class="ghost-btn cert-download-btn" data-course-id="${c.course_id}">⬇️</button>
+              </div>
+            `).join("")}
         </div>
       </div>
 
@@ -84,6 +102,13 @@ export async function loadProfile() {
         tg.openTelegramLink ? tg.openTelegramLink(url) : window.open(url, "_blank");
       });
     }
+
+    document.querySelectorAll(".cert-download-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const courseId = parseInt(btn.getAttribute("data-course-id"));
+        downloadCertificate(courseId, btn);
+      });
+    });
   } catch (e) {
     console.error(e);
     content.innerHTML = errorHtml();
