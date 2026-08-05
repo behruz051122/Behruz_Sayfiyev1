@@ -340,6 +340,15 @@
       <div id="profileContent"></div>
     </section>
 
+    <!-- FAQ / YORDAM -->
+    <section id="screen-faq" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="profile" aria-label="Orqaga">←</button>
+        <h2>❓ Ko'p so'raladigan savollar</h2>
+      </div>
+      <div id="faqContent"></div>
+    </section>
+
     <!-- ADMIN -->
     <section id="screen-admin" class="screen hidden">
       <div class="screen-header">
@@ -423,6 +432,34 @@
           <label>Tartib raqami <input id="bp_order_num" type="number" value="0"></label>
           <label>Do'konda ko'rinsinmi?
             <select id="bp_is_active">
+              <option value="1">Ha</option>
+              <option value="0">Yo'q (yashirilgan)</option>
+            </select>
+          </label>
+          <button type="submit" class="gold-btn">Saqlash</button>
+        </form>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-section-head">
+          <h3>❓ FAQ / Yordam savollari</h3>
+          <button id="adminNewFaqBtn" class="gold-btn small">+ Yangi qo'shish</button>
+        </div>
+        <div id="adminFaqList" class="admin-list"></div>
+      </div>
+
+      <div id="adminFaqForm" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3 id="adminFaqFormTitle">Yangi savol</h3>
+          <button id="adminCloseFaqForm" class="icon-btn" aria-label="Yopish">✕</button>
+        </div>
+        <form id="faqFormEl" class="admin-form">
+          <input type="hidden" id="faq_id">
+          <label>Savol <input id="faq_question" required></label>
+          <label>Javob <textarea id="faq_answer" required></textarea></label>
+          <label>Tartib raqami <input id="faq_order_num" type="number" value="0"></label>
+          <label>Ko'rinsinmi?
+            <select id="faq_is_active">
               <option value="1">Ha</option>
               <option value="0">Yo'q (yashirilgan)</option>
             </select>

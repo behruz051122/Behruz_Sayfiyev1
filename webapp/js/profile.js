@@ -3,6 +3,7 @@ import { apiFetch, tg } from "./api.js";
 import { loadingHtml, errorHtml } from "./components.js";
 import { brandInfo } from "./user.js";
 import { downloadCertificate } from "./courses.js";
+import { navigateTo } from "./navigate.js";
 
 export async function loadProfile() {
   const content = document.getElementById("profileContent");
@@ -28,8 +29,20 @@ export async function loadProfile() {
           <div class="profile-stat"><div class="num">🪙 ${user.coins}</div><div class="lbl">Coin</div></div>
           <div class="profile-stat"><div class="num">#${user.rank || "—"}</div><div class="lbl">Reyting</div></div>
           <div class="profile-stat"><div class="num">${user.confirmed_referrals}</div><div class="lbl">Takliflar</div></div>
+          <div class="profile-stat streak-stat"><div class="num">🔥 ${user.current_streak || 0}</div><div class="lbl">Kunlik streak</div></div>
         </div>
       </div>
+
+      ${(user.current_streak || 0) >= 1 ? `
+        <div class="streak-banner">
+          🔥 <b>${user.current_streak} kun</b> ketma-ket faolsiz! Streakni uzmaslik uchun bugun ham kamida bitta dars yoki test bajaring.
+          ${user.longest_streak > user.current_streak ? `<div class="streak-best">Eng yaxshi natijangiz: ${user.longest_streak} kun</div>` : ""}
+        </div>
+      ` : `
+        <div class="streak-banner streak-banner-start">
+          🔥 Har kuni kamida bitta dars yoki test bajarib, "streak"ingizni boshlang!
+        </div>
+      `}
 
       <div class="admin-section">
         <div class="admin-section-head">
@@ -88,12 +101,16 @@ export async function loadProfile() {
     html += `</div>
       <div class="admin-section">
         <div class="admin-section-head"><h3>Yordam va aloqa</h3></div>
-        <p style="font-size:12px;color:var(--text-dim);">Savol yoki muammo bo'lsa, admin bilan bog'laning.</p>
-        <button class="gold-btn" style="margin-top:10px;" id="contactAdminBtn">💬 Admin bilan bog'lanish</button>
+        <p style="font-size:12px;color:var(--text-dim);">Savol yoki muammo bo'lsa, avval FAQ bo'limini ko'ring yoki admin bilan bog'laning.</p>
+        <button class="gold-btn" style="margin-top:10px;" id="openFaqBtn">❓ Ko'p so'raladigan savollar</button>
+        <button class="gold-btn" style="margin-top:10px;background:var(--surface2);color:var(--gold);" id="contactAdminBtn">💬 Admin bilan bog'lanish</button>
       </div>
     `;
 
     content.innerHTML = html;
+
+    const faqBtn = document.getElementById("openFaqBtn");
+    if (faqBtn) faqBtn.addEventListener("click", () => navigateTo("faq"));
 
     const contactBtn = document.getElementById("contactAdminBtn");
     if (contactBtn) {

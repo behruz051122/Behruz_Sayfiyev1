@@ -203,6 +203,55 @@ async function uploadBookProductImage(file) {
   }
 }
 
+// ---------- FAQ / Yordam savollari ----------
+
+export async function loadAdminFaq() {
+  document.getElementById("adminFaqForm").classList.add("hidden");
+  const box = document.getElementById("adminFaqList");
+  box.innerHTML = skeletonCards(2);
+  try {
+    const res = await apiFetch(`/api/admin/faq`);
+    const data = await res.json();
+    box.innerHTML = "";
+    if (data.items.length === 0) box.innerHTML = emptyHtml("Hali savol qo'shilmagan");
+    data.items.forEach(item => {
+      const row = document.createElement("div");
+      row.className = "admin-row";
+      row.innerHTML = `
+        <div class="emoji">❓</div>
+        <div class="info">
+          <div class="t">${item.question}${item.is_active ? "" : " (yashirin)"}</div>
+          <div class="s">${(item.answer || "").slice(0, 60)}${item.answer.length > 60 ? "…" : ""}</div>
+        </div>
+        <div class="row-actions">
+          <button data-a="edit">Tahrirlash</button>
+          <button data-a="delete" class="danger">O'chirish</button>
+        </div>
+      `;
+      row.querySelector('[data-a="edit"]').onclick = () => openAdminFaqForm(item);
+      row.querySelector('[data-a="delete"]').onclick = async () => {
+        if (!confirm("Bu savolni butunlay o'chirmoqchimisiz?")) return;
+        await apiFetch(`/api/admin/faq/${item.id}`, { method: "DELETE" });
+        loadAdminFaq();
+      };
+      box.appendChild(row);
+    });
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml();
+  }
+}
+
+function openAdminFaqForm(item) {
+  document.getElementById("adminFaqForm").classList.remove("hidden");
+  document.getElementById("adminFaqFormTitle").textContent = item ? "Savolni tahrirlash" : "Yangi savol";
+  document.getElementById("faq_id").value = item ? item.id : "";
+  document.getElementById("faq_question").value = item ? item.question : "";
+  document.getElementById("faq_answer").value = item ? item.answer : "";
+  document.getElementById("faq_order_num").value = item ? item.order_num : 0;
+  document.getElementById("faq_is_active").value = item ? String(item.is_active) : "1";
+}
+
 // ---------- Nazorat testi natijalari (bitta test bo'yicha talabalar ballari) ----------
 
 async function openAdminControlResults(testId, title) {
@@ -1081,6 +1130,26 @@ export function initAdminModule() {
     else await apiFetch(`/api/admin/book-products`, { method: "POST", body: JSON.stringify(data) });
     document.getElementById("adminBookProductForm").classList.add("hidden");
     loadAdminBookProducts();
+  });
+
+  // --- FAQ / Yordam savollari ---
+
+  document.getElementById("adminNewFaqBtn").addEventListener("click", () => openAdminFaqForm(null));
+  document.getElementById("adminCloseFaqForm").addEventListener("click", () => document.getElementById("adminFaqForm").classList.add("hidden"));
+
+  document.getElementById("faqFormEl").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const id = document.getElementById("faq_id").value;
+    const data = {
+      question: document.getElementById("faq_question").value,
+      answer: document.getElementById("faq_answer").value,
+      order_num: parseInt(document.getElementById("faq_order_num").value),
+      is_active: parseInt(document.getElementById("faq_is_active").value)
+    };
+    if (id) await apiFetch(`/api/admin/faq/${id}`, { method: "PUT", body: JSON.stringify(data) });
+    else await apiFetch(`/api/admin/faq`, { method: "POST", body: JSON.stringify(data) });
+    document.getElementById("adminFaqForm").classList.add("hidden");
+    loadAdminFaq();
   });
 
   // --- DTM Simulyatorlari ---

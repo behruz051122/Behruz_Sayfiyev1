@@ -48,6 +48,21 @@ def init_db():
             )
         """)
 
+        # Kunlik faollik ("streak") ustunlari — o'quvchi ketma-ket necha kun
+        # ilovada faol bo'lganini kuzatish uchun. Eski bazalarda bu ustunlar
+        # yo'q bo'lgani sababli ALTER TABLE orqali (xatoni jimgina o'tkazib
+        # yuborib) qo'shamiz — boshqa joylarda ishlatilgan uslub bilan bir xil.
+        for alter_sql in (
+            "ALTER TABLE users ADD COLUMN current_streak INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN longest_streak INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN last_activity_date TEXT",
+        ):
+            try:
+                cur.execute(alter_sql)
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass  # ustun allaqachon mavjud — muammo emas
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS courses (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -472,6 +487,19 @@ def init_db():
             )
         """)
 
+        # FAQ / Yordam bo'limi — tez-tez so'raladigan savol-javoblar, admin
+        # paneldan to'liq boshqariladi (qo'shish/tahrirlash/o'chirish/tartib).
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS faq_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                question TEXT NOT NULL,
+                answer TEXT NOT NULL,
+                order_num INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         conn.commit()
     print("Baza tayyor (v5 — DTM simulyatori bilan): users, courses, paragraphs, lessons, "
           "lesson_progress, enrollments, referrals, tests, simulators.")
@@ -542,6 +570,12 @@ ACHIEVEMENT_DEFS = [
      "icon": "🪙", "check": lambda s: s["coins"] >= 50},
     {"key": "referrals_5", "title": "Do'stlar yetakchisi", "description": "5 ta do'stingizni taklif qildingiz",
      "icon": "🎁", "check": lambda s: s["confirmed_referrals"] >= 5},
+    {"key": "streak_3", "title": "Qizigan boshlanish", "description": "3 kun ketma-ket faol bo'ldingiz",
+     "icon": "🔥", "check": lambda s: s["longest_streak"] >= 3},
+    {"key": "streak_7", "title": "Haftalik intizom", "description": "7 kun ketma-ket faol bo'ldingiz",
+     "icon": "🔥", "check": lambda s: s["longest_streak"] >= 7},
+    {"key": "streak_30", "title": "Temir intizom", "description": "30 kun ketma-ket faol bo'ldingiz",
+     "icon": "🔥", "check": lambda s: s["longest_streak"] >= 30},
 ]
 
 
@@ -573,9 +607,10 @@ def _gather_achievement_stats(telegram_id: int) -> dict:
         cur.execute("SELECT COALESCE(SUM(wins), 0) as w FROM game_ratings WHERE telegram_id = ?", (telegram_id,))
         battle_wins = cur.fetchone()["w"]
 
-        cur.execute("SELECT coins FROM users WHERE telegram_id = ?", (telegram_id,))
+        cur.execute("SELECT coins, longest_streak FROM users WHERE telegram_id = ?", (telegram_id,))
         row = cur.fetchone()
         coins = row["coins"] if row else 0
+        longest_streak = (row["longest_streak"] or 0) if row else 0
 
         cur.execute("SELECT COUNT(*) as c FROM referrals WHERE referrer_telegram_id = ? AND confirmed = 1", (telegram_id,))
         confirmed_referrals = cur.fetchone()["c"]
@@ -588,6 +623,7 @@ def _gather_achievement_stats(telegram_id: int) -> dict:
             "battle_wins": battle_wins,
             "coins": coins,
             "confirmed_referrals": confirmed_referrals,
+            "longest_streak": longest_streak,
         }
 
 
@@ -661,6 +697,53 @@ def set_user_subscribed(telegram_id: int, value: bool = True):
         cur = conn.cursor()
         cur.execute("UPDATE users SET is_subscribed = ? WHERE telegram_id = ?", (1 if value else 0, telegram_id))
         conn.commit()
+
+
+def record_daily_activity(telegram_id: int) -> dict:
+    """O'quvchi biror "faol" harakat qilganda (dars ko'rish, test/simulyator
+    yakunlash, o'yin o'ynash) chaqiriladi va kunlik "streak"ni yangilaydi:
+
+    - Bugun allaqachon faol bo'lgan bo'lsa — hech narsa o'zgarmaydi.
+    - Kecha faol bo'lgan bo'lsa — streak +1 (ketma-ketlik davom etadi).
+    - Aks holda (uzilish yoki birinchi marta) — streak 1 dan boshlanadi.
+
+    Sana UTC bo'yicha ('YYYY-MM-DD') solishtiriladi — bazadagi boshqa
+    vaqt hisoblari (masalan coin_history) bilan bir xil andozada.
+    """
+    today = datetime.datetime.utcnow().date()
+    today_str = today.isoformat()
+    yesterday_str = (today - datetime.timedelta(days=1)).isoformat()
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT current_streak, longest_streak, last_activity_date FROM users WHERE telegram_id = ?",
+            (telegram_id,)
+        )
+        row = cur.fetchone()
+        if row is None:
+            return {"current_streak": 0, "longest_streak": 0}
+
+        current_streak = row["current_streak"] or 0
+        longest_streak = row["longest_streak"] or 0
+        last_date = row["last_activity_date"]
+
+        if last_date == today_str:
+            pass  # bugun allaqachon hisoblangan
+        elif last_date == yesterday_str:
+            current_streak += 1
+        else:
+            current_streak = 1
+
+        longest_streak = max(longest_streak, current_streak)
+
+        cur.execute(
+            "UPDATE users SET current_streak = ?, longest_streak = ?, last_activity_date = ? WHERE telegram_id = ?",
+            (current_streak, longest_streak, today_str, telegram_id)
+        )
+        conn.commit()
+
+    return {"current_streak": current_streak, "longest_streak": longest_streak}
 
 
 def search_users(query: str, limit: int = 20):
@@ -899,6 +982,63 @@ def delete_book_product(product_id: int):
         conn.commit()
 
 
+# ---------- FAQ / YORDAM BO'LIMI ----------
+
+def get_faq_items(only_active: bool = True):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = "SELECT * FROM faq_items"
+        if only_active:
+            query += " WHERE is_active = 1"
+        query += " ORDER BY order_num ASC, id ASC"
+        cur.execute(query)
+        return [dict(row) for row in cur.fetchall()]
+
+
+def get_faq_item(faq_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM faq_items WHERE id = ?", (faq_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def create_faq_item(data: dict) -> int:
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO faq_items (question, answer, order_num, is_active)
+            VALUES (?, ?, ?, ?)
+        """, (
+            data.get("question", ""), data.get("answer", ""),
+            int(data.get("order_num", 0)), int(data.get("is_active", 1))
+        ))
+        conn.commit()
+        return cur.lastrowid
+
+
+def update_faq_item(faq_id: int, data: dict):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        fields, values = [], []
+        allowed = ["question", "answer", "order_num", "is_active"]
+        for key in allowed:
+            if key in data:
+                fields.append(f"{key} = ?")
+                values.append(data[key])
+        if fields:
+            values.append(faq_id)
+            cur.execute(f"UPDATE faq_items SET {', '.join(fields)} WHERE id = ?", values)
+            conn.commit()
+
+
+def delete_faq_item(faq_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM faq_items WHERE id = ?", (faq_id,))
+        conn.commit()
+
+
 # ---------- PARAGRAPHS ----------
 
 def get_paragraphs(course_id: int):
@@ -1035,6 +1175,7 @@ def mark_lesson_watched(telegram_id: int, lesson_id: int) -> bool:
         conn.commit()
 
     add_coins(telegram_id, 1)  # oldingi 'with' bloki yopilgach — pooldan bo'sh ulanish oladi
+    record_daily_activity(telegram_id)
     check_and_award_achievements(telegram_id)
     return True
 
@@ -1565,6 +1706,7 @@ def finish_attempt(attempt_id: int):
         row = cur.fetchone()
         result = dict(row) if row else None
     if result:
+        record_daily_activity(result["telegram_id"])
         check_and_award_achievements(result["telegram_id"])
     return result
 
@@ -1835,6 +1977,7 @@ def submit_battle_result(battle_id: int, telegram_id: int, score: int, time_seco
     # pool'dan ulanish so'raydi, ikkalasini bir vaqtda ochiq ushlab turish
     # shart emas.
     for player_id in players_to_check_achievements:
+        record_daily_activity(player_id)
         check_and_award_achievements(player_id)
 
     return battle
@@ -2108,6 +2251,7 @@ def finish_simulator_attempt(attempt_id: int):
         row = cur.fetchone()
         result = dict(row) if row else None
     if result:
+        record_daily_activity(result["telegram_id"])
         check_and_award_achievements(result["telegram_id"])
     return result
 
