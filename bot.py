@@ -7,7 +7,7 @@ import logging
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
 from aiogram.types import (
-    WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+    WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, MenuButtonWebApp
 )
 
 from config import BOT_TOKEN, WEBAPP_URL, CHANNEL_USERNAME, CHANNEL_URL, BOT_USERNAME
@@ -34,8 +34,27 @@ async def is_user_subscribed(telegram_id: int) -> bool:
 
 def main_menu_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🚀 Platformaga o'tish", web_app=WebAppInfo(url=WEBAPP_URL))]
+        [InlineKeyboardButton(text="📚 Kurslarni ko'rish", web_app=WebAppInfo(url=WEBAPP_URL))]
     ])
+
+
+async def setup_menu_button():
+    """Telegram'ning har bir chat oynasida (xabar yozish maydoni yonida)
+    doimiy ko'rinadigan "Menu" tugmasini o'rnatadi — shu orqali foydalanuvchi
+    /start bosmasdan, istalgan vaqtda bevosita Mini App'ni ocha oladi.
+    Bir marta o'rnatilgach, Telegram tomonda saqlanib qoladi (har safar
+    bot ishga tushganda qayta chaqirish xavfsiz — o'zgarish bo'lmasa,
+    hech narsa buzilmaydi)."""
+    try:
+        await bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(
+                text="📚 Kurslar",
+                web_app=WebAppInfo(url=WEBAPP_URL)
+            )
+        )
+        logging.info("Menu tugmasi (persistent Mini App kirish) muvaffaqiyatli o'rnatildi.")
+    except Exception as e:
+        logging.warning(f"Menu tugmasini o'rnatishda xatolik: {e}")
 
 
 def subscribe_keyboard():
@@ -85,7 +104,8 @@ async def start_handler(message: types.Message):
         await message.answer(
             f"👋 Salom, {user['first_name']}!\n\n"
             f"Sizga {user['points']} ball va {user['coins']} coin taqdim etildi.\n"
-            f"Platformaga o'tish uchun quyidagi tugmani bosing:",
+            f"Kurslarni ko'rish uchun quyidagi tugmani bosing "
+            f"(yoki xabar yozish maydoni yonidagi \"📚 Kurslar\" menyu tugmasidan istalgan vaqtda kirishingiz mumkin):",
             reply_markup=main_menu_keyboard()
         )
     else:
@@ -118,7 +138,7 @@ async def check_sub_handler(callback: CallbackQuery):
 
         await callback.message.edit_text("✅ Rahmat! Obuna tasdiqlandi.")
         await callback.message.answer(
-            "Platformaga o'tish uchun tugmani bosing:",
+            "Kurslarni ko'rish uchun tugmani bosing:",
             reply_markup=main_menu_keyboard()
         )
     else:
@@ -172,6 +192,7 @@ async def start_polling_background():
     while True:
         try:
             await bot.delete_webhook(drop_pending_updates=True)
+            await setup_menu_button()
             logging.info("Telegram bot polling boshlandi (server bilan bitta jarayonda).")
             await dp.start_polling(bot)
         except Exception as e:
