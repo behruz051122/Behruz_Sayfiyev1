@@ -64,31 +64,34 @@ export async function loadAdminAnalytics() {
   }
 }
 
-// ---------- Talabalar faolligi (har bir o'quvchi nechta test ishlagani) ----------
+// ---------- Nazorat testi natijalari (bitta test bo'yicha talabalar ballari) ----------
 
-let saSearchDebounce = null;
+async function openAdminControlResults(testId, title) {
+  document.getElementById("adminControlResultsPanel").classList.remove("hidden");
+  document.getElementById("adminTestForm").classList.add("hidden");
+  document.getElementById("adminQuestionsPanel").classList.add("hidden");
+  document.getElementById("adminControlAccessPanel").classList.add("hidden");
+  document.getElementById("adminControlResultsTitle").textContent = `Natijalar — ${title}`;
 
-export async function loadStudentActivity(query = "") {
-  const box = document.getElementById("studentActivityList");
-  if (!box) return;
-  box.innerHTML = skeletonCards(1);
+  const box = document.getElementById("controlResultsList");
+  box.innerHTML = skeletonCards(2);
   try {
-    const res = await apiFetch(`/api/admin/student-activity?q=${encodeURIComponent(query)}`);
+    const res = await apiFetch(`/api/admin/control-tests/${testId}/results`);
     const data = await res.json();
-    if (data.students.length === 0) {
-      box.innerHTML = emptyHtml("O'quvchi topilmadi");
+    if (data.results.length === 0) {
+      box.innerHTML = emptyHtml("Hali hech kim bu testni ishlamagan");
       return;
     }
     box.innerHTML = "";
-    data.students.forEach(s => {
+    data.results.forEach((r, i) => {
       const row = document.createElement("div");
       row.className = "admin-row";
-      const name = s.first_name || "Noma'lum";
-      const usernamePart = s.username ? ` · @${s.username}` : "";
+      const name = r.first_name || "Noma'lum";
+      const usernamePart = r.username ? ` · @${r.username}` : "";
       row.innerHTML = `
         <div class="info">
-          <div class="t">${name}${usernamePart}</div>
-          <div class="s">🎓 ${s.control_test_count} nazorat testi · 📝 ${s.regular_test_count} oddiy test · 🎯 ${s.simulator_count} simulyator · Jami: ${s.total_count} ta · ID: ${s.telegram_id}</div>
+          <div class="t">${i + 1}. ${name}${usernamePart}</div>
+          <div class="s">✅ ${r.score}/${r.total_questions} to'g'ri (${r.percent}%) · ID: ${r.telegram_id}</div>
         </div>
       `;
       box.appendChild(row);
@@ -397,6 +400,7 @@ export async function loadAdminTests() {
   document.getElementById("adminTestForm").classList.add("hidden");
   document.getElementById("adminQuestionsPanel").classList.add("hidden");
   document.getElementById("adminControlAccessPanel").classList.add("hidden");
+  document.getElementById("adminControlResultsPanel").classList.add("hidden");
   const box = document.getElementById("adminTestsList");
   box.innerHTML = skeletonCards(2);
   try {
@@ -410,6 +414,7 @@ export async function loadAdminTests() {
       row.className = "admin-row";
       const controlBadge = t.is_control_test ? `<span class="control-badge">🎓 NAZORAT</span>` : "";
       const accessBtn = t.is_control_test ? `<button data-a="access">👥 Talabalar</button>` : "";
+      const resultsBtn = t.is_control_test ? `<button data-a="results">📊 Natijalar</button>` : "";
       row.innerHTML = `
         <div class="info">
           <div class="t">${t.title}${t.is_active ? "" : " (yashirin)"}${controlBadge}</div>
@@ -418,12 +423,16 @@ export async function loadAdminTests() {
         <div class="row-actions">
           <button data-a="questions">Savollar</button>
           ${accessBtn}
+          ${resultsBtn}
           <button data-a="edit">Tahrirlash</button>
           <button data-a="delete" class="danger">O'chirish</button>
         </div>
       `;
       row.querySelector('[data-a="questions"]').onclick = () => openAdminQuestions(t.id, t.title);
-      if (t.is_control_test) row.querySelector('[data-a="access"]').onclick = () => openAdminControlAccess(t.id, t.title);
+      if (t.is_control_test) {
+        row.querySelector('[data-a="access"]').onclick = () => openAdminControlAccess(t.id, t.title);
+        row.querySelector('[data-a="results"]').onclick = () => openAdminControlResults(t.id, t.title);
+      }
       row.querySelector('[data-a="edit"]').onclick = () => openAdminTestForm(t);
       row.querySelector('[data-a="delete"]').onclick = () => deleteAdminTest(t.id);
       box.appendChild(row);
@@ -449,6 +458,7 @@ function openAdminTestForm(test) {
   document.getElementById("adminTestForm").classList.remove("hidden");
   document.getElementById("adminQuestionsPanel").classList.add("hidden");
   document.getElementById("adminControlAccessPanel").classList.add("hidden");
+  document.getElementById("adminControlResultsPanel").classList.add("hidden");
   document.getElementById("adminTestFormTitle").textContent = test ? "Testni tahrirlash" : "Yangi test";
   document.getElementById("at_id").value = test ? test.id : "";
   document.getElementById("at_subject").value = test ? test.subject : "";
@@ -484,6 +494,7 @@ async function openAdminQuestions(testId, title) {
   document.getElementById("adminQuestionsPanel").classList.remove("hidden");
   document.getElementById("adminTestForm").classList.add("hidden");
   document.getElementById("adminControlAccessPanel").classList.add("hidden");
+  document.getElementById("adminControlResultsPanel").classList.add("hidden");
   document.getElementById("adminQuestionsTitle").textContent = `Savollar — ${title}`;
   document.getElementById("aq_test_id").value = testId;
   document.getElementById("aq_docx_file").value = "";
@@ -532,6 +543,7 @@ async function openAdminControlAccess(testId, title) {
   document.getElementById("adminControlAccessPanel").classList.remove("hidden");
   document.getElementById("adminTestForm").classList.add("hidden");
   document.getElementById("adminQuestionsPanel").classList.add("hidden");
+  document.getElementById("adminControlResultsPanel").classList.add("hidden");
   document.getElementById("adminControlAccessTitle").textContent = `Talabalarni tayinlash — ${title}`;
   document.getElementById("aca_test_id").value = testId;
   document.getElementById("aca_search_input").value = "";
@@ -706,12 +718,6 @@ async function renderAdminQuestions(testId) {
 // ---------- Modulni ishga tushirish (barcha forma va tugmalarni ulaydi) ----------
 
 export function initAdminModule() {
-  document.getElementById("saSearchInput").addEventListener("input", (e) => {
-    const query = e.target.value;
-    clearTimeout(saSearchDebounce);
-    saSearchDebounce = setTimeout(() => loadStudentActivity(query), 300);
-  });
-
   document.getElementById("adminNewCourseBtn").addEventListener("click", () => openAdminCourseForm(null));
   document.getElementById("adminCloseCourseForm").addEventListener("click", () => document.getElementById("adminCourseForm").classList.add("hidden"));
 
@@ -850,6 +856,7 @@ export function initAdminModule() {
   });
 
   document.getElementById("adminCloseControlAccess").addEventListener("click", () => document.getElementById("adminControlAccessPanel").classList.add("hidden"));
+  document.getElementById("adminCloseControlResults").addEventListener("click", () => document.getElementById("adminControlResultsPanel").classList.add("hidden"));
 
   document.getElementById("aca_search_input").addEventListener("input", (e) => {
     const testId = document.getElementById("aca_test_id").value;

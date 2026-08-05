@@ -41,3 +41,11 @@ def admin_revoke_control_access(test_id: int, telegram_id: int, admin=Depends(re
 @router.get("/users/search")
 def admin_search_users(q: str = "", admin=Depends(require_admin)):
     return {"users": db.search_users(q)}
+
+
+@router.get("/control-tests/{test_id}/results")
+def admin_control_test_results(test_id: int, admin=Depends(require_admin)):
+    test = db.get_test(test_id)
+    if not test:
+        raise HTTPException(status_code=404, detail="Test topilmadi")
+    return {"results": db.get_control_test_results(test_id)}

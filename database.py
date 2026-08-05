@@ -380,51 +380,6 @@ def search_users(query: str, limit: int = 20):
         return [dict(r) for r in cur.fetchall()]
 
 
-def get_student_activity(query: str = "", limit: int = 30):
-    """Admin uchun: har bir o'quvchi ANIQ nechta test ishlaganini (nazorat
-    testi, oddiy test, simulyator — alohida-alohida) qaytaradi. Har bir test
-    faqat BIR MARTA hisoblanadi (qayta-qayta ishlangan bo'lsa ham) — chunki
-    savol "nechta test ishlagan" degani "nechta XILMA-XIL testni yakunlagan"
-    ma'nosini anglatadi, qayta urinishlar bilan shishirilmasligi kerak.
-    Bo'sh so'rovda eng faol (jami testi ko'p) o'quvchilar ro'yxati qaytadi."""
-    query = (query or "").strip()
-    with get_connection() as conn:
-        cur = conn.cursor()
-        where_clause = ""
-        params = []
-        if query:
-            if query.isdigit():
-                where_clause = "WHERE u.telegram_id = ? OR CAST(u.telegram_id AS TEXT) LIKE ?"
-                params = [int(query), f"%{query}%"]
-            else:
-                like = f"%{query}%"
-                where_clause = "WHERE u.first_name LIKE ? OR u.username LIKE ?"
-                params = [like, like]
-
-        sql = f"""
-            SELECT u.telegram_id as telegram_id, u.first_name as first_name, u.username as username,
-                (SELECT COUNT(DISTINCT a.test_id) FROM test_attempts a JOIN tests t ON t.id = a.test_id
-                 WHERE a.telegram_id = u.telegram_id AND a.finished_at IS NOT NULL AND t.is_control_test = 1
-                ) as control_test_count,
-                (SELECT COUNT(DISTINCT a.test_id) FROM test_attempts a JOIN tests t ON t.id = a.test_id
-                 WHERE a.telegram_id = u.telegram_id AND a.finished_at IS NOT NULL AND t.is_control_test = 0
-                ) as regular_test_count,
-                (SELECT COUNT(DISTINCT sa.simulator_id) FROM simulator_attempts sa
-                 WHERE sa.telegram_id = u.telegram_id AND sa.finished_at IS NOT NULL
-                ) as simulator_count
-            FROM users u
-            {where_clause}
-            ORDER BY (control_test_count + regular_test_count + simulator_count) DESC, u.id DESC
-            LIMIT ?
-        """
-        params.append(limit)
-        cur.execute(sql, params)
-        rows = [dict(r) for r in cur.fetchall()]
-        for r in rows:
-            r["total_count"] = r["control_test_count"] + r["regular_test_count"] + r["simulator_count"]
-        return rows
-
-
 def add_coins(telegram_id: int, amount: int = 1):
     with get_connection() as conn:
         cur = conn.cursor()
@@ -1553,6 +1508,37 @@ def get_control_test_access_list(test_id: int):
             ORDER BY ca.assigned_at DESC
         """, (test_id,))
         return [dict(r) for r in cur.fetchall()]
+
+
+def get_control_test_results(test_id: int):
+    """Berilgan BITTA nazorat testini ishlagan har bir talabaning necha
+    to'g'ri javob berganini qaytaradi. Talaba testni bir necha marta qayta
+    ishlagan bo'lsa ham, faqat REYTINGGA hisoblangan (eng birinchi
+    yakunlangan) urinishi ko'rsatiladi — qayta urinishlar (mashq) bu yerda
+    hisobga olinmaydi. Natija — ball bo'yicha kamayish tartibida."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            WITH first_attempts AS (
+                SELECT a.*,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY a.telegram_id
+                           ORDER BY a.started_at ASC, a.id ASC
+                       ) as rn
+                FROM test_attempts a
+                WHERE a.test_id = ? AND a.finished_at IS NOT NULL
+            )
+            SELECT u.telegram_id as telegram_id, u.first_name as first_name, u.username as username,
+                   fa.score as score, fa.total_questions as total_questions, fa.finished_at as finished_at
+            FROM first_attempts fa
+            JOIN users u ON u.telegram_id = fa.telegram_id
+            WHERE fa.rn = 1
+            ORDER BY fa.score DESC, fa.finished_at ASC
+        """, (test_id,))
+        rows = [dict(r) for r in cur.fetchall()]
+        for r in rows:
+            r["percent"] = round((r["score"] / r["total_questions"]) * 100, 1) if r["total_questions"] else 0
+        return rows
 
 
 def get_attempt_answers_grid(attempt_id: int):
