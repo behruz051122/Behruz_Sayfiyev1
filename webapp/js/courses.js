@@ -1,7 +1,7 @@
 // js/courses.js
-import { apiFetch, tg } from "./api.js";
+import { apiFetch } from "./api.js";
 import { showScreen, navigateTo } from "./navigate.js";
-import { loadingHtml, errorHtml, emptyHtml, skeletonCards } from "./components.js";
+import { loadingHtml, errorHtml, emptyHtml, skeletonCards, showToast } from "./components.js";
 import { refreshCoins } from "./user.js";
 
 let currentListType = "course";
@@ -377,7 +377,7 @@ function playLesson(lesson) {
         document.getElementById("watchedBtnWrap").innerHTML = `<div class="watched-confirmed">✓ Bu dars ko'rildi — coin qo'shildi</div>`;
         refreshCoins();
         if (data.coin_awarded) {
-          tg.showAlert ? tg.showAlert("🎉 Tabriklaymiz! +1 coin oldingiz") : null;
+          showToast("🎉 Tabriklaymiz! +1 coin oldingiz");
         }
       } catch (e) {
         console.error(e);

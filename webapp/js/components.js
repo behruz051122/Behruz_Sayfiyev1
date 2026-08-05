@@ -77,7 +77,7 @@ export function renderProgressChart(history) {
 
   const pathD = points.map((p, i) => (i === 0 ? `M ${p.x.toFixed(1)} ${p.y.toFixed(1)}` : `L ${p.x.toFixed(1)} ${p.y.toFixed(1)}`)).join(" ");
   const areaD = `${pathD} L ${points[points.length - 1].x.toFixed(1)} ${(padTop + usableHeight).toFixed(1)} L ${points[0].x.toFixed(1)} ${(padTop + usableHeight).toFixed(1)} Z`;
-  const dots = points.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5" fill="#d4af37" />`).join("");
+  const dots = points.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5" fill="#0f766e" />`).join("");
 
   const first = history[0];
   const last = history[history.length - 1];
@@ -85,9 +85,9 @@ export function renderProgressChart(history) {
   return `
     <div class="progress-chart-wrap">
       <svg viewBox="0 0 ${width} ${height}" class="progress-chart-svg" preserveAspectRatio="none" role="img" aria-label="Natijalar dinamikasi grafigi">
-        <line x1="${padSide}" y1="${padTop + usableHeight}" x2="${width - padSide}" y2="${padTop + usableHeight}" stroke="#29293a" stroke-width="1" />
-        <path d="${areaD}" fill="rgba(212,175,55,0.12)" stroke="none" />
-        <path d="${pathD}" fill="none" stroke="#d4af37" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
+        <line x1="${padSide}" y1="${padTop + usableHeight}" x2="${width - padSide}" y2="${padTop + usableHeight}" stroke="#e3e8ef" stroke-width="1" />
+        <path d="${areaD}" fill="rgba(15,118,110,0.12)" stroke="none" />
+        <path d="${pathD}" fill="none" stroke="#0f766e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
         ${dots}
       </svg>
       <div class="progress-chart-labels">
@@ -136,4 +136,31 @@ export function initLightbox() {
   document.getElementById("imageLightbox").addEventListener("click", (e) => {
     if (e.target.id === "imageLightbox") closeLightbox();
   });
+}
+
+// ---------- Toast (o'zi avtomatik yopiladigan qisqa xabar) ----------
+//
+// Telegramning tg.showAlert() foydalanuvchidan majburan "OK/Закрыть"
+// bosishni talab qiladi — coin berilgani kabi kichik, ijobiy xabarlar
+// uchun bu ortiqcha to'siq. Shu funksiya o'rniga sahifaning o'zida
+// bir necha soniyadan keyin o'zi yo'qoladigan xabar (toast) chiqaradi.
+
+export function showToast(message, duration = 2600) {
+  let container = document.getElementById("toastContainer");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "toastContainer";
+    container.className = "toast-container";
+    document.body.appendChild(container);
+  }
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.textContent = message;
+  container.appendChild(toast);
+
+  requestAnimationFrame(() => toast.classList.add("toast-visible"));
+  setTimeout(() => {
+    toast.classList.remove("toast-visible");
+    setTimeout(() => toast.remove(), 250);
+  }, duration);
 }
