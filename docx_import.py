@@ -87,8 +87,14 @@ def _is_greenish_rgb(rgb) -> bool:
 
 
 def _run_is_green(run) -> bool:
-    """Run (matn bo'lagi) YASHIL rangda yozilganmi yoki YASHIL fon bilan
-    bo'yalganmi (highlight) tekshiradi — ikkala usul ham qo'llab-quvvatlanadi."""
+    """Run (matn bo'lagi) YASHIL rangda yozilganmi, YASHIL STANDART
+    highlight bilan belgilanganmi, yoki YASHIL FON (shading/rang bilan
+    bo'yash) bilan belgilanganmi tekshiradi — Word'da "Matn ranggi",
+    "Highlight" va "Shading/Fon rangi" bir-biridan FARQLI XML mexanizmlari,
+    o'qituvchilar esa ko'pincha "Fon rangi" asbobidan foydalanadi (ayniqsa
+    palitradan maxsus rang tanlanganda, Word buni standart highlight emas,
+    balki shading sifatida saqlaydi) — shuning uchun barcha uchalasi ham
+    tekshiriladi."""
     try:
         color = run.font.color
         if color is not None and color.type is not None and color.rgb is not None:
@@ -102,18 +108,119 @@ def _run_is_green(run) -> bool:
             return True
     except Exception:
         pass
+    try:
+        from docx.oxml.ns import qn
+        rPr = run._r.find(qn("w:rPr"))
+        if rPr is not None:
+            shd = rPr.find(qn("w:shd"))
+            if shd is not None:
+                fill = shd.get(qn("w:fill"))
+                if fill and fill.upper() not in ("AUTO", "FFFFFF"):
+                    rgb = tuple(int(fill[i:i + 2], 16) for i in (0, 2, 4))
+                    if _is_greenish_rgb(rgb):
+                        return True
+    except Exception:
+        pass
     return False
 
 
-def _split_options_with_color(paragraph):
+def _load_numbering_starts(document):
+    """Ba'zi Word hujjatlarida variant harflari ("C)", "D)" kabi) qo'lda
+    yozilmagan, balki Word'ning AVTOMATIK ro'yxat raqamlash funksiyasi
+    orqali chizilgan bo'ladi — bunday holda paragraph.text ICHIDA harf
+    umuman ko'rinmaydi (Word uni faqat EKRANDA chizadi, fayl matnida
+    saqlamaydi). Buni to'g'ri tiklash uchun word/numbering.xml faylidan har
+    bir ro'yxat (numId) qanday harfdan boshlanishini (masalan "C" dan,
+    ya'ni 3-harfdan) va formatini (katta/kichik harf) o'qib olamiz.
+    Natija: {numId: {"start": int, "numFmt": str}}"""
+    from docx.oxml.ns import qn
+
+    result = {}
+    try:
+        numbering_part = document.part.numbering_part
+    except Exception:
+        return result
+    if numbering_part is None:
+        return result
+    root = numbering_part.element
+
+    abstract_info = {}
+    for abstract_num in root.findall(qn("w:abstractNum")):
+        abs_id = abstract_num.get(qn("w:abstractNumId"))
+        lvl0 = None
+        for lvl in abstract_num.findall(qn("w:lvl")):
+            if lvl.get(qn("w:ilvl")) == "0":
+                lvl0 = lvl
+                break
+        if lvl0 is None:
+            continue
+        start_el = lvl0.find(qn("w:start"))
+        fmt_el = lvl0.find(qn("w:numFmt"))
+        abstract_info[abs_id] = {
+            "start": int(start_el.get(qn("w:val"))) if start_el is not None else 1,
+            "numFmt": fmt_el.get(qn("w:val")) if fmt_el is not None else "decimal",
+        }
+
+    for num in root.findall(qn("w:num")):
+        num_id = num.get(qn("w:numId"))
+        abs_ref = num.find(qn("w:abstractNumId"))
+        if abs_ref is None:
+            continue
+        abs_id = abs_ref.get(qn("w:val"))
+        if abs_id in abstract_info:
+            result[num_id] = abstract_info[abs_id]
+    return result
+
+
+def _format_numbering_value(value: int, num_fmt: str) -> str:
+    """Ro'yxat qiymatini (masalan 3) mos formatga o'giradi (masalan
+    upperLetter uchun "C)")."""
+    if num_fmt == "upperLetter":
+        return f"{chr(ord('A') + (value - 1) % 26)})"
+    if num_fmt == "lowerLetter":
+        return f"{chr(ord('a') + (value - 1) % 26)})"
+    return f"{value})"
+
+
+def _resolve_auto_list_prefix(paragraph, numbering_info, numid_counters):
+    """Berilgan paragraf Word'ning avtomatik ro'yxat raqamlashidan
+    foydalansa (ilvl=0), tegishli "C)" kabi belgini hisoblab qaytaradi.
+    Aks holda bo'sh satr qaytaradi. numid_counters — har bir numId qaysi
+    qiymatgacha yetganini hujjat davomida kuzatib boradi (chunki bitta
+    ro'yxat bir necha paragrafdan iborat bo'lishi mumkin: masalan bitta
+    numId ostida ketma-ket C, D kelishi kerak)."""
+    from docx.oxml.ns import qn
+
+    pPr = paragraph._p.find(qn("w:pPr"))
+    if pPr is None:
+        return ""
+    num_pr = pPr.find(qn("w:numPr"))
+    if num_pr is None:
+        return ""
+    ilvl_el = num_pr.find(qn("w:ilvl"))
+    if ilvl_el is not None and ilvl_el.get(qn("w:val")) != "0":
+        return ""
+    num_id_el = num_pr.find(qn("w:numId"))
+    if num_id_el is None:
+        return ""
+    num_id = num_id_el.get(qn("w:val"))
+    info = numbering_info.get(num_id)
+    if not info:
+        return ""
+    current_value = numid_counters.get(num_id, info["start"] - 1) + 1
+    numid_counters[num_id] = current_value
+    return _format_numbering_value(current_value, info["numFmt"]) + " "
+
+
+def _split_options_with_color(paragraph, prefix=""):
     """Bitta qatorda bitta YOKI bir nechta variant bo'lishi mumkin (masalan
     "A) 0   B) 25   C) 50   D) 75" — jadval ustunlaridek tab bilan ajratilgan).
     Paragraf RUN'lari (Word'dagi matn formatlash bo'laklari) orqali har bir
     variantning matnini VA shu variant YASHIL rang bilan belgilanganmi-
     yo'qmi aniqlaydi. Natija: {harf: {"text": ..., "green": bool}}"""
     runs_info = []
-    pos = 0
-    full_text = ""
+    pos = len(prefix)
+    full_text = prefix
     for run in paragraph.runs:
         t = run.text
         runs_info.append((pos, pos + len(t), run))
@@ -155,6 +262,45 @@ def _table_rows(table):
         cells = [c.text.strip() for c in row.cells]
         rows.append(cells)
     return rows
+
+
+def _table_as_single_option(table):
+    """Ba'zan (odatda tasodifiy formatlash natijasida) bitta variantning
+    matni alohida ma'lumot jadvali o'rniga Word jadvaliga tushib qolgan
+    bo'ladi (masalan "D) ..." matni). Bunday holatni jadvalning BARCHA
+    matnini birlashtirib, natija "A) matn" uslubiga mos kelsa aniqlaymiz —
+    aks holda bu oddiy ma'lumot jadvali (davriy jadval, izotoplar foizi
+    va h.k.) deb hisoblanadi. Mos kelsa (harf, matn, yashilmi) qaytaradi,
+    aks holda None."""
+    from docx.oxml.ns import qn
+
+    seen_texts = []
+    is_green = False
+    for row in table.rows:
+        for cell in row.cells:
+            txt = cell.text.strip()
+            if txt and txt not in seen_texts:
+                seen_texts.append(txt)
+                tcPr = cell._tc.find(qn("w:tcPr"))
+                if tcPr is not None:
+                    shd = tcPr.find(qn("w:shd"))
+                    if shd is not None:
+                        fill = shd.get(qn("w:fill"))
+                        if fill and fill.upper() not in ("AUTO", "FFFFFF"):
+                            try:
+                                rgb = tuple(int(fill[i:i + 2], 16) for i in (0, 2, 4))
+                                if _is_greenish_rgb(rgb):
+                                    is_green = True
+                            except Exception:
+                                pass
+
+    joined = " ".join(seen_texts).strip()
+    m = MULTI_OPTION_RE.match(joined)
+    if not m:
+        return None
+    letter = m.group(1).upper()
+    content = joined[m.end():].strip()
+    return letter, content, is_green
 
 
 def _iter_block_items(document):
@@ -232,6 +378,15 @@ def parse_docx(file_bytes: bytes):
     doc = Document(io.BytesIO(file_bytes))
     document_part = doc.part
 
+    # Ba'zi hujjatlarda variant harflari ("C)", "D)") Word'ning AVTOMATIK
+    # ro'yxat raqamlashi orqali chiziladi va paragraph.text ichida umuman
+    # ko'rinmaydi (masalan "A) 23,3" qo'lda yozilgan, keyingi "C) 69,9" esa
+    # Word ro'yxati bo'lib, faylda faqat "69,9" saqlanadi). Buni oldindan
+    # word/numbering.xml'dan o'qib, har bir shunday paragrafga to'g'ri
+    # harfni qo'lda "tiklab" beramiz.
+    numbering_info = _load_numbering_starts(doc)
+    numid_counters = {}
+
     questions = []
     current = None
     order_counter = 0
@@ -249,16 +404,25 @@ def parse_docx(file_bytes: bytes):
     for block in _iter_block_items(doc):
         if isinstance(block, Table):
             if current is not None:
-                current.has_table = True
-                rows = _table_rows(block)
-                if rows:
-                    if current.table_data is None:
-                        current.table_data = {"tables": []}
-                    current.table_data["tables"].append({"rows": rows})
+                option_from_table = _table_as_single_option(block)
+                if option_from_table and len(current.options) < 4:
+                    letter, content, is_green = option_from_table
+                    current.options[letter] = content
+                    if is_green:
+                        current.green_letter = letter
+                else:
+                    current.has_table = True
+                    rows = _table_rows(block)
+                    if rows:
+                        if current.table_data is None:
+                            current.table_data = {"tables": []}
+                        current.table_data["tables"].append({"rows": rows})
             continue
 
         paragraph = block
-        text = paragraph.text.strip()
+        auto_prefix = _resolve_auto_list_prefix(paragraph, numbering_info, numid_counters)
+        raw_text = paragraph.text.strip()
+        text = (auto_prefix + raw_text).strip() if auto_prefix else raw_text
 
         q_match = QUESTION_RE.match(text) if text else None
         opt_match = OPTION_RE.match(text) if text else None
@@ -275,10 +439,31 @@ def parse_docx(file_bytes: bytes):
                 questions.append(current)
             order_counter += 1
             current = ParsedQuestion(order_counter)
-            current.question_text = q_match.group(2).strip()
+            remainder = q_match.group(2).strip()
+            current.question_text = remainder
             last_confirmed_number = int(q_match.group(1))
-        elif current is not None and opt_match:
-            found = _split_options_with_color(paragraph)
+
+            # Savol raqami bilan BIR QATORDA (masalan "...necha? A) 23,3")
+            # birinchi variant ham boshlanib qolgan bo'lishi mumkin — bunday
+            # holda uni ajratib olib, savol matnini shu belgigacha qisqartiramiz.
+            inline_match = MULTI_OPTION_RE.search(remainder)
+            if inline_match:
+                current.question_text = remainder[:inline_match.start()].strip()
+                inline_found = _split_options_with_color(paragraph, auto_prefix)
+                for letter, info in inline_found.items():
+                    current.options[letter] = info["text"]
+                    if info["green"]:
+                        current.green_letter = letter
+        elif current is not None and (opt_match or MULTI_OPTION_RE.search(text)):
+            # Variant belgisi qatorning BOSHIDA bo'lmasligi ham mumkin —
+            # masalan oldingi izoh matni bilan bir qatorda kelib qolgan
+            # bo'lishi mumkin ("...II-band. A) I-to'g'ri..."). Shunday
+            # holatda belgidan OLDINGI qism savol matniga qo'shiladi.
+            first_match = MULTI_OPTION_RE.search(text)
+            leading_text = text[:first_match.start()].strip() if first_match else ""
+            if leading_text and not current.options:
+                current.question_text = (current.question_text + " " + leading_text).strip()
+            found = _split_options_with_color(paragraph, auto_prefix)
             for letter, info in found.items():
                 current.options[letter] = info["text"]
                 if info["green"]:
