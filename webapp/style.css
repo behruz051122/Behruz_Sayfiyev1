@@ -1,19 +1,24 @@
 * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; }
 
 :root {
-  --bg: #0b0b12;
-  --surface: #15151f;
-  --surface2: #1c1c29;
-  --gold: #d4af37;
-  --gold-light: #f2d675;
+  --bg: #f4f7f9;
+  --surface: #ffffff;
+  --surface2: #eef2f6;
+  --gold: #0f766e;
+  --gold-light: #14b8a6;
   --purple: #7c5cff;
-  --teal: #2dd4bf;
-  --teal-light: #6ee7db;
-  --silver: #c7ccd6;
+  --teal: #16a34a;
+  --teal-light: #4ade80;
+  --silver: #94a3b8;
   --bronze: #cd7f32;
-  --text: #f2f2f5;
-  --text-dim: #9a9aab;
-  --border: #29293a;
+  --text: #0f172a;
+  --text-dim: #64748b;
+  --border: #e3e8ef;
+  --success: #15803d;
+  --warning: #b45309;
+  --danger: #dc2626;
+  --on-accent: #ffffff;
+  --hero-gradient: linear-gradient(135deg, #e8f7f4, #eef1ff);
 }
 
 body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-height: 100vh; }
@@ -25,14 +30,14 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 .topbar {
   display: flex; justify-content: space-between; align-items: center;
   padding: 18px 16px;
-  background: linear-gradient(180deg, #16161f, #0b0b12);
+  background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
 .logo-block { display: flex; align-items: center; gap: 10px; }
 .logo {
   width: 42px; height: 42px;
-  background: linear-gradient(135deg, var(--gold), #a9791b);
-  color: #1a1a1a; border-radius: 12px;
+  background: linear-gradient(135deg, var(--gold), #0b5c56);
+  color: var(--on-accent); border-radius: 12px;
   display: flex; align-items: center; justify-content: center;
   font-weight: 800; font-size: 14px;
 }
@@ -45,7 +50,7 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 
 /* ---------- HOME ---------- */
 
-.hello { margin: 16px; padding: 22px; background: linear-gradient(135deg, #201c10, #171420); border: 1px solid var(--border); border-radius: 18px; }
+.hello { margin: 16px; padding: 22px; background: var(--hero-gradient); border: 1px solid var(--border); border-radius: 18px; }
 .hello-label { color: var(--gold); font-size: 11px; font-weight: 800; letter-spacing: 1.5px; }
 .hello h1 { font-size: 22px; margin: 8px 0 6px; }
 .hello p { color: var(--text-dim); font-size: 13px; line-height: 1.5; }
@@ -79,26 +84,26 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 .filter-row { display: flex; gap: 8px; padding: 0 16px 10px; overflow-x: auto; }
 .filter-row::-webkit-scrollbar { display: none; }
 .filter-chip { flex-shrink: 0; background: var(--surface2); border: 1px solid var(--border); color: var(--text-dim); padding: 8px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
-.filter-chip.active { background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: #1a1a1a; border-color: transparent; }
+.filter-chip.active { background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: var(--on-accent); border-color: transparent; }
 
 /* ---------- COURSE LIST ---------- */
 
 .course-list { margin: 6px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
-.course-card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px; display: flex; gap: 12px; cursor: pointer; }
-.course-card.locked-card { border-color: rgba(212,175,55,0.25); }
-.course-free-tag { position: absolute; top: -8px; left: 12px; background: linear-gradient(135deg, var(--teal-light), var(--teal)); color: #062521; font-size: 9px; font-weight: 800; padding: 3px 10px; border-radius: 20px; letter-spacing: 0.5px; }
+.course-card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px; display: flex; gap: 12px; cursor: pointer; box-shadow: 0 1px 2px rgba(15,23,42,0.04); }
+.course-card.locked-card { border-color: rgba(15,118,110,0.25); }
+.course-free-tag { position: absolute; top: -8px; left: 12px; background: linear-gradient(135deg, var(--teal-light), var(--teal)); color: var(--on-accent); font-size: 9px; font-weight: 800; padding: 3px 10px; border-radius: 20px; letter-spacing: 0.5px; }
 .course-emoji { width: 48px; height: 48px; border-radius: 12px; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
 .course-info { flex: 1; min-width: 0; }
-.course-tag { display: inline-block; font-size: 10px; font-weight: 800; background: rgba(212,175,55,0.15); color: var(--gold); padding: 3px 8px; border-radius: 20px; margin-bottom: 6px; }
+.course-tag { display: inline-block; font-size: 10px; font-weight: 800; background: rgba(15,118,110,0.12); color: var(--gold); padding: 3px 8px; border-radius: 20px; margin-bottom: 6px; }
 .course-title { font-size: 14px; font-weight: 800; margin-bottom: 4px; }
 .course-desc { font-size: 12px; color: var(--text-dim); margin-bottom: 6px; }
 .course-meta { font-size: 11px; color: var(--text-dim); display: flex; gap: 10px; flex-wrap: wrap; }
-.lock-badge { margin-top: 8px; font-size: 11px; font-weight: 700; color: #ffb020; display: flex; align-items: center; gap: 4px; }
-.unlock-badge { margin-top: 8px; font-size: 11px; font-weight: 700; color: var(--teal); }
+.lock-badge { margin-top: 8px; font-size: 11px; font-weight: 700; color: var(--warning); display: flex; align-items: center; gap: 4px; }
+.unlock-badge { margin-top: 8px; font-size: 11px; font-weight: 700; color: var(--success); }
 
 /* ---------- COURSE DETAIL / PARAGRAPHS ---------- */
 
-.detail-hero { margin: 0 16px 12px; padding: 22px; border-radius: 18px; background: linear-gradient(135deg, #201c10, #171420); border: 1px solid var(--border); }
+.detail-hero { margin: 0 16px 12px; padding: 22px; border-radius: 18px; background: var(--hero-gradient); border: 1px solid var(--border); }
 .detail-hero .course-tag { margin-bottom: 10px; }
 .detail-hero h1 { font-size: 20px; margin-bottom: 6px; }
 .detail-hero p { color: var(--text-dim); font-size: 13px; line-height: 1.5; }
@@ -108,7 +113,7 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 .stat-box .num { font-size: 16px; font-weight: 800; color: var(--gold); }
 .stat-box .lbl { font-size: 10px; color: var(--text-dim); margin-top: 3px; }
 
-.grace-banner { margin: 0 16px 16px; padding: 12px 14px; border-radius: 12px; background: rgba(255,176,32,0.12); border: 1px solid rgba(255,176,32,0.35); color: #ffb020; font-size: 12px; font-weight: 700; line-height: 1.5; }
+.grace-banner { margin: 0 16px 16px; padding: 12px 14px; border-radius: 12px; background: rgba(180,83,9,0.1); border: 1px solid rgba(180,83,9,0.3); color: var(--warning); font-size: 12px; font-weight: 700; line-height: 1.5; }
 
 .paragraph-list { margin: 0 16px; display: flex; flex-direction: column; gap: 10px; }
 .paragraph-item { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; cursor: pointer; }
@@ -120,11 +125,11 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 .lesson-list { margin: 0 16px; display: flex; flex-direction: column; gap: 10px; }
 .lesson-item { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; cursor: pointer; }
 .lesson-num { width: 30px; height: 30px; border-radius: 8px; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: var(--gold); flex-shrink: 0; }
-.lesson-num.watched { background: rgba(45,212,191,0.15); color: var(--teal); }
+.lesson-num.watched { background: rgba(22,163,74,0.15); color: var(--success); }
 .lesson-title { font-size: 13px; font-weight: 700; flex: 1; }
 .lesson-play { color: var(--gold); font-size: 18px; }
 
-.watched-confirmed { text-align: center; padding: 12px; border-radius: 12px; background: rgba(45,212,191,0.12); border: 1px solid rgba(45,212,191,0.35); color: var(--teal); font-weight: 700; font-size: 13px; }
+.watched-confirmed { text-align: center; padding: 12px; border-radius: 12px; background: rgba(22,163,74,0.1); border: 1px solid rgba(22,163,74,0.3); color: var(--success); font-weight: 700; font-size: 13px; }
 
 /* ---------- Dars navigatsiyasi (oldingi / keyingi / ro'yxat) ---------- */
 
@@ -150,43 +155,43 @@ body.no-scroll { overflow: hidden; }
 .video-fallback { margin: -8px 16px 16px; font-size: 11px; color: var(--text-dim); text-align: center; }
 .video-fallback a { color: var(--gold); font-weight: 700; }
 
-.locked-box { margin: 0 16px; padding: 26px 22px; border-radius: 18px; background: var(--surface); border: 1px dashed rgba(212,175,55,0.4); text-align: center; }
+.locked-box { margin: 0 16px; padding: 26px 22px; border-radius: 18px; background: var(--surface); border: 1px dashed rgba(15,118,110,0.4); text-align: center; }
 .locked-box .lock-emoji { font-size: 36px; margin-bottom: 10px; }
 .locked-box h3 { font-size: 16px; margin-bottom: 6px; }
 .locked-box p { color: var(--text-dim); font-size: 13px; margin-bottom: 16px; line-height: 1.5; }
 .locked-box .progress-text { font-weight: 800; color: var(--gold); margin-bottom: 14px; font-size: 14px; }
 
-.gold-btn { background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: #1a1a1a; border: none; border-radius: 12px; padding: 12px 20px; font-weight: 800; font-size: 13px; cursor: pointer; width: 100%; }
+.gold-btn { background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: var(--on-accent); border: none; border-radius: 12px; padding: 12px 20px; font-weight: 800; font-size: 13px; cursor: pointer; width: 100%; }
 .gold-btn.small { width: auto; padding: 9px 14px; font-size: 12px; }
 .gold-btn:disabled { opacity: 0.6; }
 
 /* ---------- REFERRAL ---------- */
 
-.referral-box { margin: 0 16px; padding: 26px 22px; border-radius: 18px; background: linear-gradient(135deg, #201c10, #171420); border: 1px solid var(--border); text-align: center; }
+.referral-box { margin: 0 16px; padding: 26px 22px; border-radius: 18px; background: var(--hero-gradient); border: 1px solid var(--border); text-align: center; }
 .referral-icon { font-size: 42px; margin-bottom: 10px; }
 .referral-hook { font-size: 16px; font-weight: 800; margin-bottom: 10px; }
 .referral-box p { color: var(--text-dim); font-size: 13px; line-height: 1.5; margin-bottom: 18px; }
-.referral-count-box { margin: 0 auto 18px; width: 120px; height: 120px; border-radius: 50%; background: radial-gradient(circle, rgba(212,175,55,0.15), transparent 70%); border: 2px solid var(--gold); display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.referral-count-box { margin: 0 auto 18px; width: 120px; height: 120px; border-radius: 50%; background: radial-gradient(circle, rgba(15,118,110,0.15), transparent 70%); border: 2px solid var(--gold); display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .referral-count-num { font-size: 34px; font-weight: 800; color: var(--gold); }
 .referral-count-label { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
 .referral-link-box { display: flex; gap: 8px; margin-bottom: 14px; }
 .referral-link-box input { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; color: var(--text); font-size: 11px; }
 .referral-link-box button { background: var(--surface2); border: 1px solid var(--border); color: var(--gold); border-radius: 10px; padding: 10px 14px; font-size: 12px; font-weight: 700; cursor: pointer; }
-.share-btn { width: 100%; background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: #1a1a1a; border: none; border-radius: 12px; padding: 13px; font-weight: 800; font-size: 13px; cursor: pointer; }
+.share-btn { width: 100%; background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: var(--on-accent); border: none; border-radius: 12px; padding: 13px; font-weight: 800; font-size: 13px; cursor: pointer; }
 .referral-friends { margin-top: 18px; display: flex; flex-direction: column; gap: 8px; text-align: left; }
 .referral-friend-row { display: flex; justify-content: space-between; align-items: center; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 12px; }
-.referral-friend-row .status-yes { color: var(--teal); font-weight: 700; font-size: 11px; }
+.referral-friend-row .status-yes { color: var(--success); font-weight: 700; font-size: 11px; }
 .referral-friend-row .status-no { color: var(--text-dim); font-weight: 700; font-size: 11px; }
 
 /* ---------- LEADERBOARD (Natijalar) ---------- */
 
-.my-rank-box { margin: 16px; padding: 20px; border-radius: 16px; background: linear-gradient(135deg, #201c10, #171420); border: 1px solid var(--border); text-align: center; }
+.my-rank-box { margin: 16px; padding: 20px; border-radius: 16px; background: var(--hero-gradient); border: 1px solid var(--border); text-align: center; }
 .my-rank-label { font-size: 11px; color: var(--text-dim); font-weight: 700; letter-spacing: 1px; }
 .my-rank-num { font-size: 30px; font-weight: 800; color: var(--gold); margin-top: 4px; }
 
 .leaderboard-list { margin: 0 16px 16px; display: flex; flex-direction: column; gap: 8px; }
 .leaderboard-row { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
-.leaderboard-row.top-rank { border-color: rgba(212,175,55,0.4); background: linear-gradient(135deg, rgba(212,175,55,0.08), var(--surface)); }
+.leaderboard-row.top-rank { border-color: rgba(15,118,110,0.4); background: linear-gradient(135deg, rgba(15,118,110,0.08), var(--surface)); }
 .rank-num { width: 26px; text-align: center; font-weight: 800; color: var(--text-dim); font-size: 13px; }
 .rank-medal { width: 26px; text-align: center; font-size: 18px; }
 .lb-name { flex: 1; font-size: 13px; font-weight: 700; }
@@ -194,8 +199,8 @@ body.no-scroll { overflow: hidden; }
 
 /* ---------- PROFIL ---------- */
 
-.profile-card { margin: 16px; padding: 24px; border-radius: 18px; background: linear-gradient(135deg, #201c10, #171420); border: 1px solid var(--border); text-align: center; }
-.profile-avatar { width: 64px; height: 64px; border-radius: 50%; background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: #1a1a1a; font-size: 26px; font-weight: 800; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; }
+.profile-card { margin: 16px; padding: 24px; border-radius: 18px; background: var(--hero-gradient); border: 1px solid var(--border); text-align: center; }
+.profile-avatar { width: 64px; height: 64px; border-radius: 50%; background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: var(--on-accent); font-size: 26px; font-weight: 800; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; }
 .profile-name { font-size: 17px; font-weight: 800; }
 .profile-id { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
 .profile-stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 18px; }
@@ -224,7 +229,7 @@ body.no-scroll { overflow: hidden; }
 .admin-row .info .s { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
 .admin-row .row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .admin-row button { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 6px 9px; border-radius: 7px; font-size: 10px; cursor: pointer; }
-.admin-row button.danger { color: #ff6b6b; }
+.admin-row button.danger { color: var(--danger); }
 .admin-form { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
 .admin-form label { font-size: 11px; color: var(--text-dim); display: flex; flex-direction: column; gap: 5px; }
 .admin-form input, .admin-form select, .admin-form textarea { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 10px; border-radius: 8px; font-size: 13px; font-family: inherit; }
@@ -248,13 +253,14 @@ body.no-scroll { overflow: hidden; }
 .test-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
   padding: 16px; cursor: pointer; display: flex; flex-direction: column; gap: 10px;
+  box-shadow: 0 1px 2px rgba(15,23,42,0.04);
 }
 .test-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .test-card-title { font-size: 14px; font-weight: 800; flex: 1; }
 .difficulty-badge { font-size: 10px; font-weight: 800; padding: 4px 10px; border-radius: 20px; white-space: nowrap; }
-.difficulty-oson { background: rgba(45,212,191,0.15); color: var(--teal); }
-.difficulty-orta { background: rgba(255,176,32,0.15); color: #ffb020; }
-.difficulty-qiyin { background: rgba(255,107,107,0.15); color: #ff6b6b; }
+.difficulty-oson { background: rgba(22,163,74,0.15); color: var(--success); }
+.difficulty-orta { background: rgba(180,83,9,0.15); color: var(--warning); }
+.difficulty-qiyin { background: rgba(220,38,38,0.12); color: var(--danger); }
 .test-card-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text-dim); }
 .test-card-best { font-size: 11px; font-weight: 700; color: var(--gold); }
 
@@ -270,13 +276,13 @@ body.no-scroll { overflow: hidden; }
 
 /* ---------- Test tafsiloti (boshlashdan oldin) ---------- */
 
-.test-detail-hero { margin: 0 16px 16px; padding: 22px; border-radius: 18px; background: linear-gradient(135deg, #201c10, #171420); border: 1px solid var(--border); text-align: center; }
+.test-detail-hero { margin: 0 16px 16px; padding: 22px; border-radius: 18px; background: var(--hero-gradient); border: 1px solid var(--border); text-align: center; }
 .test-detail-hero h1 { font-size: 19px; margin: 10px 0 14px; }
 .test-detail-stats { display: flex; justify-content: center; gap: 22px; margin-bottom: 6px; }
 .test-detail-stat { text-align: center; }
 .test-detail-stat .num { font-size: 17px; font-weight: 800; color: var(--gold); }
 .test-detail-stat .lbl { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
-.test-detail-prev-best { margin: 0 16px 16px; padding: 12px 14px; border-radius: 12px; background: rgba(212,175,55,0.1); border: 1px solid rgba(212,175,55,0.3); color: var(--gold); font-size: 12px; font-weight: 700; text-align: center; }
+.test-detail-prev-best { margin: 0 16px 16px; padding: 12px 14px; border-radius: 12px; background: rgba(15,118,110,0.08); border: 1px solid rgba(15,118,110,0.25); color: var(--gold); font-size: 12px; font-weight: 700; text-align: center; }
 .test-detail-actions { margin: 0 16px; display: flex; flex-direction: column; gap: 10px; }
 
 /* ---------- Test topshirish jarayoni ---------- */
@@ -289,7 +295,7 @@ body.no-scroll { overflow: hidden; }
 .test-progress-bar { flex: 1; height: 8px; border-radius: 6px; background: var(--surface2); overflow: hidden; }
 .test-progress-fill { height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold-light)); border-radius: 6px; transition: width 0.3s ease; }
 .test-timer { flex-shrink: 0; font-size: 13px; font-weight: 800; color: var(--gold); min-width: 46px; text-align: right; font-variant-numeric: tabular-nums; }
-.test-timer.timer-warning { color: #ff6b6b; animation: timerPulse 1s infinite; }
+.test-timer.timer-warning { color: var(--danger); animation: timerPulse 1s infinite; }
 @keyframes timerPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
 .question-counter { margin: 16px 16px 10px; font-size: 11px; font-weight: 700; color: var(--text-dim); letter-spacing: 0.5px; }
@@ -306,23 +312,23 @@ body.no-scroll { overflow: hidden; }
 .option-letter { width: 26px; height: 26px; border-radius: 8px; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: var(--text-dim); flex-shrink: 0; }
 .option-btn:disabled { cursor: default; }
 .option-btn.option-selected { border-color: var(--gold); }
-.option-btn.option-correct { border-color: var(--teal); background: rgba(45,212,191,0.1); }
-.option-btn.option-correct .option-letter { background: var(--teal); color: #062521; }
-.option-btn.option-wrong { border-color: #ff6b6b; background: rgba(255,107,107,0.1); }
-.option-btn.option-wrong .option-letter { background: #ff6b6b; color: #2a0a0a; }
+.option-btn.option-correct { border-color: var(--teal); background: rgba(22,163,74,0.08); }
+.option-btn.option-correct .option-letter { background: var(--teal); color: var(--on-accent); }
+.option-btn.option-wrong { border-color: var(--danger); background: rgba(220,38,38,0.08); }
+.option-btn.option-wrong .option-letter { background: var(--danger); color: var(--on-accent); }
 .option-btn.option-dim { opacity: 0.45; }
 
 .next-question-wrap { margin: 18px 16px; }
 .answer-feedback { margin: 0 16px 14px; padding: 10px 14px; border-radius: 12px; font-size: 12px; font-weight: 800; text-align: center; }
-.answer-feedback.feedback-correct { background: rgba(45,212,191,0.12); color: var(--teal); border: 1px solid rgba(45,212,191,0.35); }
-.answer-feedback.feedback-wrong { background: rgba(255,107,107,0.12); color: #ff6b6b; border: 1px solid rgba(255,107,107,0.35); }
+.answer-feedback.feedback-correct { background: rgba(22,163,74,0.1); color: var(--success); border: 1px solid rgba(22,163,74,0.3); }
+.answer-feedback.feedback-wrong { background: rgba(220,38,38,0.1); color: var(--danger); border: 1px solid rgba(220,38,38,0.3); }
 
 /* ---------- Test natijasi ---------- */
 
 .test-result-content { padding: 30px 20px; text-align: center; }
 .result-score-circle {
   width: 150px; height: 150px; border-radius: 50%; margin: 0 auto 20px;
-  background: radial-gradient(circle, rgba(212,175,55,0.15), transparent 70%);
+  background: radial-gradient(circle, rgba(15,118,110,0.15), transparent 70%);
   border: 3px solid var(--gold); display: flex; flex-direction: column; align-items: center; justify-content: center;
 }
 .result-score-circle .score-num { font-size: 34px; font-weight: 800; color: var(--gold); }
@@ -385,7 +391,7 @@ a:focus-visible {
 /* ---------- Skeleton (yuklanish) animatsiyasi ---------- */
 
 .skeleton-shimmer {
-  background: linear-gradient(90deg, var(--surface2) 25%, rgba(255,255,255,0.07) 37%, var(--surface2) 63%);
+  background: linear-gradient(90deg, var(--surface2) 25%, rgba(15,23,42,0.06) 37%, var(--surface2) 63%);
   background-size: 400% 100%;
   animation: skeletonMove 1.4s ease infinite;
   border-radius: 8px;
@@ -413,17 +419,18 @@ a:focus-visible {
 /* ---------- Desktop uchun to'liq moslashuvchan (responsive) tuzilma ---------- */
 /* Kompyuterda (Telegram Desktop yoki brauzerda) ochilganda, ilova endi
    "telefon oynasi" bo'lib qolmaydi — chap tomonda doimiy sidebar navigatsiya
-   paydo bo'ladi, kontent esa o'qish uchun qulay kenglikda markazlashadi,
-   kurslar/testlar ro'yxati esa keng ekranda bir nechta ustunga bo'linadi.
-   Bu — zamonaviy veb-ilovalar (Notion, Linear, Slack) qo'llaydigan andoza. */
+   paydo bo'ladi, kontent esa ekran kengligiga qarab o'sadigan (lekin juda
+   uzun qatorlar hosil qilmaydigan) keng ustunda joylashadi, kurslar/testlar
+   ro'yxati esa keng ekranda bir nechta ustunga bo'linadi. Bu — zamonaviy
+   veb-ilovalar (Notion, Linear, Slack) qo'llaydigan andoza. */
 
 @media (min-width: 900px) {
-  html { background: #06060a; }
+  html { background: #e9edf2; }
 
   body { padding-bottom: 40px; padding-left: 248px; }
 
   .topbar, #app {
-    max-width: 760px;
+    max-width: 1120px;
     margin-left: auto;
     margin-right: auto;
   }
@@ -457,7 +464,7 @@ a:focus-visible {
   }
   .nav-item span { font-size: 13px; font-weight: 700; }
   .nav-item:hover { background: var(--surface2); }
-  .nav-item.active { background: rgba(212, 175, 55, 0.12); }
+  .nav-item.active { background: rgba(15, 118, 110, 0.12); }
 
   /* Ro'yxatlar keng ekranda bir nechta ustunga bo'linadi */
   .course-list, .test-list {
@@ -468,11 +475,11 @@ a:focus-visible {
 
   /* Video kattaroq, lekin o'qishga qulay kenglikda markazlashgan */
   .video-wrap {
-    max-width: 720px;
+    max-width: 860px;
     margin-left: auto;
     margin-right: auto;
   }
-  .video-fallback { max-width: 720px; margin-left: auto; margin-right: auto; }
+  .video-fallback { max-width: 860px; margin-left: auto; margin-right: auto; }
 }
 
 
@@ -507,14 +514,14 @@ a:focus-visible {
 
 .tab-row { display: flex; gap: 8px; margin: 0 16px 14px; background: var(--surface2); border-radius: 12px; padding: 4px; }
 .tab-btn { flex: 1; background: none; border: none; color: var(--text-dim); padding: 10px 8px; border-radius: 9px; font-size: 12px; font-weight: 700; cursor: pointer; }
-.tab-btn.active { background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: #1a1a1a; }
+.tab-btn.active { background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: var(--on-accent); }
 
 .simulator-intro { margin: 0 16px 14px; font-size: 12px; color: var(--text-dim); line-height: 1.5; }
 
 /* ---------- Simulyator kartasi (test-card bilan bir xil bazaviy uslub, qo'shimchalar) ---------- */
 
 .simulator-subjects-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
-.simulator-subject-chip { font-size: 10px; font-weight: 700; background: rgba(124,92,255,0.15); color: var(--purple); padding: 4px 9px; border-radius: 20px; }
+.simulator-subject-chip { font-size: 10px; font-weight: 700; background: rgba(124,92,255,0.12); color: var(--purple); padding: 4px 9px; border-radius: 20px; }
 
 /* ---------- Natijalar dinamikasi grafigi ---------- */
 
@@ -536,30 +543,30 @@ a:focus-visible {
 .checkbox-label input[type="checkbox"] { width: 18px; height: 18px; margin-top: 2px; flex-shrink: 0; accent-color: var(--gold); }
 .checkbox-label span { font-size: 12px; color: var(--text); line-height: 1.4; }
 
-.control-badge { display: inline-block; font-size: 9px; font-weight: 800; background: rgba(124,92,255,0.18); color: var(--purple); padding: 2px 8px; border-radius: 20px; margin-left: 6px; vertical-align: middle; }
+.control-badge { display: inline-block; font-size: 9px; font-weight: 800; background: rgba(124,92,255,0.15); color: var(--purple); padding: 2px 8px; border-radius: 20px; margin-left: 6px; vertical-align: middle; }
 
 /* ---------- Nazorat testi kartasi: qulflangan holat ---------- */
 
-.control-locked-note { font-size: 11px; font-weight: 700; color: #ffb020; margin-top: 6px; }
+.control-locked-note { font-size: 11px; font-weight: 700; color: var(--warning); margin-top: 6px; }
 
 /* ---------- Nazorat testi natija ekrani (savollar to'ri/noto'g'ri jadvali) ---------- */
 
 .control-result-stats-row { display: flex; gap: 10px; margin: 20px 16px; }
 .control-stat { flex: 1; background: var(--surface2); border-radius: 14px; padding: 14px 8px; text-align: center; }
 .control-stat .num { font-size: 20px; font-weight: 800; }
-.control-stat.correct .num { color: var(--teal); }
-.control-stat.wrong .num { color: #ff6b6b; }
+.control-stat.correct .num { color: var(--success); }
+.control-stat.wrong .num { color: var(--danger); }
 .control-stat .lbl { font-size: 10px; color: var(--text-dim); margin-top: 4px; }
 
 .control-grid-title { margin: 0 16px 10px; font-size: 13px; font-weight: 800; color: var(--text-dim); }
 .control-answers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)); gap: 8px; margin: 0 16px 22px; }
 .control-grid-cell { aspect-ratio: 1; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; }
-.control-grid-cell.correct { background: var(--teal); color: #062521; }
-.control-grid-cell.wrong { background: #ff6b6b; color: #2a0a0a; }
+.control-grid-cell.correct { background: var(--teal); color: var(--on-accent); }
+.control-grid-cell.wrong { background: var(--danger); color: var(--on-accent); }
 
 /* Nazorat testida javob tanlanganda (to'g'ri/noto'g'ri OSHKOR QILINMAYDI, faqat tanlanган belgisi) */
-.option-btn.option-selected-neutral { border-color: var(--gold); background: rgba(212,175,55,0.08); }
-.option-btn.option-selected-neutral .option-letter { background: var(--gold); color: #1a1a1a; }
+.option-btn.option-selected-neutral { border-color: var(--gold); background: rgba(15,118,110,0.06); }
+.option-btn.option-selected-neutral .option-letter { background: var(--gold); color: var(--on-accent); }
 
 /* ---------- Nazorat reytingi (leaderboard) ---------- */
 

@@ -305,10 +305,14 @@ function playLesson(lesson) {
           <button class="gold-btn" id="openYoutubeBtn">▶ YouTube'da ochish</button>
         </div>`;
     } else {
-      const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1&playsinline=1`;
+      // fs=0 — YouTube pleyerining o'z fullscreen tugmasini yashiradi. Bu
+      // tugma Telegram ichida (ayniqsa mobil ilovada) ishlamaydi va faqat
+      // chalkashlik keltirib chiqarardi — endi pastdagi bizning ⛶ tugmamiz
+      // (haqiqatan ishlaydigan CSS-asosli fullscreen) yagona variant bo'ladi.
+      const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1&playsinline=1&fs=0`;
       videoHtml = `
         <div class="video-wrap" id="videoWrap">
-          <iframe src="${embedUrl}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen></iframe>
+          <iframe src="${embedUrl}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" ></iframe>
           <button class="fullscreen-btn" id="fullscreenBtn">⛶</button>
         </div>
         <div class="video-fallback">Video ochilmayaptimi? <a href="${url}" target="_blank" rel="noopener">To'g'ridan-to'g'ri YouTube'da ochish</a></div>`;
