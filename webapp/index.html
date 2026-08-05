@@ -143,13 +143,46 @@
       </div>
       <button id="myResultsBtn" class="results-link-btn">📊 Mening natijalarim ›</button>
 
-      <div class="tab-row" id="testsTabRow">
+      <!-- Test turi tanlash (landing) -->
+      <div id="testsCategoryLanding" class="dashboard-grid">
+        <button class="dashboard-card" data-testtab="tests">
+          <div class="dc-icon dc-blue">📝</div>
+          <div class="dc-title">Mavzuli test</div>
+          <div class="dc-sub">FAN · MAVZU BO'YICHA</div>
+          <div class="dc-arrow">›</div>
+        </button>
+        <button class="dashboard-card" data-testtab="simulator">
+          <div class="dc-icon dc-teal">🎯</div>
+          <div class="dc-title">DTM Simulyatori</div>
+          <div class="dc-sub">TO'LIQ IMTIHON OQIMI</div>
+          <div class="dc-arrow">›</div>
+        </button>
+        <button class="dashboard-card" data-testtab="control">
+          <div class="dc-icon dc-purple">🎓</div>
+          <div class="dc-title">Nazorat testi</div>
+          <div class="dc-sub">O'QITUVCHI BERGAN</div>
+          <div class="dc-arrow">›</div>
+        </button>
+        <button class="dashboard-card dashboard-card-disabled" disabled>
+          <div class="dc-icon dc-gold">🏅</div>
+          <div class="dc-title">Milliy sertifikat</div>
+          <div class="dc-sub">TEZ ORADA</div>
+        </button>
+        <button class="dashboard-card dashboard-card-disabled" disabled>
+          <div class="dc-icon dc-cyan">📋</div>
+          <div class="dc-title">Attestatsiya</div>
+          <div class="dc-sub">TEZ ORADA</div>
+        </button>
+      </div>
+
+      <button class="results-link-btn hidden" id="testsBackToLandingBtn">‹ Test turlariga qaytish</button>
+      <div class="tab-row hidden" id="testsTabRow">
         <button class="tab-btn active" id="tabBtnTests" data-testtab="tests">📝 Testlar</button>
         <button class="tab-btn" id="tabBtnSimulator" data-testtab="simulator">🎯 Simulyator</button>
         <button class="tab-btn" id="tabBtnControl" data-testtab="control">🎓 Nazorat</button>
       </div>
 
-      <div id="testsTabContent">
+      <div id="testsTabContent" class="hidden">
         <div class="search-box">
           <span class="search-icon" aria-hidden="true">🔍</span>
           <input type="search" id="testSearchInput" class="search-input" placeholder="Test qidirish..." aria-label="Test qidirish">
@@ -238,7 +271,14 @@
       </div>
 
       <div id="coinLbTabContent">
+        <div class="period-filter-row" id="lbPeriodRow">
+          <button class="filter-chip" data-period="week">Haftalik</button>
+          <button class="filter-chip" data-period="month">Oylik</button>
+          <button class="filter-chip active" data-period="all">Butun davr</button>
+        </div>
         <div id="myRankBox" class="my-rank-box"></div>
+        <div id="lbPodium" class="lb-podium"></div>
+        <div class="lb-list-label" id="lbListLabel">Reyting jadvali</div>
         <div id="leaderboardList" class="leaderboard-list"></div>
       </div>
 

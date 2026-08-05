@@ -35,14 +35,36 @@ export function resetTestState() {
   currentAttempt = null;
   activeTestSubjectFilter = "Hammasi";
   testSearchQuery = "";
-  activeTestsTab = "tests";
   const searchInput = document.getElementById("testSearchInput");
   if (searchInput) searchInput.value = "";
-  switchTestsTab("tests");
+  showTestsLanding();
 }
 
 function attemptApiBase() {
   return currentAttempt.mode === "simulator" ? "/api/simulator/attempt" : "/api/attempt";
+}
+
+// ================================================================
+// TEST TURI TANLASH (landing) — Testlar ekrani avval 5 ta kategoriya
+// kartasini ko'rsatadi (Mavzuli test, DTM Simulyatori, Nazorat testi va
+// hozircha "tez orada" bo'lgan Milliy sertifikat/Attestatsiya), tanlangan
+// kategoriya esa mavjud tab-larni (Testlar/Simulyator/Nazorat) ochadi.
+// ================================================================
+
+function showTestsLanding() {
+  document.getElementById("testsCategoryLanding").classList.remove("hidden");
+  document.getElementById("testsBackToLandingBtn").classList.add("hidden");
+  document.getElementById("testsTabRow").classList.add("hidden");
+  document.getElementById("testsTabContent").classList.add("hidden");
+  document.getElementById("simulatorTabContent").classList.add("hidden");
+  document.getElementById("controlTabContent").classList.add("hidden");
+}
+
+function openTestsCategory(tab) {
+  document.getElementById("testsCategoryLanding").classList.add("hidden");
+  document.getElementById("testsBackToLandingBtn").classList.remove("hidden");
+  document.getElementById("testsTabRow").classList.remove("hidden");
+  switchTestsTab(tab);
 }
 
 // ================================================================
@@ -759,6 +781,11 @@ function buildResultRow(title, bestScore, totalQuestions) {
 
 export function initTestsModule() {
   document.getElementById("myResultsBtn").addEventListener("click", loadMyResults);
+
+  document.querySelectorAll("#testsCategoryLanding [data-testtab]").forEach(btn => {
+    btn.addEventListener("click", () => openTestsCategory(btn.getAttribute("data-testtab")));
+  });
+  document.getElementById("testsBackToLandingBtn").addEventListener("click", showTestsLanding);
 
   document.getElementById("tabBtnTests").addEventListener("click", () => switchTestsTab("tests"));
   document.getElementById("tabBtnSimulator").addEventListener("click", () => switchTestsTab("simulator"));

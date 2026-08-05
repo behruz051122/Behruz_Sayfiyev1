@@ -354,6 +354,22 @@ def init_db():
                 VALUES (?, ?, ?, ?, 1, ?)
             """, (card_key, title, subtitle, icon, order_num))
 
+        # Coin berilgan har bir hodisaning VAQT tarixi — Reyting bo'limida
+        # "Haftalik"/"Oylik" davr bo'yicha reyting hisoblash uchun kerak
+        # (batafsili izoh add_coins() ichida).
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS coin_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                amount INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_coin_history_telegram_created
+            ON coin_history(telegram_id, created_at)
+        """)
+
         conn.commit()
     print("Baza tayyor (v5 — DTM simulyatori bilan): users, courses, paragraphs, lessons, "
           "lesson_progress, enrollments, referrals, tests, simulators.")
@@ -453,6 +469,15 @@ def add_coins(telegram_id: int, amount: int = 1):
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("UPDATE users SET coins = coins + ? WHERE telegram_id = ?", (amount, telegram_id))
+        # Har bir coin berilishini VAQTI bilan birga alohida yozib boramiz
+        # ("umumiy hisob"dan farqli) — shu orqali Reyting bo'limida
+        # "Haftalik"/"Oylik" kabi DAVR bo'yicha reyting hisoblash mumkin
+        # bo'ladi (users.coins faqat "Butun davr" umumiy yig'indisini bilar
+        # edi, qachon berilganini bilmasdi).
+        cur.execute(
+            "INSERT INTO coin_history (telegram_id, amount) VALUES (?, ?)",
+            (telegram_id, amount)
+        )
         conn.commit()
 
 
@@ -904,19 +929,61 @@ def compute_course_access(telegram_id: int, course: dict):
 
 # ---------- LEADERBOARD ----------
 
-def get_leaderboard(limit: int = 100):
+# "Haftalik" — so'nggi 7 kun (aylanma oyna), "Oylik" — joriy oyning 1-kunidan
+# beri (taqvim oyi, nazorat testi oylik reytingi bilan bir xil mantiq).
+# "Butun davr" uchun users.coins jadvalidagi UMUMIY yig'indi ishlatiladi —
+# chunki coin_history faqat shu funksiya qo'shilgan kundan boshlab yozib
+# borilyapti, undan oldingi coinlar tarixda "yo'qolib qolmasin" uchun.
+_PERIOD_SQL_FILTERS = {
+    "week": "created_at >= datetime('now', '-7 days')",
+    "month": "created_at >= datetime('now', 'start of month')",
+}
+
+
+def get_leaderboard(limit: int = 100, period: str = "all"):
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("""
-            SELECT telegram_id, first_name, coins FROM users
-            WHERE coins > 0 ORDER BY coins DESC, id ASC LIMIT ?
-        """, (limit,))
+        if period in _PERIOD_SQL_FILTERS:
+            cur.execute(f"""
+                SELECT u.telegram_id, u.first_name, COALESCE(SUM(ch.amount), 0) as coins
+                FROM coin_history ch
+                JOIN users u ON u.telegram_id = ch.telegram_id
+                WHERE ch.{_PERIOD_SQL_FILTERS[period]}
+                GROUP BY u.telegram_id
+                HAVING coins > 0
+                ORDER BY coins DESC, u.id ASC
+                LIMIT ?
+            """, (limit,))
+        else:
+            cur.execute("""
+                SELECT telegram_id, first_name, coins FROM users
+                WHERE coins > 0 ORDER BY coins DESC, id ASC LIMIT ?
+            """, (limit,))
         return [dict(r) for r in cur.fetchall()]
 
 
-def get_user_rank(telegram_id: int):
+def get_user_rank(telegram_id: int, period: str = "all"):
     with get_connection() as conn:
         cur = conn.cursor()
+        if period in _PERIOD_SQL_FILTERS:
+            cur.execute(f"""
+                SELECT COALESCE(SUM(amount), 0) as coins FROM coin_history
+                WHERE telegram_id = ? AND {_PERIOD_SQL_FILTERS[period]}
+            """, (telegram_id,))
+            row = cur.fetchone()
+            my_coins = row["coins"] if row else 0
+            if my_coins <= 0:
+                return None
+            cur.execute(f"""
+                SELECT COUNT(*) as c FROM (
+                    SELECT telegram_id, SUM(amount) as total FROM coin_history
+                    WHERE {_PERIOD_SQL_FILTERS[period]}
+                    GROUP BY telegram_id
+                    HAVING total > ?
+                )
+            """, (my_coins,))
+            return cur.fetchone()["c"] + 1
+
         cur.execute("SELECT coins FROM users WHERE telegram_id = ?", (telegram_id,))
         row = cur.fetchone()
         if not row:

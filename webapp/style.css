@@ -75,6 +75,8 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 .dc-title { font-weight: 800; font-size: 14px; color: var(--text); line-height: 1.3; }
 .dc-sub { font-size: 9px; font-weight: 700; letter-spacing: 0.6px; color: var(--text-dim); text-transform: uppercase; }
 .dc-arrow { position: absolute; top: 14px; right: 14px; color: var(--text-dim); font-size: 16px; }
+.dashboard-card-disabled { cursor: default; opacity: 0.55; }
+.dashboard-card-disabled .dc-icon { filter: grayscale(0.3); }
 
 .banner-cards { margin: 16px; display: flex; flex-direction: column; gap: 14px; }
 .banner-card {
@@ -205,6 +207,23 @@ body.no-scroll { overflow: hidden; }
 .referral-friend-row .status-no { color: var(--text-dim); font-weight: 700; font-size: 11px; }
 
 /* ---------- LEADERBOARD (Natijalar) ---------- */
+
+.period-filter-row { display: flex; gap: 8px; padding: 14px 16px 0; }
+
+.lb-podium { display: flex; align-items: flex-end; justify-content: center; gap: 10px; margin: 4px 16px 18px; }
+.podium-slot { flex: 1; max-width: 110px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.podium-avatar { width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 17px; color: #fff; margin-bottom: 8px; }
+.podium-1 .podium-avatar { width: 62px; height: 62px; font-size: 21px; background: linear-gradient(135deg, #fde68a, var(--gold)); }
+.podium-2 .podium-avatar { background: linear-gradient(135deg, #cbd5e1, var(--silver)); }
+.podium-3 .podium-avatar { background: linear-gradient(135deg, #f0c9a0, var(--bronze)); }
+.podium-crown { font-size: 18px; margin-bottom: 2px; }
+.podium-name { font-size: 12px; font-weight: 700; color: var(--text); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.podium-coins { font-size: 11px; color: var(--text-dim); margin-bottom: 8px; }
+.podium-bar { width: 100%; border-radius: 10px 10px 0 0; display: flex; align-items: flex-start; justify-content: center; padding-top: 6px; font-weight: 800; color: #fff; font-size: 13px; }
+.podium-bar-1 { height: 62px; background: linear-gradient(180deg, var(--gold-light), var(--gold)); }
+.podium-bar-2 { height: 44px; background: linear-gradient(180deg, #cbd5e1, var(--silver)); }
+.podium-bar-3 { height: 32px; background: linear-gradient(180deg, #f0c9a0, var(--bronze)); }
+.lb-list-label { margin: 0 16px 8px; font-size: 11px; font-weight: 800; letter-spacing: 1px; color: var(--text-dim); text-transform: uppercase; }
 
 .my-rank-box { margin: 16px; padding: 20px; border-radius: 16px; background: var(--hero-gradient); border: 1px solid var(--border); text-align: center; }
 .my-rank-label { font-size: 11px; color: var(--text-dim); font-weight: 700; letter-spacing: 1px; }

@@ -14,31 +14,70 @@ function formatAvgTime(totalSeconds) {
   return `${m}:${String(rem).padStart(2, "0")}`;
 }
 
-export async function loadLeaderboard() {
+let activeLbPeriod = "all";
+
+function initialLetter(name) {
+  return (name || "?").trim().charAt(0).toUpperCase() || "?";
+}
+
+function renderPodium(top3) {
+  const podium = document.getElementById("lbPodium");
+  if (!top3 || top3.length === 0) {
+    podium.innerHTML = "";
+    return;
+  }
+  // Vizual tartib: 2-o'rin | 1-o'rin (markazda, eng baland) | 3-o'rin —
+  // klassik "sovrinlar taxti" (podium) ko'rinishi.
+  const order = [top3[1], top3[0], top3[2]];
+  const ranks = [2, 1, 3];
+  podium.innerHTML = order.map((u, i) => {
+    if (!u) return `<div class="podium-slot"></div>`;
+    const rank = ranks[i];
+    return `
+      <div class="podium-slot podium-${rank}">
+        ${rank === 1 ? `<div class="podium-crown">👑</div>` : ""}
+        <div class="podium-avatar">${initialLetter(u.first_name)}</div>
+        <div class="podium-name">${u.first_name || "Foydalanuvchi"}</div>
+        <div class="podium-coins">🪙 ${u.coins}</div>
+        <div class="podium-bar podium-bar-${rank}">${rank}</div>
+      </div>
+    `;
+  }).join("");
+}
+
+export async function loadLeaderboard(period) {
+  if (period) activeLbPeriod = period;
   const box = document.getElementById("leaderboardList");
   const rankBox = document.getElementById("myRankBox");
+  const listLabel = document.getElementById("lbListLabel");
   box.innerHTML = skeletonRows(6);
+  document.querySelectorAll("#lbPeriodRow .filter-chip").forEach(c => {
+    c.classList.toggle("active", c.getAttribute("data-period") === activeLbPeriod);
+  });
   try {
-    const res = await apiFetch(`/api/leaderboard`);
+    const res = await apiFetch(`/api/leaderboard?period=${activeLbPeriod}`);
     const data = await res.json();
     rankBox.innerHTML = `<div class="my-rank-label">Sizning o'rningiz</div><div class="my-rank-num">#${data.my_rank || "—"}</div>`;
 
     box.innerHTML = "";
     if (data.leaderboard.length === 0) {
+      document.getElementById("lbPodium").innerHTML = "";
+      listLabel.classList.add("hidden");
       box.innerHTML = emptyHtml("Hali hech kim coin to'plamagan — birinchi bo'ling!");
       return;
     }
-    data.leaderboard.forEach((u, idx) => {
-      const rank = idx + 1;
-      let medal = `<span class="rank-num">${rank}</span>`;
-      if (rank === 1) medal = `<span class="rank-medal gold-medal">👑</span>`;
-      else if (rank === 2) medal = `<span class="rank-medal silver-medal">🥈</span>`;
-      else if (rank === 3) medal = `<span class="rank-medal bronze-medal">🥉</span>`;
 
+    const top3 = data.leaderboard.slice(0, 3);
+    const rest = data.leaderboard.slice(3);
+    renderPodium(top3);
+    listLabel.classList.toggle("hidden", rest.length === 0);
+
+    rest.forEach((u, idx) => {
+      const rank = idx + 4;
       const row = document.createElement("div");
-      row.className = "leaderboard-row" + (rank <= 3 ? " top-rank" : "");
+      row.className = "leaderboard-row";
       row.innerHTML = `
-        ${medal}
+        <span class="rank-num">${rank}</span>
         <span class="lb-name">${u.first_name || "Foydalanuvchi"}</span>
         <span class="lb-coins">🪙 ${u.coins}</span>
       `;
@@ -122,4 +161,8 @@ async function loadControlLeaderboard() {
 export function initLeaderboardModule() {
   document.getElementById("tabBtnCoinLb").addEventListener("click", () => switchLeaderboardTab("coin"));
   document.getElementById("tabBtnControlLb").addEventListener("click", () => switchLeaderboardTab("control"));
+
+  document.querySelectorAll("#lbPeriodRow .filter-chip").forEach(btn => {
+    btn.addEventListener("click", () => loadLeaderboard(btn.getAttribute("data-period")));
+  });
 }

@@ -1,5 +1,5 @@
 # routers/user.py
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from config import BOT_USERNAME, ADMIN_TELEGRAM_IDS
 from routers.deps import get_verified_telegram_user
@@ -37,10 +37,14 @@ def api_referral_link(user=Depends(get_verified_telegram_user)):
 
 
 @router.get("/leaderboard")
-def api_leaderboard(user=Depends(get_verified_telegram_user)):
+def api_leaderboard(
+    period: str = Query(default="all", pattern="^(week|month|all)$"),
+    user=Depends(get_verified_telegram_user),
+):
     return {
-        "leaderboard": db.get_leaderboard(100),
-        "my_rank": db.get_user_rank(user["telegram_id"]),
+        "leaderboard": db.get_leaderboard(100, period=period),
+        "my_rank": db.get_user_rank(user["telegram_id"], period=period),
+        "period": period,
     }
 
 
