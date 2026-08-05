@@ -13,7 +13,7 @@ const CARD_META = {
   rating: { nav: "leaderboard", colorClass: "dc-gold" },
   books: { nav: "books", colorClass: "dc-purple" },
   games: { nav: "games", colorClass: "dc-pink" },
-  results: { nav: "leaderboard", colorClass: "dc-cyan" },
+  results: { nav: "student-results", colorClass: "dc-cyan" },
 };
 
 function escapeHtml(str) {

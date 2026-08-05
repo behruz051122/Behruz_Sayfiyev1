@@ -12,11 +12,12 @@ import * as Tests from "./tests.js";
 import { loadReferral } from "./referral.js";
 import { loadLeaderboard, initLeaderboardModule } from "./leaderboard.js";
 import { loadProfile } from "./profile.js";
-import { loadAdminCourses, loadAdminTests, loadAdminAnalytics, loadAdminSimulators, loadAdminDashboardCards, loadAdminBookProducts, loadAdminFaq, initAdminModule } from "./admin.js";
+import { loadAdminCourses, loadAdminTests, loadAdminAnalytics, loadAdminSimulators, loadAdminDashboardCards, loadAdminBookProducts, loadAdminFaq, loadAdminStudentResults, initAdminModule } from "./admin.js";
 import { loadDashboardCards } from "./home.js";
 import { loadBookShop } from "./bookshop.js";
 import { loadGameSubjects, initGamesModule } from "./games.js";
 import { loadFaq } from "./faq.js";
+import { loadStudentResults } from "./studentResults.js";
 
 function handleNav(target) {
   if (target === "home") {
@@ -69,6 +70,7 @@ function handleNav(target) {
     loadAdminDashboardCards();
     loadAdminBookProducts();
     loadAdminFaq();
+    loadAdminStudentResults();
     showScreen("admin");
   } else if (target === "games") {
     loadGameSubjects();
@@ -85,6 +87,9 @@ function handleNav(target) {
   } else if (target === "faq") {
     loadFaq();
     showScreen("faq");
+  } else if (target === "student-results") {
+    loadStudentResults();
+    showScreen("student-results");
   }
 }
 

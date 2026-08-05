@@ -301,11 +301,11 @@
       <div id="testResultContent"></div>
     </section>
 
-    <!-- NATIJALAR (leaderboard) -->
+    <!-- REYTING (leaderboard) -->
     <section id="screen-leaderboard" class="screen hidden">
       <div class="screen-header">
         <button class="back-btn" data-nav="home" aria-label="Orqaga">←</button>
-        <h2>🏆 Natijalar</h2>
+        <h2>🏆 Reyting</h2>
       </div>
 
       <div class="tab-row" id="leaderboardTabRow">
@@ -330,6 +330,16 @@
         <div id="myControlRankBox" class="my-rank-box"></div>
         <div id="controlLeaderboardList" class="leaderboard-list"></div>
       </div>
+    </section>
+
+    <!-- NATIJALAR (o'quvchi fikri + sertifikat natijalari) -->
+    <section id="screen-student-results" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="home" aria-label="Orqaga">←</button>
+        <h2>🏆 Natijalar</h2>
+      </div>
+      <p class="simulator-intro">O'quvchilarimizning sertifikat natijalari va kurs haqidagi fikrlari.</p>
+      <div id="studentResultsList" class="student-results-feed"></div>
     </section>
 
     <!-- PROFIL -->
@@ -466,6 +476,45 @@
           <label>Tartib raqami <input id="faq_order_num" type="number" value="0"></label>
           <label>Ko'rinsinmi?
             <select id="faq_is_active">
+              <option value="1">Ha</option>
+              <option value="0">Yo'q (yashirilgan)</option>
+            </select>
+          </label>
+          <button type="submit" class="gold-btn">Saqlash</button>
+        </form>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-section-head">
+          <h3>🏆 Natijalar (sertifikat/fikrlar)</h3>
+          <button id="adminNewStudentResultBtn" class="gold-btn small">+ Yangi qo'shish</button>
+        </div>
+        <div id="adminStudentResultsList" class="admin-list"></div>
+      </div>
+
+      <div id="adminStudentResultForm" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3 id="adminStudentResultFormTitle">Yangi natija</h3>
+          <button id="adminCloseStudentResultForm" class="icon-btn" aria-label="Yopish">✕</button>
+        </div>
+        <form id="studentResultFormEl" class="admin-form">
+          <input type="hidden" id="sr_id">
+          <label>O'quvchi ismi <input id="sr_student_name" required></label>
+          <label>Fan/kurs (masalan Biologiya, Kimyo) <input id="sr_subject"></label>
+          <label>Rasm (sertifikat skrinshoti yoki suratsi)
+            <input type="file" id="sr_image_file" accept="image/png,image/jpeg,image/webp,image/gif">
+          </label>
+          <div id="srImageUploadStatus" class="subject-pool-hint"></div>
+          <div id="srImagePreviewWrap" class="hidden" style="margin-top:-4px;">
+            <img id="srImagePreview" src="" alt="Tanlangan rasm" style="max-width:120px; border-radius:10px; display:block;">
+            <button type="button" id="srRemoveImageBtn" class="gold-btn small" style="margin-top:6px;">✕ Rasmni olib tashlash</button>
+          </div>
+          <input type="hidden" id="sr_image_url">
+          <label>Natija matni (masalan "DTM: 187/230" yoki "Milliy sertifikat: 92%") <input id="sr_result_text"></label>
+          <label>O'quvchi fikri (ixtiyoriy) <textarea id="sr_feedback_text"></textarea></label>
+          <label>Tartib raqami <input id="sr_order_num" type="number" value="0"></label>
+          <label>Ko'rinsinmi?
+            <select id="sr_is_active">
               <option value="1">Ha</option>
               <option value="0">Yo'q (yashirilgan)</option>
             </select>
@@ -780,7 +829,7 @@
     <button class="nav-item active" data-nav="home">🏠<span>Bosh sahifa</span></button>
     <button class="nav-item" data-nav="courses">📚<span>Kurslar</span></button>
     <button class="nav-item" data-nav="tests">📝<span>Testlar</span></button>
-    <button class="nav-item" data-nav="leaderboard">🏆<span>Natijalar</span></button>
+    <button class="nav-item" data-nav="student-results">🏆<span>Natijalar</span></button>
     <button class="nav-item" data-nav="profile">👤<span>Profil</span></button>
   </nav>
 

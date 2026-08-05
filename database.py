@@ -25,7 +25,7 @@ DASHBOARD_CARD_DEFAULTS = [
     ("rating", "🏆 Reyting", "SIZNING O'RNINGIZ", "🥇", 3),
     ("books", "📗 Kitoblar", "DO'KON · PROMOKODLAR", "📖", 4),
     ("games", "🎮 O'yinlar", "TEZ ORADA", "🕹️", 5),
-    ("results", "📊 Natijalar", "TEST NATIJALARI TARIXI", "📈", 6),
+    ("results", "🏆 Natijalar", "SERTIFIKAT NATIJALARI · FIKRLAR", "📈", 6),
 ]
 
 
@@ -506,6 +506,26 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 question TEXT NOT NULL,
                 answer TEXT NOT NULL,
+                order_num INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # "Natijalar" — o'quvchilarning kurs/dars haqidagi fikri va
+        # sertifikat (masalan Milliy sertifikat, DTM) natijalari. Bu — reyting
+        # (leaderboard)dan BUTUNLAY ALOHIDA, admin qo'lda to'ldiradigan
+        # "muvaffaqiyat hikoyalari" lentasi (Kelajak Mediklari botidagi
+        # "Natijalar" bo'limi kabi). Reyting endi faqat bosh sahifadagi
+        # "🏆 Reyting" kartasi orqali ochiladi.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS student_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                student_name TEXT NOT NULL,
+                subject TEXT DEFAULT '',
+                image_url TEXT,
+                result_text TEXT DEFAULT '',
+                feedback_text TEXT DEFAULT '',
                 order_num INTEGER DEFAULT 0,
                 is_active INTEGER DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -1053,6 +1073,67 @@ def delete_faq_item(faq_id: int):
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("DELETE FROM faq_items WHERE id = ?", (faq_id,))
+        conn.commit()
+
+
+# ---------- NATIJALAR (o'quvchi fikri + sertifikat natijalari) ----------
+
+def get_student_results(only_active: bool = True):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = "SELECT * FROM student_results"
+        if only_active:
+            query += " WHERE is_active = 1"
+        query += " ORDER BY order_num ASC, id DESC"
+        cur.execute(query)
+        return [dict(row) for row in cur.fetchall()]
+
+
+def get_student_result(result_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM student_results WHERE id = ?", (result_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def create_student_result(data: dict) -> int:
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO student_results (student_name, subject, image_url, result_text,
+                feedback_text, order_num, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            data.get("student_name", ""), data.get("subject", ""),
+            data.get("image_url") or None, data.get("result_text", ""),
+            data.get("feedback_text", ""),
+            int(data.get("order_num", 0)), int(data.get("is_active", 1))
+        ))
+        conn.commit()
+        return cur.lastrowid
+
+
+def update_student_result(result_id: int, data: dict):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        fields, values = [], []
+        allowed = ["student_name", "subject", "image_url", "result_text",
+                   "feedback_text", "order_num", "is_active"]
+        for key in allowed:
+            if key in data:
+                fields.append(f"{key} = ?")
+                values.append(data[key])
+        if fields:
+            values.append(result_id)
+            cur.execute(f"UPDATE student_results SET {', '.join(fields)} WHERE id = ?", values)
+            conn.commit()
+
+
+def delete_student_result(result_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM student_results WHERE id = ?", (result_id,))
         conn.commit()
 
 

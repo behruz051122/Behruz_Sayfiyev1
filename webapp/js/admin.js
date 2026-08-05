@@ -265,6 +265,96 @@ function openAdminFaqForm(item) {
   document.getElementById("faq_is_active").value = item ? String(item.is_active) : "1";
 }
 
+// ---------- Natijalar (o'quvchi fikri + sertifikat natijalari) ----------
+// E'TIBOR: bu Reyting (leaderboard)dan BUTUNLAY ALOHIDA — bu yerdagi har
+// bir yozuvni admin qo'lda qo'shadi (rasm + qisqa natija + fikr).
+
+export async function loadAdminStudentResults() {
+  document.getElementById("adminStudentResultForm").classList.add("hidden");
+  const box = document.getElementById("adminStudentResultsList");
+  box.innerHTML = skeletonCards(2);
+  try {
+    const res = await apiFetch(`/api/admin/student-results`);
+    const data = await res.json();
+    box.innerHTML = "";
+    if (data.results.length === 0) box.innerHTML = emptyHtml("Hali natija qo'shilmagan");
+    data.results.forEach(r => {
+      const row = document.createElement("div");
+      row.className = "admin-row";
+      row.innerHTML = `
+        <div class="emoji">🏆</div>
+        <div class="info">
+          <div class="t">${r.student_name}${r.is_active ? "" : " (yashirin)"}</div>
+          <div class="s">${r.subject || "Fansiz"} · ${r.result_text || "Natija matni yo'q"}</div>
+        </div>
+        <div class="row-actions">
+          <button data-a="edit">Tahrirlash</button>
+          <button data-a="delete" class="danger">O'chirish</button>
+        </div>
+      `;
+      row.querySelector('[data-a="edit"]').onclick = () => openAdminStudentResultForm(r);
+      row.querySelector('[data-a="delete"]').onclick = async () => {
+        if (!confirm("Bu natijani butunlay o'chirmoqchimisiz?")) return;
+        await apiFetch(`/api/admin/student-results/${r.id}`, { method: "DELETE" });
+        loadAdminStudentResults();
+      };
+      box.appendChild(row);
+    });
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml();
+  }
+}
+
+function openAdminStudentResultForm(result) {
+  document.getElementById("adminStudentResultForm").classList.remove("hidden");
+  document.getElementById("adminStudentResultFormTitle").textContent = result ? "Natijani tahrirlash" : "Yangi natija";
+  document.getElementById("sr_id").value = result ? result.id : "";
+  document.getElementById("sr_student_name").value = result ? result.student_name : "";
+  document.getElementById("sr_subject").value = result ? (result.subject || "") : "";
+  document.getElementById("sr_image_file").value = "";
+  document.getElementById("srImageUploadStatus").textContent = "";
+  showStudentResultImagePreview(result ? (result.image_url || "") : "");
+  document.getElementById("sr_result_text").value = result ? (result.result_text || "") : "";
+  document.getElementById("sr_feedback_text").value = result ? (result.feedback_text || "") : "";
+  document.getElementById("sr_order_num").value = result ? result.order_num : 0;
+  document.getElementById("sr_is_active").value = result ? String(result.is_active) : "1";
+}
+
+function showStudentResultImagePreview(url) {
+  document.getElementById("sr_image_url").value = url || "";
+  const wrap = document.getElementById("srImagePreviewWrap");
+  const img = document.getElementById("srImagePreview");
+  if (url) {
+    img.src = url;
+    wrap.classList.remove("hidden");
+  } else {
+    img.src = "";
+    wrap.classList.add("hidden");
+  }
+}
+
+async function uploadStudentResultImage(file) {
+  const status = document.getElementById("srImageUploadStatus");
+  status.textContent = "⏳ Yuklanmoqda...";
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await apiFetch(`/api/admin/upload-image`, { method: "POST", body: formData });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Yuklab bo'lmadi");
+    }
+    const data = await res.json();
+    showStudentResultImagePreview(data.url);
+    status.textContent = "✅ Rasm yuklandi";
+  } catch (e) {
+    console.error(e);
+    status.textContent = `❌ ${e.message || "Xatolik yuz berdi"}`;
+    document.getElementById("sr_image_file").value = "";
+  }
+}
+
 // ---------- Nazorat testi natijalari (bitta test bo'yicha talabalar ballari) ----------
 
 async function openAdminControlResults(testId, title) {
@@ -1164,6 +1254,40 @@ export function initAdminModule() {
     else await apiFetch(`/api/admin/faq`, { method: "POST", body: JSON.stringify(data) });
     document.getElementById("adminFaqForm").classList.add("hidden");
     loadAdminFaq();
+  });
+
+  // --- Natijalar (o'quvchi fikri + sertifikat natijalari) ---
+
+  document.getElementById("adminNewStudentResultBtn").addEventListener("click", () => openAdminStudentResultForm(null));
+  document.getElementById("adminCloseStudentResultForm").addEventListener("click", () => document.getElementById("adminStudentResultForm").classList.add("hidden"));
+
+  document.getElementById("sr_image_file").addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) uploadStudentResultImage(file);
+  });
+
+  document.getElementById("srRemoveImageBtn").addEventListener("click", () => {
+    document.getElementById("sr_image_file").value = "";
+    document.getElementById("srImageUploadStatus").textContent = "";
+    showStudentResultImagePreview("");
+  });
+
+  document.getElementById("studentResultFormEl").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const id = document.getElementById("sr_id").value;
+    const data = {
+      student_name: document.getElementById("sr_student_name").value,
+      subject: document.getElementById("sr_subject").value,
+      image_url: document.getElementById("sr_image_url").value,
+      result_text: document.getElementById("sr_result_text").value,
+      feedback_text: document.getElementById("sr_feedback_text").value,
+      order_num: parseInt(document.getElementById("sr_order_num").value),
+      is_active: parseInt(document.getElementById("sr_is_active").value)
+    };
+    if (id) await apiFetch(`/api/admin/student-results/${id}`, { method: "PUT", body: JSON.stringify(data) });
+    else await apiFetch(`/api/admin/student-results`, { method: "POST", body: JSON.stringify(data) });
+    document.getElementById("adminStudentResultForm").classList.add("hidden");
+    loadAdminStudentResults();
   });
 
   // --- DTM Simulyatorlari ---
