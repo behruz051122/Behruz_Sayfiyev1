@@ -28,10 +28,11 @@ let courseListSearchQuery = "";
 // orqaga tugmasi kelgan joyiga qarab farqli ekranga qaytishi kerak.
 let courseDetailReturnScreen = "list";
 
-const SUBJECT_BANNER_STYLES = [
-  { cls: "banner-teal", glyph: "🧬" },
-  { cls: "banner-gold", glyph: "🧪" },
-  { cls: "banner-purple", glyph: "📘" },
+const SUBJECT_CARD_STYLES = [
+  { cls: "subject-teal", glyph: "🧬" },
+  { cls: "subject-orange", glyph: "🧪" },
+  { cls: "subject-purple", glyph: "📘" },
+  { cls: "subject-cyan", glyph: "🔬" },
 ];
 
 export function getCourseDetailReturnScreen() {
@@ -98,16 +99,16 @@ function renderSubjectLandingCards() {
 
   subjects.forEach((subject, i) => {
     const count = allSubjectCourses.filter(c => c.subject === subject).length;
-    const style = SUBJECT_BANNER_STYLES[i % SUBJECT_BANNER_STYLES.length];
+    const style = SUBJECT_CARD_STYLES[i % SUBJECT_CARD_STYLES.length];
     const card = document.createElement("button");
-    card.className = `banner-card ${style.cls}`;
+    card.className = `subject-card ${style.cls}`;
     card.innerHTML = `
-      <div class="banner-content">
-        <div class="banner-title">${subject}</div>
-        <div class="banner-sub">${count} TA KURS</div>
+      <div class="subject-card-icon">${style.glyph}</div>
+      <div class="subject-card-body">
+        <div class="subject-card-title">${subject}</div>
+        <div class="subject-card-sub">${count} TA KURS</div>
+        <div class="subject-card-cta">OCHISH →</div>
       </div>
-      <span class="banner-glyph">${style.glyph}</span>
-      <span class="banner-arrow">›</span>
     `;
     card.addEventListener("click", () => openSubjectCourseList(subject));
     grid.appendChild(card);
