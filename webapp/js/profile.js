@@ -7,12 +7,14 @@ export async function loadProfile() {
   const content = document.getElementById("profileContent");
   content.innerHTML = loadingHtml();
   try {
-    const [userRes, enrollRes] = await Promise.all([
+    const [userRes, enrollRes, achRes] = await Promise.all([
       apiFetch(`/api/user`),
-      apiFetch(`/api/my-enrollments`)
+      apiFetch(`/api/my-enrollments`),
+      apiFetch(`/api/achievements`)
     ]);
     const user = await userRes.json();
     const enrollData = await enrollRes.json();
+    const achData = await achRes.json();
 
     let html = `
       <div class="profile-card">
@@ -23,6 +25,21 @@ export async function loadProfile() {
           <div class="profile-stat"><div class="num">🪙 ${user.coins}</div><div class="lbl">Coin</div></div>
           <div class="profile-stat"><div class="num">#${user.rank || "—"}</div><div class="lbl">Reyting</div></div>
           <div class="profile-stat"><div class="num">${user.confirmed_referrals}</div><div class="lbl">Takliflar</div></div>
+        </div>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-section-head">
+          <h3>🏅 Yutuqlarim</h3>
+          <span style="font-size:11px;color:var(--text-dim);font-weight:700;">${achData.earned_count}/${achData.total_count}</span>
+        </div>
+        <div class="achievement-grid">
+          ${achData.achievements.map(a => `
+            <div class="achievement-badge ${a.earned ? "earned" : "locked"}" title="${a.description}">
+              <div class="achievement-icon">${a.earned ? a.icon : "🔒"}</div>
+              <div class="achievement-title">${a.title}</div>
+            </div>
+          `).join("")}
         </div>
       </div>
 

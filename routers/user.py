@@ -51,3 +51,10 @@ def api_leaderboard(
 @router.get("/my-enrollments")
 def api_my_enrollments(user=Depends(get_verified_telegram_user)):
     return {"enrollments": db.get_user_enrollments(user["telegram_id"])}
+
+
+@router.get("/achievements")
+def api_achievements(user=Depends(get_verified_telegram_user)):
+    achievements = db.get_user_achievements(user["telegram_id"])
+    earned_count = sum(1 for a in achievements if a["earned"])
+    return {"achievements": achievements, "earned_count": earned_count, "total_count": len(achievements)}

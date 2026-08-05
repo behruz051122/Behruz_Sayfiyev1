@@ -419,6 +419,21 @@ def init_db():
             )
         """)
 
+        # ---------- Yutuq nishonlari (achievements) ----------
+        # Nishon TA'RIFLARI (nomi, tavsifi, sharti) kodda — ACHIEVEMENT_DEFS
+        # ro'yxatida — saqlanadi (hozircha admin panelidan tahrirlanmaydi,
+        # eng muhim ~10 ta standart yutuq bilan boshlaymiz). Bu jadval
+        # faqat KIM QACHON qaysi nishonni QO'LGA KIRITGANINI saqlaydi.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_achievements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                achievement_key TEXT NOT NULL,
+                earned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(telegram_id, achievement_key)
+            )
+        """)
+
         # ---------- Kitoblar do'koni (bosma kitoblar) ----------
         # E'TIBOR: bu "courses" jadvalidagi resource_type='book' (RAQAMLI
         # o'qish kontenti — bo'lim/dars strukturasi bilan) dan BUTUNLAY
@@ -481,6 +496,134 @@ def update_dashboard_card(card_key: str, data: dict):
             values.append(card_key)
             cur.execute(f"UPDATE dashboard_cards SET {', '.join(fields)} WHERE card_key = ?", values)
             conn.commit()
+
+
+# ---------- YUTUQ NISHONLARI (achievements) ----------
+#
+# Har bir nishon: (key, title, description, icon, shart-funksiya). Shart-
+# funksiya foydalanuvchi statistikasi (dict) qabul qilib, True/False
+# qaytaradi. check_and_award_achievements() har safar muhim harakatdan
+# keyin (dars ko'rish, test tugatish, Battle g'alaba, referal tasdiqlanishi)
+# chaqiriladi — statistikani qayta hisoblab, hali berilmagan, LEKIN endi
+# shartga mos nishonlarni avtomatik beradi.
+
+ACHIEVEMENT_DEFS = [
+    {"key": "first_lesson", "title": "Birinchi qadam", "description": "Birinchi darsni tomosha qildingiz",
+     "icon": "🎬", "check": lambda s: s["lessons_watched"] >= 1},
+    {"key": "lessons_10", "title": "Bilim ishqibozi", "description": "10 ta darsni tomosha qildingiz",
+     "icon": "📚", "check": lambda s: s["lessons_watched"] >= 10},
+    {"key": "lessons_50", "title": "Bilim changali", "description": "50 ta darsni tomosha qildingiz",
+     "icon": "🎓", "check": lambda s: s["lessons_watched"] >= 50},
+    {"key": "first_test", "title": "Birinchi sinov", "description": "Birinchi testni yakunladingiz",
+     "icon": "📝", "check": lambda s: s["tests_finished"] >= 1},
+    {"key": "tests_10", "title": "Test ustasi", "description": "10 ta testni yakunladingiz",
+     "icon": "🏅", "check": lambda s: s["tests_finished"] >= 10},
+    {"key": "perfect_score", "title": "Mukammal natija", "description": "Biror testda 100% natija ko'rsatdingiz",
+     "icon": "💯", "check": lambda s: s["has_perfect_score"]},
+    {"key": "control_test_done", "title": "Nazoratdan o'tdi", "description": "Birinchi nazorat testini topshirdingiz",
+     "icon": "🎯", "check": lambda s: s["control_tests_finished"] >= 1},
+    {"key": "first_battle_win", "title": "Jangchi", "description": "Birinchi Battle g'alabangiz",
+     "icon": "⚔️", "check": lambda s: s["battle_wins"] >= 1},
+    {"key": "battle_wins_10", "title": "Chempion", "description": "10 ta Battle g'alaba qozondingiz",
+     "icon": "🏆", "check": lambda s: s["battle_wins"] >= 10},
+    {"key": "coins_50", "title": "Tejamkor", "description": "50 ta coin to'pladingiz",
+     "icon": "🪙", "check": lambda s: s["coins"] >= 50},
+    {"key": "referrals_5", "title": "Do'stlar yetakchisi", "description": "5 ta do'stingizni taklif qildingiz",
+     "icon": "🎁", "check": lambda s: s["confirmed_referrals"] >= 5},
+]
+
+
+def _gather_achievement_stats(telegram_id: int) -> dict:
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        cur.execute("SELECT COUNT(*) as c FROM lesson_progress WHERE telegram_id = ?", (telegram_id,))
+        lessons_watched = cur.fetchone()["c"]
+
+        cur.execute("""
+            SELECT COUNT(*) as c FROM test_attempts ta JOIN tests t ON t.id = ta.test_id
+            WHERE ta.telegram_id = ? AND ta.finished_at IS NOT NULL AND t.is_control_test = 0
+        """, (telegram_id,))
+        tests_finished = cur.fetchone()["c"]
+
+        cur.execute("""
+            SELECT COUNT(*) as c FROM test_attempts ta JOIN tests t ON t.id = ta.test_id
+            WHERE ta.telegram_id = ? AND ta.finished_at IS NOT NULL AND t.is_control_test = 1
+        """, (telegram_id,))
+        control_tests_finished = cur.fetchone()["c"]
+
+        cur.execute("""
+            SELECT COUNT(*) as c FROM test_attempts
+            WHERE telegram_id = ? AND finished_at IS NOT NULL AND total_questions > 0 AND score = total_questions
+        """, (telegram_id,))
+        has_perfect_score = cur.fetchone()["c"] > 0
+
+        cur.execute("SELECT COALESCE(SUM(wins), 0) as w FROM game_ratings WHERE telegram_id = ?", (telegram_id,))
+        battle_wins = cur.fetchone()["w"]
+
+        cur.execute("SELECT coins FROM users WHERE telegram_id = ?", (telegram_id,))
+        row = cur.fetchone()
+        coins = row["coins"] if row else 0
+
+        cur.execute("SELECT COUNT(*) as c FROM referrals WHERE referrer_telegram_id = ? AND confirmed = 1", (telegram_id,))
+        confirmed_referrals = cur.fetchone()["c"]
+
+        return {
+            "lessons_watched": lessons_watched,
+            "tests_finished": tests_finished,
+            "control_tests_finished": control_tests_finished,
+            "has_perfect_score": has_perfect_score,
+            "battle_wins": battle_wins,
+            "coins": coins,
+            "confirmed_referrals": confirmed_referrals,
+        }
+
+
+def check_and_award_achievements(telegram_id: int):
+    """Statistikani qayta hisoblab, hali berilmagan lekin endi shartga mos
+    nishonlarni beradi. Natija: YANGI berilgan nishonlar ro'yxati (bo'sh
+    bo'lishi ham mumkin)."""
+    stats = _gather_achievement_stats(telegram_id)
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT achievement_key FROM user_achievements WHERE telegram_id = ?", (telegram_id,))
+        already_earned = {r["achievement_key"] for r in cur.fetchall()}
+
+        newly_earned = []
+        for ach in ACHIEVEMENT_DEFS:
+            if ach["key"] in already_earned:
+                continue
+            try:
+                qualifies = ach["check"](stats)
+            except Exception:
+                qualifies = False
+            if qualifies:
+                cur.execute(
+                    "INSERT OR IGNORE INTO user_achievements (telegram_id, achievement_key) VALUES (?, ?)",
+                    (telegram_id, ach["key"])
+                )
+                newly_earned.append(ach)
+        if newly_earned:
+            conn.commit()
+        return newly_earned
+
+
+def get_user_achievements(telegram_id: int):
+    """Barcha nishonlarni (qo'lga kiritilgan yoki yo'q) qaytaradi — Profil
+    ekranida to'liq "nishonlar devori" ko'rsatish uchun."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT achievement_key, earned_at FROM user_achievements WHERE telegram_id = ?", (telegram_id,))
+        earned_map = {r["achievement_key"]: r["earned_at"] for r in cur.fetchall()}
+
+    result = []
+    for ach in ACHIEVEMENT_DEFS:
+        result.append({
+            "key": ach["key"], "title": ach["title"], "description": ach["description"], "icon": ach["icon"],
+            "earned": ach["key"] in earned_map,
+            "earned_at": earned_map.get(ach["key"]),
+        })
+    return result
 
 
 # ---------- USERS ----------
@@ -573,6 +716,7 @@ def create_pending_referral(referrer_id: int, referred_id: int):
 
 
 def confirm_referral(referred_id: int):
+    newly_confirmed = False
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("SELECT referrer_telegram_id, confirmed FROM referrals WHERE referred_telegram_id = ?", (referred_id,))
@@ -582,7 +726,12 @@ def confirm_referral(referred_id: int):
         if row["confirmed"] == 0:
             cur.execute("UPDATE referrals SET confirmed = 1 WHERE referred_telegram_id = ?", (referred_id,))
             conn.commit()
-        return row["referrer_telegram_id"]
+            newly_confirmed = True
+        referrer_id = row["referrer_telegram_id"]
+
+    if newly_confirmed:
+        check_and_award_achievements(referrer_id)
+    return referrer_id
 
 
 def get_confirmed_referral_count(telegram_id: int) -> int:
@@ -874,6 +1023,7 @@ def mark_lesson_watched(telegram_id: int, lesson_id: int) -> bool:
         conn.commit()
 
     add_coins(telegram_id, 1)  # oldingi 'with' bloki yopilgach — pooldan bo'sh ulanish oladi
+    check_and_award_achievements(telegram_id)
     return True
 
 
@@ -1334,7 +1484,10 @@ def finish_attempt(attempt_id: int):
         conn.commit()
         cur.execute("SELECT * FROM test_attempts WHERE id = ?", (attempt_id,))
         row = cur.fetchone()
-        return dict(row) if row else None
+        result = dict(row) if row else None
+    if result:
+        check_and_award_achievements(result["telegram_id"])
+    return result
 
 
 def is_first_finished_attempt(attempt_id: int) -> bool:
@@ -1518,6 +1671,7 @@ def submit_battle_result(battle_id: int, telegram_id: int, score: int, time_seco
     """O'yinchining natijasini yozadi. Ikkala o'yinchi ham tugatgan bo'lsa,
     g'olibni aniqlab, ELO'ni ikkalasi uchun ham yangilaydi va jangni
     'finished' deb belgilaydi. Natija: yangilangan battle dict."""
+    players_to_check_achievements = []
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("SELECT * FROM game_battles WHERE id = ?", (battle_id,))
@@ -1595,8 +1749,16 @@ def submit_battle_result(battle_id: int, telegram_id: int, score: int, time_seco
 
             cur.execute("SELECT * FROM game_battles WHERE id = ?", (battle_id,))
             battle = dict(cur.fetchone())
+            players_to_check_achievements = [p1, p2]
 
-        return battle
+    # Yutuq tekshiruvi ATAYLAB yuqoridagi 'with' bloki (va uning ulanishi)
+    # yopilgandan KEYIN qilinadi — check_and_award_achievements() o'zi ham
+    # pool'dan ulanish so'raydi, ikkalasini bir vaqtda ochiq ushlab turish
+    # shart emas.
+    for player_id in players_to_check_achievements:
+        check_and_award_achievements(player_id)
+
+    return battle
 
 
 def get_battle(battle_id: int):
@@ -1865,7 +2027,10 @@ def finish_simulator_attempt(attempt_id: int):
         conn.commit()
         cur.execute("SELECT * FROM simulator_attempts WHERE id = ?", (attempt_id,))
         row = cur.fetchone()
-        return dict(row) if row else None
+        result = dict(row) if row else None
+    if result:
+        check_and_award_achievements(result["telegram_id"])
+    return result
 
 
 def get_simulator_attempt_grid(attempt_id: int):
