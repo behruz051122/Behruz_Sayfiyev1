@@ -80,8 +80,9 @@ async def admin_import_docx(test_id: int, file: UploadFile = File(...), admin=De
             "option_2": q.options.get("B", ""),
             "option_3": q.options.get("C", ""),
             "option_4": q.options.get("D", ""),
-            "correct_index": CORRECT_INDEX_BY_LETTER[q.correct_letter],
+            "correct_index": CORRECT_INDEX_BY_LETTER[q.effective_correct_letter],
             "order_num": order_cursor,
+            "table_data": q.table_data_json(),
         })
         imported += 1
 

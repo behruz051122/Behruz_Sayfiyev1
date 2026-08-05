@@ -3,7 +3,7 @@ import { apiFetch, tg } from "./api.js";
 import { showScreen, navigateTo } from "./navigate.js";
 import {
   loadingHtml, errorHtml, emptyHtml, DIFFICULTY_LABELS, formatSeconds,
-  openLightbox, skeletonCards, renderProgressChart
+  openLightbox, skeletonCards, renderProgressChart, renderQuestionTables
 } from "./components.js";
 import { refreshCoins } from "./user.js";
 
@@ -497,6 +497,7 @@ function renderCurrentQuestion() {
     <div class="question-card">
       <div class="question-text">${question.question_text}</div>
       ${question.image_url ? `<img class="question-image" src="${question.image_url}" alt="Savol rasmi">` : ""}
+      ${renderQuestionTables(question.table_data)}
     </div>
     <div class="option-list" id="optionList">
       ${options.map(([idx, text]) => `

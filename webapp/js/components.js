@@ -164,3 +164,40 @@ export function showToast(message, duration = 2600) {
     setTimeout(() => toast.remove(), 250);
   }, duration);
 }
+
+// ---------- Savol jadvali (Word'dan import qilingan haqiqiy jadvallar) ----------
+//
+// Word (.docx) orqali ommaviy yuklangan savollarda ba'zan haqiqiy jadval
+// (masalan davriy jadval ma'lumotlari, izotoplar foizi) bo'lishi mumkin.
+// Buni matn shaklida emas, ASL katak-katak ko'rinishida ko'rsatish uchun
+// backend "table_data" ustunida JSON qatorida saqlaydi — shu funksiya buni
+// haqiqiy <table>ga aylantiradi.
+
+function escapeHtml(str) {
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+export function renderQuestionTables(tableDataJson) {
+  if (!tableDataJson) return "";
+  let parsed;
+  try {
+    parsed = typeof tableDataJson === "string" ? JSON.parse(tableDataJson) : tableDataJson;
+  } catch (e) {
+    return "";
+  }
+  const tables = parsed && parsed.tables ? parsed.tables : [];
+  if (tables.length === 0) return "";
+
+  return tables.map(t => {
+    const rows = t.rows || [];
+    if (rows.length === 0) return "";
+    const [headerRow, ...bodyRows] = rows;
+    const theadHtml = `<thead><tr>${headerRow.map(c => `<th>${escapeHtml(c)}</th>`).join("")}</tr></thead>`;
+    const tbodyHtml = `<tbody>${bodyRows.map(r => `<tr>${r.map(c => `<td>${escapeHtml(c)}</td>`).join("")}</tr>`).join("")}</tbody>`;
+    return `<div class="question-table-wrap"><table class="question-table">${theadHtml}${tbodyHtml}</table></div>`;
+  }).join("");
+}

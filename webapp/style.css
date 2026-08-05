@@ -303,6 +303,13 @@ body.no-scroll { overflow: hidden; }
 .question-text { font-size: 15px; font-weight: 700; line-height: 1.5; margin-bottom: 12px; white-space: pre-line; }
 .question-image { width: 100%; border-radius: 12px; margin-bottom: 12px; cursor: zoom-in; display: block; }
 
+.question-table-wrap { overflow-x: auto; margin-bottom: 4px; border-radius: 10px; border: 1px solid var(--border); }
+.question-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.question-table th, .question-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.question-table th { background: var(--surface2); color: var(--text); font-weight: 700; }
+.question-table tbody tr:last-child td { border-bottom: none; }
+.question-table tbody tr:nth-child(even) { background: var(--surface2); }
+
 .option-list { margin: 0 16px; display: flex; flex-direction: column; gap: 10px; }
 .option-btn {
   display: flex; align-items: center; gap: 12px; text-align: left; width: 100%;

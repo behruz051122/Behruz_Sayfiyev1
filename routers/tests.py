@@ -38,6 +38,7 @@ def api_get_test(test_id: int, user=Depends(get_verified_telegram_user)):
     for q in questions:
         safe_questions.append({
             "id": q["id"], "question_text": q["question_text"], "image_url": q["image_url"],
+            "table_data": q.get("table_data"),
             "option_1": q["option_1"], "option_2": q["option_2"],
             "option_3": q["option_3"], "option_4": q["option_4"], "order_num": q["order_num"]
         })

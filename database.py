@@ -177,9 +177,25 @@ def init_db():
                 option_4 TEXT,
                 correct_index INTEGER NOT NULL,
                 order_num INTEGER DEFAULT 0,
+                table_data TEXT,
                 FOREIGN KEY (test_id) REFERENCES tests (id) ON DELETE CASCADE
             )
         """)
+
+        # Word'dan ommaviy import qilinganda savol ichida haqiqiy Word jadvali
+        # (masalan davriy jadval ma'lumotlari, izotoplar foizi) bo'lishi mumkin.
+        # Buni matn sifatida qo'shib yubormasdan, JSON qatorlar ro'yxati
+        # ({"tables": [{"rows": [[...], ...]}, ...]}) sifatida saqlaymiz — shunda
+        # frontend uni ORIGINAL katak-katak jadval ko'rinishida chizadi. Fayl
+        # yuqoridagi CREATE TABLE'da yangi o'rnatishlar uchun ustunni to'g'ridan
+        # to'g'ri qo'shadi; ALLAQACHON DEPLOY QILINGAN (Railway'dagi) bazalarda
+        # esa jadval CREATE TABLE bosqichida o'tkazib yuboriladi (IF NOT EXISTS),
+        # shuning uchun bu yerda ALTER TABLE orqali qo'shib qo'yamiz.
+        try:
+            cur.execute("ALTER TABLE test_questions ADD COLUMN table_data TEXT")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # ustun allaqachon mavjud — muammo emas
 
         cur.execute("""
             CREATE TABLE IF NOT EXISTS test_attempts (
@@ -915,12 +931,12 @@ def create_question(data: dict) -> int:
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO test_questions (test_id, question_text, image_url, option_1, option_2, option_3, option_4, correct_index, order_num)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO test_questions (test_id, question_text, image_url, option_1, option_2, option_3, option_4, correct_index, order_num, table_data)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             int(data["test_id"]), data.get("question_text", ""), data.get("image_url", ""),
             data.get("option_1", ""), data.get("option_2", ""), data.get("option_3", ""), data.get("option_4", ""),
-            int(data.get("correct_index", 1)), int(data.get("order_num", 0))
+            int(data.get("correct_index", 1)), int(data.get("order_num", 0)), data.get("table_data") or None
         ))
         conn.commit()
         return cur.lastrowid
@@ -930,7 +946,7 @@ def update_question(question_id: int, data: dict):
     with get_connection() as conn:
         cur = conn.cursor()
         fields, values = [], []
-        for key in ["question_text", "image_url", "option_1", "option_2", "option_3", "option_4", "correct_index", "order_num"]:
+        for key in ["question_text", "image_url", "option_1", "option_2", "option_3", "option_4", "correct_index", "order_num", "table_data"]:
             if key in data:
                 fields.append(f"{key} = ?")
                 values.append(data[key])
@@ -1199,7 +1215,7 @@ def get_simulator_attempt_questions(attempt_id: int):
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
-            SELECT saq.order_num, saq.subject, q.id, q.question_text, q.image_url,
+            SELECT saq.order_num, saq.subject, q.id, q.question_text, q.image_url, q.table_data,
                    q.option_1, q.option_2, q.option_3, q.option_4
             FROM simulator_attempt_questions saq
             JOIN test_questions q ON q.id = saq.question_id
