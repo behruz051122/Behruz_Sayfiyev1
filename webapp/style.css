@@ -725,9 +725,17 @@ a:focus-visible {
 .qnav-btn:hover { border-color: var(--gold-light); }
 .qnav-btn.qnav-answered { background: var(--surface2); color: var(--text); border-color: var(--gold-light); }
 .qnav-btn.qnav-current { border-color: var(--gold); background: var(--gold); color: var(--on-accent); }
+.qnav-btn.qnav-flagged { box-shadow: inset 0 0 0 2px var(--danger); }
+.qnav-btn.qnav-flagged::after { content: "🚩"; position: relative; top: -2px; }
 
 .secondary-btn { background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 12px 20px; font-weight: 800; font-size: 13px; cursor: pointer; }
 .secondary-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.secondary-btn.small { padding: 8px 12px; font-size: 11.5px; border-radius: 10px; }
+
+/* ---------- Attestatsiya: Belgilash / E'tiroz tugmalari ---------- */
+.attestation-actions { display: flex; gap: 8px; margin: 0 16px 14px; }
+.attestation-actions .secondary-btn { flex: 1; }
+.attestation-actions .flag-active { background: rgba(220,38,38,0.1); border-color: var(--danger); color: var(--danger); }
 
 .test-nav-actions { display: flex; gap: 10px; margin: 0 16px 10px; }
 .test-nav-actions .secondary-btn { flex: 1; }

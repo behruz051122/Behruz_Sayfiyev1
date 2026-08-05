@@ -24,6 +24,11 @@ let allControlTests = [];
 let controlTestsLoaded = false;
 let currentControlTestMeta = null;
 
+// ---------- Attestatsiya holati ----------
+let allAttestationTests = [];
+let attestationTestsLoaded = false;
+let currentAttestationMeta = null;
+
 let activeTestsTab = "tests";
 
 // ---------- Topshirish jarayoni (testlar VA simulyator uchun umumiy) ----------
@@ -58,6 +63,7 @@ function showTestsLanding() {
   document.getElementById("testsTabContent").classList.add("hidden");
   document.getElementById("simulatorTabContent").classList.add("hidden");
   document.getElementById("controlTabContent").classList.add("hidden");
+  document.getElementById("attestationTabContent").classList.add("hidden");
 }
 
 function openTestsCategory(tab) {
@@ -76,15 +82,20 @@ function switchTestsTab(tab) {
   document.getElementById("tabBtnTests").classList.toggle("active", tab === "tests");
   document.getElementById("tabBtnSimulator").classList.toggle("active", tab === "simulator");
   document.getElementById("tabBtnControl").classList.toggle("active", tab === "control");
+  document.getElementById("tabBtnAttestation").classList.toggle("active", tab === "attestation");
   document.getElementById("testsTabContent").classList.toggle("hidden", tab !== "tests");
   document.getElementById("simulatorTabContent").classList.toggle("hidden", tab !== "simulator");
   document.getElementById("controlTabContent").classList.toggle("hidden", tab !== "control");
+  document.getElementById("attestationTabContent").classList.toggle("hidden", tab !== "attestation");
 
   if (tab === "simulator" && !simulatorsLoaded) {
     loadSimulatorList();
   }
   if (tab === "control" && !controlTestsLoaded) {
     loadControlTestList();
+  }
+  if (tab === "attestation" && !attestationTestsLoaded) {
+    loadAttestationTestList();
   }
 }
 
@@ -209,8 +220,16 @@ function openTestDetail(test) {
   showScreen("test-detail");
 }
 
+const START_BTN_ID_BY_MODE = { control: "startControlBtn", attestation: "startAttestationBtn", test: "startTestBtn" };
+const START_BTN_TEXT_BY_MODE = {
+  control: "▶ Nazorat testini boshlash",
+  attestation: "▶ Attestatsiyani boshlash",
+  test: "▶ Testni boshlash",
+};
+
 async function startTest(test, mode = "test") {
-  const btnId = mode === "control" ? "startControlBtn" : "startTestBtn";
+  const btnId = START_BTN_ID_BY_MODE[mode] || "startTestBtn";
+  const btnText = START_BTN_TEXT_BY_MODE[mode] || "▶ Testni boshlash";
   const btn = document.getElementById(btnId);
   if (btn) { btn.disabled = true; btn.textContent = "Tayyorlanmoqda..."; }
   try {
@@ -221,7 +240,7 @@ async function startTest(test, mode = "test") {
     if (!startRes.ok) {
       const errData = await startRes.json().catch(() => ({}));
       tg.showAlert ? tg.showAlert(errData.detail || "Boshlab bo'lmadi") : alert(errData.detail || "Xatolik");
-      if (btn) { btn.disabled = false; btn.textContent = mode === "control" ? "▶ Nazorat testini boshlash" : "▶ Testni boshlash"; }
+      if (btn) { btn.disabled = false; btn.textContent = btnText; }
       return;
     }
     const startData = await startRes.json();
@@ -229,7 +248,7 @@ async function startTest(test, mode = "test") {
 
     if (!fullTest.questions || fullTest.questions.length === 0) {
       tg.showAlert ? tg.showAlert("Bu testda hozircha savollar yo'q") : alert("Bu testda hozircha savollar yo'q");
-      if (btn) { btn.disabled = false; btn.textContent = mode === "control" ? "▶ Nazorat testini boshlash" : "▶ Testni boshlash"; }
+      if (btn) { btn.disabled = false; btn.textContent = btnText; }
       return;
     }
 
@@ -239,6 +258,7 @@ async function startTest(test, mode = "test") {
       test: fullTest,
       index: 0,
       answers: {}, // question_id -> tanlangan variant raqami (erkin o'zgartiriladi)
+      flags: new Set(), // question_id lar — Attestatsiyada "Belgilash" bosilgan savollar
       coinsEarned: 0,
       timeLeft: fullTest.time_limit_seconds,
       timerHandle: null,
@@ -250,7 +270,7 @@ async function startTest(test, mode = "test") {
     startTestTimer();
   } catch (e) {
     console.error(e);
-    if (btn) { btn.disabled = false; btn.textContent = mode === "control" ? "▶ Nazorat testini boshlash" : "▶ Testni boshlash"; }
+    if (btn) { btn.disabled = false; btn.textContent = btnText; }
   }
 }
 
@@ -469,6 +489,83 @@ function openControlTestDetail(test) {
 }
 
 // ================================================================
+// ATTESTATSIYA RO'YXATI VA TAFSILOTI
+// (@biologiyamockbot tahlili asosida — erkin kirish, tayinlash shart emas)
+// ================================================================
+
+async function loadAttestationTestList() {
+  const container = document.getElementById("attestationTestList");
+  container.innerHTML = skeletonCards(2);
+  try {
+    const res = await apiFetch(`/api/attestation-tests`);
+    const data = await res.json();
+    allAttestationTests = data.tests;
+    attestationTestsLoaded = true;
+    renderAttestationTestList();
+  } catch (e) {
+    console.error(e);
+    container.innerHTML = errorHtml();
+  }
+}
+
+function renderAttestationTestList() {
+  const container = document.getElementById("attestationTestList");
+  container.innerHTML = "";
+
+  if (allAttestationTests.length === 0) {
+    container.innerHTML = emptyHtml("Hozircha attestatsiya testi qo'shilmagan");
+    return;
+  }
+
+  allAttestationTests.forEach(t => {
+    const card = document.createElement("div");
+    card.className = "test-card";
+    card.innerHTML = `
+      <div class="test-card-top">
+        <div class="test-card-title">${t.title}</div>
+        <span class="difficulty-badge difficulty-${t.difficulty}">${DIFFICULTY_LABELS[t.difficulty] || t.difficulty}</span>
+      </div>
+      <div class="test-card-meta">
+        <span class="course-tag">${t.subject}</span>
+        <span>❓ ${t.question_count} savol</span>
+        <span>⏱ ${formatSeconds(t.time_limit_seconds)}</span>
+      </div>
+      <div class="unlock-badge">🔓 Erkin kirish</div>
+    `;
+    card.addEventListener("click", () => openAttestationDetail(t));
+    container.appendChild(card);
+  });
+}
+
+function openAttestationDetail(test) {
+  currentAttestationMeta = test;
+  const content = document.getElementById("attestationDetailContent");
+
+  content.innerHTML = `
+    <div class="test-detail-hero">
+      <span class="difficulty-badge difficulty-${test.difficulty}">${DIFFICULTY_LABELS[test.difficulty] || test.difficulty}</span>
+      <h1>${test.title}</h1>
+      <div class="test-detail-stats">
+        <div class="test-detail-stat"><div class="num">${test.question_count}</div><div class="lbl">savol</div></div>
+        <div class="test-detail-stat"><div class="num">${formatSeconds(test.time_limit_seconds)}</div><div class="lbl">vaqt</div></div>
+      </div>
+    </div>
+    <div class="test-detail-actions">
+      <button class="gold-btn" id="startAttestationBtn">▶ Attestatsiyani boshlash</button>
+    </div>
+    <p style="text-align:center;color:var(--text-dim);font-size:11px;margin-top:14px;">
+      Bu — rasmiy attestatsiya sinovi. Har bir savolni "🚩 Belgilash" (keyinroq qaytish uchun) yoki
+      "⚠️ E'tiroz bildirish" mumkin. Javob berayotganda to'g'ri/noto'g'ri darhol ko'rsatilmaydi —
+      natijada ham to'g'ri javob ko'rsatilmaydi, faqat qaysi savollarga to'g'ri/noto'g'ri javob berganingiz.
+      Natijangiz shu variant bo'yicha reytingga ta'sir qiladi.
+    </p>
+  `;
+  document.getElementById("startAttestationBtn").addEventListener("click", () => startTest(test, "attestation"));
+
+  showScreen("attestation-detail");
+}
+
+// ================================================================
 // TOPSHIRISH JARAYONI (testlar VA simulyator uchun UMUMIY)
 // ================================================================
 
@@ -522,12 +619,25 @@ function renderCurrentQuestion() {
   const subjectSuffix = question.subject ? ` · ${question.subject}` : "";
   const selectedIndex = answers[question.id];
 
+  const isAttestation = currentAttempt.mode === "attestation";
+  const isFlagged = isAttestation && currentAttempt.flags.has(question.id);
+
   const navButtons = test.questions.map((q, i) => {
     const cls = ["qnav-btn"];
     if (i === index) cls.push("qnav-current");
     if (answers[q.id] !== undefined) cls.push("qnav-answered");
+    if (isAttestation && currentAttempt.flags.has(q.id)) cls.push("qnav-flagged");
     return `<button type="button" class="${cls.join(" ")}" data-index="${i}">${i + 1}</button>`;
   }).join("");
+
+  const attestationActions = isAttestation ? `
+    <div class="attestation-actions">
+      <button type="button" class="secondary-btn small ${isFlagged ? "flag-active" : ""}" id="flagQuestionBtn">
+        ${isFlagged ? "🚩 Belgilangan" : "🏳 Belgilash"}
+      </button>
+      <button type="button" class="secondary-btn small" id="objectionBtn">⚠️ E'tiroz bildirish</button>
+    </div>
+  ` : "";
 
   const content = document.getElementById("testTakingContent");
   content.innerHTML = `
@@ -538,6 +648,7 @@ function renderCurrentQuestion() {
       ${question.image_url ? `<img class="question-image" src="${question.image_url}" alt="Savol rasmi">` : ""}
       ${renderQuestionTables(question.table_data)}
     </div>
+    ${attestationActions}
     <div class="option-list" id="optionList">
       ${options.map(([idx, text]) => `
         <button class="option-btn ${parseInt(idx) === selectedIndex ? "option-selected-neutral" : ""}" data-option-index="${idx}">
@@ -592,6 +703,48 @@ function renderCurrentQuestion() {
     }
     finishAttempt(false);
   });
+
+  if (isAttestation) {
+    document.getElementById("flagQuestionBtn").addEventListener("click", () => toggleQuestionFlag(question.id));
+    document.getElementById("objectionBtn").addEventListener("click", () => submitObjection(question.id));
+  }
+}
+
+// "Belgilash" — savolni keyinroq qaytish uchun belgilash/bekor qilish
+// (@biologiyamockbot'dagi kabi). Javob berilgan-berilmaganidan mustaqil.
+async function toggleQuestionFlag(questionId) {
+  const { id: attemptId, flags } = currentAttempt;
+  const flagged = !flags.has(questionId);
+  if (flagged) flags.add(questionId); else flags.delete(questionId);
+  renderCurrentQuestion();
+  try {
+    await apiFetch(`/api/attempt/${attemptId}/flag`, {
+      method: "POST",
+      body: JSON.stringify({ question_id: questionId, flagged })
+    });
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+// "E'tiroz bildirish" — savolga shikoyat/izoh yozish, admin panelda ko'riladi.
+async function submitObjection(questionId) {
+  const comment = (tg.showPopup || window.prompt) ? window.prompt("Bu savolga e'tirozingizni yozing:") : null;
+  if (comment === null) return; // bekor qilindi
+  const trimmed = comment.trim();
+  if (!trimmed) {
+    tg.showAlert ? tg.showAlert("E'tiroz matni bo'sh bo'lishi mumkin emas") : alert("E'tiroz matni bo'sh bo'lishi mumkin emas");
+    return;
+  }
+  try {
+    await apiFetch(`/api/attempt/${currentAttempt.id}/objection`, {
+      method: "POST",
+      body: JSON.stringify({ question_id: questionId, comment: trimmed })
+    });
+    tg.showAlert ? tg.showAlert("✅ E'tirozingiz yuborildi") : alert("E'tirozingiz yuborildi");
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 async function selectOption(selectedIndex) {
@@ -647,6 +800,14 @@ const RESULT_TITLE_BY_MODE = {
   test: "🎉 Test yakunlandi",
   simulator: "🎯 Simulyator yakunlandi",
   control: "🎓 Nazorat testi yakunlandi",
+  attestation: "📋 Attestatsiya yakunlandi",
+};
+
+const BACK_LABEL_BY_MODE = {
+  simulator: "Simulyatorlar ro'yxatiga qaytish",
+  control: "Nazorat testlariga qaytish",
+  attestation: "Attestatsiya ro'yxatiga qaytish",
+  test: "Testlar ro'yxatiga qaytish",
 };
 
 async function renderAttemptResult(attemptId, mode, score, total, percent, timedOut, countsForRanking) {
@@ -670,6 +831,7 @@ async function renderAttemptResult(attemptId, mode, score, total, percent, timed
       <div class="result-sub">${percentToComment(percent)}</div>
       ${currentAttempt.coinsEarned > 0 ? `<div class="result-coins-badge">+${currentAttempt.coinsEarned} 🪙 coin qo'lga kiritdingiz</div>` : ""}
       ${rankingNote}
+      ${mode === "attestation" ? `<div id="attestationRankBox"></div>` : ""}
     </div>
     <div class="control-result-stats-row">
       <div class="control-stat correct"><div class="num">${score}</div><div class="lbl">To'g'ri</div></div>
@@ -677,10 +839,11 @@ async function renderAttemptResult(attemptId, mode, score, total, percent, timed
       <div class="control-stat"><div class="num">${total}</div><div class="lbl">Jami savol</div></div>
     </div>
     <div class="control-grid-title" style="text-align:center;">Savollar natijasi</div>
+    <p style="text-align:center;color:var(--text-dim);font-size:11px;margin-top:-8px;">To'g'ri javoblar ko'rsatilmaydi — faqat qaysi savolga to'g'ri/noto'g'ri javob berganingiz.</p>
     <div class="control-answers-grid" id="controlAnswersGrid"></div>
     <div class="result-actions" style="margin:16px;">
       ${showRetake ? `<button class="secondary-btn" id="retakeTestBtn">🔁 Qayta urinish</button>` : ""}
-      <button class="secondary-btn" id="backToTestsBtn">${mode === "simulator" ? "Simulyatorlar ro'yxatiga qaytish" : mode === "control" ? "Nazorat testlariga qaytish" : "Testlar ro'yxatiga qaytish"}</button>
+      <button class="secondary-btn" id="backToTestsBtn">${BACK_LABEL_BY_MODE[mode] || "Testlar ro'yxatiga qaytish"}</button>
     </div>
   `;
 
@@ -697,15 +860,31 @@ async function renderAttemptResult(attemptId, mode, score, total, percent, timed
     console.error(e);
   }
 
+  if (mode === "attestation") {
+    try {
+      const rankRes = await apiFetch(`/api/attempt/${attemptId}/rank`);
+      const rankData = await rankRes.json();
+      const rankBox = document.getElementById("attestationRankBox");
+      if (rankBox) {
+        rankBox.innerHTML = rankData.rank
+          ? `<div class="ranking-note ranking-note-yes">🏆 ${rankData.rank.rank}-o'rin / ${rankData.rank.total} talaba ichida</div>`
+          : `<div class="ranking-note ranking-note-no">ℹ️ Bu — mashq urinishi, variant reytingiga ta'sir qilmaydi</div>`;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
   if (showRetake) {
     document.getElementById("retakeTestBtn").addEventListener("click", () => {
       if (mode === "simulator") startSimulator(currentSimulatorMeta);
       else if (mode === "control") startTest(currentControlTestMeta, "control");
+      else if (mode === "attestation") startTest(currentAttestationMeta, "attestation");
       else startTest(currentTestMeta);
     });
   }
   document.getElementById("backToTestsBtn").addEventListener("click", () => {
-    activeTestsTab = mode === "simulator" ? "simulator" : mode === "control" ? "control" : "tests";
+    activeTestsTab = mode === "simulator" ? "simulator" : mode === "control" ? "control" : mode === "attestation" ? "attestation" : "tests";
     navigateTo("tests");
   });
 }
@@ -790,6 +969,7 @@ export function initTestsModule() {
   document.getElementById("tabBtnTests").addEventListener("click", () => switchTestsTab("tests"));
   document.getElementById("tabBtnSimulator").addEventListener("click", () => switchTestsTab("simulator"));
   document.getElementById("tabBtnControl").addEventListener("click", () => switchTestsTab("control"));
+  document.getElementById("tabBtnAttestation").addEventListener("click", () => switchTestsTab("attestation"));
 
   document.getElementById("exitTestBtn").addEventListener("click", () => {
     const ok = confirm("Testdan chiqmoqchimisiz? Joriy urinishingiz saqlanmaydi.");

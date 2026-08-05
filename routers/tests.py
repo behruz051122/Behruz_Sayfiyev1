@@ -20,7 +20,20 @@ def _ensure_control_test_access(test: dict, telegram_id: int):
 
 @router.get("/tests")
 def api_get_tests(subject: str = None, user=Depends(get_verified_telegram_user)):
-    tests = db.get_all_tests(subject=subject, include_control=False)
+    # Faqat "oddiy/mavzuli" testlar — Attestatsiya alohida /api/attestation-tests
+    # orqali, Nazorat testlari esa /api/control-tests orqali ko'rsatiladi.
+    tests = db.get_all_tests(subject=subject, include_control=False, test_kind="practice")
+    for t in tests:
+        t["question_count"] = db.count_test_questions(t["id"])
+    return {"tests": tests}
+
+
+@router.get("/attestation-tests")
+def api_get_attestation_tests(subject: str = None, user=Depends(get_verified_telegram_user)):
+    # @biologiyamockbot'dagi kabi — Attestatsiya testlari "Erkin kirish"
+    # (hech qanday tayinlash/kursga yozilish shart emas, har bir talaba
+    # ochib ishlashi mumkin).
+    tests = db.get_all_tests(subject=subject, test_kind="attestation")
     for t in tests:
         t["question_count"] = db.count_test_questions(t["id"])
     return {"tests": tests}
@@ -101,6 +114,35 @@ def api_get_attempt_grid(attempt_id: int, user=Depends(get_verified_telegram_use
     katakchalar jadvalini qaytaradi (natija ekranidagi 'Savollar natijasi')."""
     _get_owned_attempt_or_403(attempt_id, user["telegram_id"])
     return {"grid": db.get_attempt_answers_grid(attempt_id)}
+
+
+@router.post("/attempt/{attempt_id}/flag")
+def api_flag_question(attempt_id: int, data: dict = Body(...), user=Depends(get_verified_telegram_user)):
+    """Attestatsiya: savolni "keyinroq qaytish uchun" belgilash/bekor qilish
+    (@biologiyamockbot'dagi "Belgilash" tugmasi kabi)."""
+    _get_owned_attempt_or_403(attempt_id, user["telegram_id"])
+    question_id = int(data["question_id"])
+    flagged = bool(data.get("flagged"))
+    return db.set_answer_flag(attempt_id, question_id, flagged)
+
+
+@router.post("/attempt/{attempt_id}/objection")
+def api_submit_objection(attempt_id: int, data: dict = Body(...), user=Depends(get_verified_telegram_user)):
+    """Attestatsiya: savolga e'tiroz/shikoyat yozish — admin panelda ko'riladi."""
+    _get_owned_attempt_or_403(attempt_id, user["telegram_id"])
+    question_id = int(data["question_id"])
+    comment = (data.get("comment") or "").strip()
+    if not comment:
+        raise HTTPException(status_code=400, detail="E'tiroz matnini yozing")
+    obj_id = db.create_objection(attempt_id, question_id, user["telegram_id"], comment)
+    return {"id": obj_id}
+
+
+@router.get("/attempt/{attempt_id}/rank")
+def api_get_attempt_rank(attempt_id: int, user=Depends(get_verified_telegram_user)):
+    """Attestatsiya: shu variant bo'yicha "X-o'rin / Y talaba ichida" reyting."""
+    _get_owned_attempt_or_403(attempt_id, user["telegram_id"])
+    return {"rank": db.get_attempt_rank(attempt_id)}
 
 
 @router.get("/my-test-results")

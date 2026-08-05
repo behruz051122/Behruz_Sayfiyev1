@@ -19,6 +19,7 @@ function hoursMinutesToSeconds(hoursStr, minutesStr) {
 
 let currentAdminCourses = [];
 let currentAdminTests = [];
+let objectionsStatusFilter = "pending";
 
 // ---------- Statistika (dashboard) ----------
 
@@ -704,11 +705,12 @@ export async function loadAdminTests() {
       const row = document.createElement("div");
       row.className = "admin-row";
       const controlBadge = t.is_control_test ? `<span class="control-badge">🎓 NAZORAT</span>` : "";
+      const attestationBadge = t.test_kind === "attestation" ? `<span class="control-badge">📋 ATTESTATSIYA</span>` : "";
       const accessBtn = t.is_control_test ? `<button data-a="access">👥 Talabalar</button>` : "";
       const resultsBtn = t.is_control_test ? `<button data-a="results">📊 Natijalar</button>` : "";
       row.innerHTML = `
         <div class="info">
-          <div class="t">${t.title}${t.is_active ? "" : " (yashirin)"}${controlBadge}</div>
+          <div class="t">${t.title}${t.is_active ? "" : " (yashirin)"}${controlBadge}${attestationBadge}</div>
           <div class="s">${t.subject} · ${DIFFICULTY_LABELS[t.difficulty] || t.difficulty} · ${t.question_count} savol · ${formatSeconds(t.time_limit_seconds)}</div>
         </div>
         <div class="row-actions">
@@ -765,6 +767,7 @@ function openAdminTestForm(test) {
   }
   document.getElementById("at_order_num").value = test ? test.order_num : 0;
   document.getElementById("at_is_active").value = test ? String(test.is_active) : "1";
+  document.getElementById("at_test_kind").value = (test && test.test_kind) ? test.test_kind : "practice";
 
   populateControlCourseSelect();
   const isControl = test ? Boolean(test.is_control_test) : false;
@@ -777,6 +780,54 @@ async function deleteAdminTest(id) {
   if (!confirm("Bu testni butunlay o'chirmoqchimisiz? Barcha savollar ham o'chadi.")) return;
   await apiFetch(`/api/admin/tests/${id}`, { method: "DELETE" });
   loadAdminTests();
+}
+
+// ---------- Attestatsiya: E'tirozlar ----------
+
+export async function loadAdminObjections() {
+  const box = document.getElementById("adminObjectionsList");
+  if (!box) return;
+  box.innerHTML = skeletonCards(2);
+  try {
+    const qs = objectionsStatusFilter ? `?status=${objectionsStatusFilter}` : "";
+    const res = await apiFetch(`/api/admin/objections${qs}`);
+    const data = await res.json();
+    const objections = data.objections;
+    box.innerHTML = "";
+    if (objections.length === 0) {
+      box.innerHTML = emptyHtml("Bu bo'limda e'tiroz yo'q");
+      return;
+    }
+    objections.forEach(o => {
+      const row = document.createElement("div");
+      row.className = "admin-row";
+      const studentName = o.first_name || (o.username ? "@" + o.username : `ID ${o.telegram_id}`);
+      const statusBadge = o.status === "pending"
+        ? `<span class="control-badge">⏳ KUTILMOQDA</span>`
+        : `<span class="unlock-badge" style="display:inline-block;">✅ Ko'rib chiqilgan</span>`;
+      row.innerHTML = `
+        <div class="info">
+          <div class="t">${o.test_title || "Test"} — ${studentName} ${statusBadge}</div>
+          <div class="s">Savol: ${(o.question_text || "").slice(0, 90)}${(o.question_text || "").length > 90 ? "..." : ""}</div>
+          <div class="s" style="margin-top:4px;color:var(--text);">💬 ${o.comment}</div>
+        </div>
+        <div class="row-actions">
+          ${o.status === "pending" ? `<button data-a="review">✅ Ko'rib chiqildi deb belgilash</button>` : ""}
+        </div>
+      `;
+      const reviewBtn = row.querySelector('[data-a="review"]');
+      if (reviewBtn) {
+        reviewBtn.onclick = async () => {
+          await apiFetch(`/api/admin/objections/${o.id}`, { method: "PUT", body: JSON.stringify({ status: "reviewed" }) });
+          loadAdminObjections();
+        };
+      }
+      box.appendChild(row);
+    });
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml();
+  }
 }
 
 // ---------- Savollar ----------
@@ -1009,6 +1060,18 @@ async function renderAdminQuestions(testId) {
 // ---------- Modulni ishga tushirish (barcha forma va tugmalarni ulaydi) ----------
 
 export function initAdminModule() {
+  const objRow = document.getElementById("objectionsFilterRow");
+  if (objRow) {
+    objRow.querySelectorAll(".filter-chip").forEach(chip => {
+      chip.addEventListener("click", () => {
+        objectionsStatusFilter = chip.getAttribute("data-objstatus");
+        objRow.querySelectorAll(".filter-chip").forEach(c => c.classList.remove("active"));
+        chip.classList.add("active");
+        loadAdminObjections();
+      });
+    });
+  }
+
   document.getElementById("adminNewCourseBtn").addEventListener("click", () => openAdminCourseForm(null));
   document.getElementById("adminCloseCourseForm").addEventListener("click", () => document.getElementById("adminCourseForm").classList.add("hidden"));
 
@@ -1119,7 +1182,8 @@ export function initAdminModule() {
       is_control_test: isControlTest ? 1 : 0,
       // Kurs ixtiyoriy — nazorat testi bo'lsa ham kursga bog'lamaslik mumkin,
       // chunki kirish huquqi endi asosan "Talabalar" ro'yxati orqali beriladi.
-      course_id: (isControlTest && rawCourseId) ? parseInt(rawCourseId) : null
+      course_id: (isControlTest && rawCourseId) ? parseInt(rawCourseId) : null,
+      test_kind: document.getElementById("at_test_kind").value
     };
     if (id) await apiFetch(`/api/admin/tests/${id}`, { method: "PUT", body: JSON.stringify(data) });
     else await apiFetch(`/api/admin/tests`, { method: "POST", body: JSON.stringify(data) });

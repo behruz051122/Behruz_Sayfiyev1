@@ -178,6 +178,17 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # ustun allaqachon mavjud — muammo emas
 
+        # Test "turi" — oddiy mavzuli testlardan tashqari, endi Attestatsiya
+        # (o'qituvchilar uchun rasmiy attestatsiya sinovi, @biologiyamockbot
+        # tahlili asosida qurilgan) ham shu "tests" jadvalidan foydalanadi.
+        # 'practice' — oddiy/mavzuli test (standart), 'attestation' — Attestatsiya.
+        # Kelajakda 'certificate' (Milliy sertifikat) uchun ham shu ustun ishlatiladi.
+        try:
+            cur.execute("ALTER TABLE tests ADD COLUMN test_kind TEXT DEFAULT 'practice'")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # ustun allaqachon mavjud — muammo emas
+
         # Nazorat testiga TO'G'RIDAN-TO'G'RI (kursdan mustaqil) tayinlangan
         # o'quvchilar ro'yxati. Admin panelda o'qituvchi aynan qaysi
         # talabalarga shu nazorat testini topshirishga ruxsat berishni
@@ -337,6 +348,33 @@ def init_db():
         cur.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_test_answers_attempt_question
             ON test_answers(attempt_id, question_id)
+        """)
+
+        # "Belgilash" (flag) — Attestatsiya testida talaba savolni "keyinroq
+        # qaytaman" deb belgilashi mumkin (@biologiyamockbot'dagi kabi).
+        # Javob berilmasdan ham belgilanishi mumkin bo'lgani uchun
+        # test_answers'ning o'zida (selected_index bo'sh bo'lishi mumkin).
+        try:
+            cur.execute("ALTER TABLE test_answers ADD COLUMN is_flagged INTEGER DEFAULT 0")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # ustun allaqachon mavjud — muammo emas
+
+        # "E'tiroz bildirish" — talaba biror savolga e'tiroz/shikoyat
+        # yozishi mumkin (@biologiyamockbot'dagi kabi), admin panelda
+        # o'qituvchi bu e'tirozlarni ko'rib chiqadi.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS question_objections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                attempt_id INTEGER NOT NULL,
+                question_id INTEGER NOT NULL,
+                telegram_id INTEGER NOT NULL,
+                comment TEXT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (attempt_id) REFERENCES test_attempts (id) ON DELETE CASCADE,
+                FOREIGN KEY (question_id) REFERENCES test_questions (id) ON DELETE CASCADE
+            )
         """)
         cur.execute("""
             DELETE FROM simulator_answers
@@ -1611,7 +1649,7 @@ DIFFICULTY_TIME_SECONDS = {
 }
 
 
-def get_all_tests(subject: str = None, only_active: bool = True, include_control: bool = True):
+def get_all_tests(subject: str = None, only_active: bool = True, include_control: bool = True, test_kind: str = None):
     with get_connection() as conn:
         cur = conn.cursor()
         query = "SELECT * FROM tests WHERE 1=1"
@@ -1623,6 +1661,14 @@ def get_all_tests(subject: str = None, only_active: bool = True, include_control
             query += " AND is_active = 1"
         if not include_control:
             query += " AND (is_control_test IS NULL OR is_control_test = 0)"
+        if test_kind:
+            if test_kind == "practice":
+                # Eski (test_kind ustuni qo'shilishidan oldingi) testlar NULL
+                # bo'lib qoladi — ularni ham "oddiy" hisoblaymiz.
+                query += " AND (test_kind IS NULL OR test_kind = 'practice')"
+            else:
+                query += " AND test_kind = ?"
+                params.append(test_kind)
         query += " ORDER BY order_num ASC, id ASC"
         cur.execute(query, params)
         return [dict(row) for row in cur.fetchall()]
@@ -1649,12 +1695,13 @@ def create_test(data: dict) -> int:
         difficulty = data.get("difficulty", "orta")
         time_limit = data.get("time_limit_seconds") or DIFFICULTY_TIME_SECONDS.get(difficulty, 600)
         cur.execute("""
-            INSERT INTO tests (subject, title, difficulty, time_limit_seconds, order_num, is_active, is_control_test, course_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO tests (subject, title, difficulty, time_limit_seconds, order_num, is_active, is_control_test, course_id, test_kind)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             data.get("subject", ""), data.get("title", ""), difficulty, int(time_limit),
             int(data.get("order_num", 0)), int(data.get("is_active", 1)),
-            int(data.get("is_control_test", 0)), data.get("course_id") or None
+            int(data.get("is_control_test", 0)), data.get("course_id") or None,
+            data.get("test_kind") or "practice"
         ))
         conn.commit()
         return cur.lastrowid
@@ -1665,7 +1712,7 @@ def update_test(test_id: int, data: dict):
         cur = conn.cursor()
         fields, values = [], []
         for key in ["subject", "title", "difficulty", "time_limit_seconds", "order_num", "is_active",
-                    "is_control_test", "course_id"]:
+                    "is_control_test", "course_id", "test_kind"]:
             if key in data:
                 fields.append(f"{key} = ?")
                 values.append(data[key] if data[key] != "" else None)
@@ -1788,6 +1835,78 @@ def submit_answer(telegram_id: int, attempt_id: int, question_id: int, selected_
             add_coins(telegram_id, 1)  # 'with' bloki yopilgach chaqiriladi — pool bandlanib qolmaydi
 
     return {"correct": is_correct, "correct_index": question["correct_index"], "coin_awarded": coin_awarded}
+
+
+def set_answer_flag(attempt_id: int, question_id: int, flagged: bool):
+    """Attestatsiya testida "Belgilash" — savolni javob berilgan-berilmaganidan
+    qat'i nazar "keyinroq qaytaman" deb belgilash/bekor qilish. Agar bu
+    savolga hali umuman javob yozilmagan bo'lsa ham ishlashi kerak, shuning
+    uchun selected_index/is_correct'ni YO'QOTMASDAN (mavjud bo'lsa saqlab
+    qolib) faqat is_flagged ustunini upsert qilamiz."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO test_answers (attempt_id, question_id, selected_index, is_correct, is_flagged)
+            VALUES (?, ?, NULL, 0, ?)
+            ON CONFLICT(attempt_id, question_id)
+            DO UPDATE SET is_flagged = excluded.is_flagged
+        """, (attempt_id, question_id, 1 if flagged else 0))
+        conn.commit()
+    return {"flagged": bool(flagged)}
+
+
+def get_attempt_flags(attempt_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT question_id FROM test_answers
+            WHERE attempt_id = ? AND is_flagged = 1
+        """, (attempt_id,))
+        return [r["question_id"] for r in cur.fetchall()]
+
+
+# ---------- E'TIROZ BILDIRISH (savolga shikoyat) ----------
+
+def create_objection(attempt_id: int, question_id: int, telegram_id: int, comment: str) -> int:
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO question_objections (attempt_id, question_id, telegram_id, comment)
+            VALUES (?, ?, ?, ?)
+        """, (attempt_id, question_id, telegram_id, comment))
+        conn.commit()
+        return cur.lastrowid
+
+
+def get_objections(status: str = None):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = """
+            SELECT o.id as id, o.attempt_id as attempt_id, o.question_id as question_id,
+                   o.telegram_id as telegram_id, o.comment as comment, o.status as status,
+                   o.created_at as created_at,
+                   q.question_text as question_text, t.id as test_id, t.title as test_title,
+                   u.first_name as first_name, u.username as username
+            FROM question_objections o
+            LEFT JOIN test_questions q ON q.id = o.question_id
+            LEFT JOIN tests t ON t.id = q.test_id
+            LEFT JOIN users u ON u.telegram_id = o.telegram_id
+            WHERE 1=1
+        """
+        params = []
+        if status:
+            query += " AND o.status = ?"
+            params.append(status)
+        query += " ORDER BY o.created_at DESC"
+        cur.execute(query, params)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def update_objection_status(objection_id: int, status: str):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("UPDATE question_objections SET status = ? WHERE id = ?", (status, objection_id))
+        conn.commit()
 
 
 def finish_attempt(attempt_id: int):
@@ -2556,6 +2675,25 @@ def get_control_test_results(test_id: int):
         for r in rows:
             r["percent"] = round((r["score"] / r["total_questions"]) * 100, 1) if r["total_questions"] else 0
         return rows
+
+
+def get_attempt_rank(attempt_id: int):
+    """Berilgan (Attestatsiya) urinish uchun — shu variantni ishlagan
+    barcha talabalar orasida nechanchi o'rinda ekanini qaytaradi
+    (@biologiyamockbot'dagi "80-o'rin / 90 talaba ichida" bilan bir xil
+    mantiq). get_control_test_results bilan bir xil "faqat birinchi
+    yakunlangan urinish hisoblanadi" qoidasidan foydalanadi. Agar bu urinish
+    reytingga hisoblanmasa (mashq/qayta urinish) — None qaytaradi."""
+    attempt = get_attempt(attempt_id)
+    if not attempt or not attempt.get("finished_at"):
+        return None
+    if not is_first_finished_attempt(attempt_id):
+        return None
+    ranked = get_control_test_results(attempt["test_id"])
+    for i, r in enumerate(ranked):
+        if r["telegram_id"] == attempt["telegram_id"]:
+            return {"rank": i + 1, "total": len(ranked)}
+    return None
 
 
 def get_attempt_answers_grid(attempt_id: int):

@@ -206,14 +206,15 @@
           <div class="dc-sub">O'QITUVCHI BERGAN</div>
           <div class="dc-arrow">›</div>
         </button>
+        <button class="dashboard-card" data-testtab="attestation">
+          <div class="dc-icon dc-cyan">📋</div>
+          <div class="dc-title">Attestatsiya</div>
+          <div class="dc-sub">ERKIN KIRISH</div>
+          <div class="dc-arrow">›</div>
+        </button>
         <button class="dashboard-card dashboard-card-disabled" disabled>
           <div class="dc-icon dc-gold">🏅</div>
           <div class="dc-title">Milliy sertifikat</div>
-          <div class="dc-sub">TEZ ORADA</div>
-        </button>
-        <button class="dashboard-card dashboard-card-disabled" disabled>
-          <div class="dc-icon dc-cyan">📋</div>
-          <div class="dc-title">Attestatsiya</div>
           <div class="dc-sub">TEZ ORADA</div>
         </button>
       </div>
@@ -223,6 +224,7 @@
         <button class="tab-btn active" id="tabBtnTests" data-testtab="tests">📝 Testlar</button>
         <button class="tab-btn" id="tabBtnSimulator" data-testtab="simulator">🎯 Simulyator</button>
         <button class="tab-btn" id="tabBtnControl" data-testtab="control">🎓 Nazorat</button>
+        <button class="tab-btn" id="tabBtnAttestation" data-testtab="attestation">📋 Attestatsiya</button>
       </div>
 
       <div id="testsTabContent" class="hidden">
@@ -242,6 +244,11 @@
       <div id="controlTabContent" class="hidden">
         <p class="simulator-intro">O'qituvchingiz tomonidan berilgan nazorat testlari. Faqat tegishli kursga yozilgan o'quvchilar uchun ochiq.</p>
         <div id="controlTestList" class="test-list"></div>
+      </div>
+
+      <div id="attestationTabContent" class="hidden">
+        <p class="simulator-intro">Rasmiy attestatsiya sinov testlari — barcha talabalar uchun erkin kirish. Har bir savolni "Belgilash" yoki unga "E'tiroz bildirish" imkoni bor.</p>
+        <div id="attestationTestList" class="test-list"></div>
       </div>
     </section>
 
@@ -284,6 +291,15 @@
         <h2>🎓 Nazorat testi</h2>
       </div>
       <div id="controlDetailContent"></div>
+    </section>
+
+    <!-- ATTESTATSIYA HAQIDA (boshlashdan oldin) -->
+    <section id="screen-attestation-detail" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="tests" aria-label="Orqaga">←</button>
+        <h2>📋 Attestatsiya</h2>
+      </div>
+      <div id="attestationDetailContent"></div>
     </section>
 
     <!-- TEST TOPSHIRISH (vaqtli) — testlar VA simulyator uchun umumiy -->
@@ -627,6 +643,21 @@
         <div id="adminTestsList" class="admin-list"></div>
       </div>
 
+      <div class="admin-section">
+        <div class="admin-section-head">
+          <h3>📋 Attestatsiya — E'tirozlar</h3>
+        </div>
+        <p style="font-size:11px;color:var(--text-dim);margin:-4px 0 10px;">
+          Talabalar Attestatsiya testida savolga bildirgan e'tirozlari (shikoyatlari).
+        </p>
+        <div class="filter-row" id="objectionsFilterRow">
+          <button class="filter-chip active" data-objstatus="pending">Ko'rib chiqilmagan</button>
+          <button class="filter-chip" data-objstatus="reviewed">Ko'rib chiqilgan</button>
+          <button class="filter-chip" data-objstatus="">Barchasi</button>
+        </div>
+        <div id="adminObjectionsList" class="admin-list"></div>
+      </div>
+
       <div id="adminTestForm" class="admin-section hidden">
         <div class="admin-section-head">
           <h3 id="adminTestFormTitle">Yangi test</h3>
@@ -655,6 +686,15 @@
               <option value="0">Yo'q (yashirilgan)</option>
             </select>
           </label>
+          <label>Test turi
+            <select id="at_test_kind">
+              <option value="practice">📝 Oddiy / Mavzuli test</option>
+              <option value="attestation">📋 Attestatsiya</option>
+            </select>
+          </label>
+          <p style="font-size:11px;color:var(--text-dim);margin:-6px 0 4px;">
+            "Attestatsiya" tanlansangiz — test Testlar bo'limidagi alohida "Attestatsiya" kartasida chiqadi, erkin kirish (tayinlash shart emas), talabalar "Belgilash" va "E'tiroz bildirish" tugmalaridan foydalana oladi, natijada to'g'ri javob ko'rsatilmaydi.
+          </p>
           <label class="checkbox-label">
             <input type="checkbox" id="at_is_control_test">
             <span>🎓 Bu — nazorat testi (alohida oylik reytingga kiradi). Testni saqlagach, pastdagi "Talabalar" tugmasi orqali kimlarga ochiq ekanini belgilaysiz.</span>

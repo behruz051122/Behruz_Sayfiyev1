@@ -56,3 +56,17 @@ def admin_update_question(question_id: int, data: dict = Body(...), admin=Depend
 def admin_delete_question(question_id: int, admin=Depends(require_admin)):
     db.delete_question(question_id)
     return {"ok": True}
+
+
+# ---------- E'tirozlar (Attestatsiya) ----------
+
+@router.get("/objections")
+def admin_list_objections(status: str = None, admin=Depends(require_admin)):
+    return {"objections": db.get_objections(status=status)}
+
+
+@router.put("/objections/{objection_id}")
+def admin_update_objection(objection_id: int, data: dict = Body(...), admin=Depends(require_admin)):
+    status = data.get("status", "reviewed")
+    db.update_objection_status(objection_id, status)
+    return {"ok": True}

@@ -12,7 +12,7 @@ import * as Tests from "./tests.js";
 import { loadReferral } from "./referral.js";
 import { loadLeaderboard, initLeaderboardModule } from "./leaderboard.js";
 import { loadProfile } from "./profile.js";
-import { loadAdminCourses, loadAdminTests, loadAdminAnalytics, loadAdminSimulators, loadAdminDashboardCards, loadAdminBookProducts, loadAdminFaq, loadAdminStudentResults, initAdminModule } from "./admin.js";
+import { loadAdminCourses, loadAdminTests, loadAdminAnalytics, loadAdminSimulators, loadAdminDashboardCards, loadAdminBookProducts, loadAdminFaq, loadAdminStudentResults, loadAdminObjections, initAdminModule } from "./admin.js";
 import { loadDashboardCards } from "./home.js";
 import { loadBookShop } from "./bookshop.js";
 import { loadGameSubjects, initGamesModule } from "./games.js";
@@ -71,6 +71,7 @@ function handleNav(target) {
     loadAdminBookProducts();
     loadAdminFaq();
     loadAdminStudentResults();
+    loadAdminObjections();
     showScreen("admin");
   } else if (target === "games") {
     loadGameSubjects();
