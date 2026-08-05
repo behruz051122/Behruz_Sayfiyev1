@@ -12,6 +12,7 @@
 import { tg, publicFetch } from "./api.js";
 import { errorHtml, emptyHtml, skeletonCards } from "./components.js";
 import { brandInfo } from "./user.js";
+import * as Courses from "./courses.js";
 
 let allProducts = [];
 let activeCategory = "Hammasi";
@@ -78,6 +79,22 @@ function openContact(username) {
   else window.open(url, "_blank");
 }
 
+// "Video yechim" tugmasi — admin har bir kitob mahsulotiga miniappdagi
+// biror kursni ("bo'lim") bog'lab qo'ygan bo'lsa, o'quvchi shu yerdan
+// to'g'ridan-to'g'ri o'sha kursning ichiga o'tadi. "Orqaga" tugmasi
+// mazmunli ishlashi uchun avval Kurslar ro'yxatini (fonda) yuklab qo'yamiz.
+async function openVideoSolution(courseId) {
+  Courses.setListType("course");
+  const listTitle = document.getElementById("listTitle");
+  if (listTitle) listTitle.textContent = "Kurslar";
+  try {
+    await Courses.loadCourseList();
+  } catch (e) {
+    console.error(e);
+  }
+  Courses.openCourseDetail(courseId);
+}
+
 function renderBookShopList() {
   const container = document.getElementById("bookShopList");
   container.innerHTML = "";
@@ -109,10 +126,13 @@ function renderBookShopList() {
         <div class="book-product-bottom">
           <div class="book-product-price">${p.price ? p.price.toLocaleString() + " so'm" : "Narxi so'ralsin"}</div>
           <button class="book-product-buy">🛒 Xarid qilish</button>
+          ${p.linked_course_id ? `<button class="book-product-video">🎥 Video yechim</button>` : ""}
         </div>
       </div>
     `;
     card.querySelector(".book-product-buy").addEventListener("click", () => openContact(p.contact_username));
+    const videoBtn = card.querySelector(".book-product-video");
+    if (videoBtn) videoBtn.addEventListener("click", () => openVideoSolution(p.linked_course_id));
     container.appendChild(card);
   });
 }

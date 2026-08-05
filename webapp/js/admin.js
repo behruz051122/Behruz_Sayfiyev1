@@ -165,8 +165,21 @@ function openAdminBookProductForm(product) {
   document.getElementById("bp_badge_text").value = product ? (product.badge_text || "") : "";
   document.getElementById("bp_is_bundle").value = product ? String(product.is_bundle) : "0";
   document.getElementById("bp_contact_username").value = product ? (product.contact_username || "") : "";
+  populateBookProductCourseSelect(product ? product.linked_course_id : null);
   document.getElementById("bp_order_num").value = product ? product.order_num : 0;
   document.getElementById("bp_is_active").value = product ? String(product.is_active) : "1";
+}
+
+function populateBookProductCourseSelect(selectedCourseId) {
+  const select = document.getElementById("bp_linked_course_id");
+  select.innerHTML = `<option value="">— Bog'lanmagan —</option>`;
+  currentAdminCourses.forEach(c => {
+    const opt = document.createElement("option");
+    opt.value = c.id;
+    opt.textContent = `${c.title} (${c.subject})`;
+    select.appendChild(opt);
+  });
+  select.value = selectedCourseId ? String(selectedCourseId) : "";
 }
 
 function showBookProductImagePreview(url) {
@@ -1123,6 +1136,7 @@ export function initAdminModule() {
       badge_text: document.getElementById("bp_badge_text").value,
       is_bundle: parseInt(document.getElementById("bp_is_bundle").value),
       contact_username: document.getElementById("bp_contact_username").value,
+      linked_course_id: document.getElementById("bp_linked_course_id").value ? parseInt(document.getElementById("bp_linked_course_id").value) : null,
       order_num: parseInt(document.getElementById("bp_order_num").value),
       is_active: parseInt(document.getElementById("bp_is_active").value)
     };

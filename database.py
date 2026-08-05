@@ -487,6 +487,18 @@ def init_db():
             )
         """)
 
+        # "Video yechim" bog'lanishi — kitob mahsuloti (bosma) bilan
+        # courses jadvalidagi biror kursni ("bo'lim") bog'lash uchun.
+        # Talaba do'konda "Video yechim" tugmasini bossa, aynan shu
+        # kursning ichiga (miniappda) olib boriladi. Eski bazalarda bu ustun
+        # yo'q bo'lgani uchun ALTER TABLE orqali (xatoni jimgina o'tkazib
+        # yuborib) qo'shamiz.
+        try:
+            cur.execute("ALTER TABLE book_products ADD COLUMN linked_course_id INTEGER")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # ustun allaqachon mavjud — muammo emas
+
         # FAQ / Yordam bo'limi — tez-tez so'raladigan savol-javoblar, admin
         # paneldan to'liq boshqariladi (qo'shish/tahrirlash/o'chirish/tartib).
         cur.execute("""
@@ -942,18 +954,22 @@ def get_book_product(product_id: int):
 
 
 def create_book_product(data: dict) -> int:
+    linked_course_id = data.get("linked_course_id")
+    linked_course_id = int(linked_course_id) if linked_course_id not in (None, "", 0, "0") else None
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
             INSERT INTO book_products (title, subtitle, description, category, price,
-                image_url, badge_text, is_bundle, contact_username, order_num, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                image_url, badge_text, is_bundle, contact_username, order_num, is_active,
+                linked_course_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             data.get("title", ""), data.get("subtitle", ""), data.get("description", ""),
             data.get("category", ""), int(data.get("price", 0) or 0),
             data.get("image_url") or None, data.get("badge_text", ""),
             int(data.get("is_bundle", 0)), data.get("contact_username", ""),
-            int(data.get("order_num", 0)), int(data.get("is_active", 1))
+            int(data.get("order_num", 0)), int(data.get("is_active", 1)),
+            linked_course_id
         ))
         conn.commit()
         return cur.lastrowid
@@ -964,7 +980,8 @@ def update_book_product(product_id: int, data: dict):
         cur = conn.cursor()
         fields, values = [], []
         allowed = ["title", "subtitle", "description", "category", "price", "image_url",
-                   "badge_text", "is_bundle", "contact_username", "order_num", "is_active"]
+                   "badge_text", "is_bundle", "contact_username", "order_num", "is_active",
+                   "linked_course_id"]
         for key in allowed:
             if key in data:
                 fields.append(f"{key} = ?")
