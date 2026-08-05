@@ -12,7 +12,7 @@ import * as Tests from "./tests.js";
 import { loadReferral } from "./referral.js";
 import { loadLeaderboard, initLeaderboardModule } from "./leaderboard.js";
 import { loadProfile } from "./profile.js";
-import { loadAdminCourses, loadAdminTests, loadAdminAnalytics, loadAdminSimulators, initAdminModule } from "./admin.js";
+import { loadAdminCourses, loadAdminTests, loadAdminAnalytics, loadAdminSimulators, loadStudentActivity, initAdminModule } from "./admin.js";
 
 function handleNav(target) {
   if (target === "home") {
@@ -51,6 +51,7 @@ function handleNav(target) {
     loadAdminTests();
     loadAdminAnalytics();
     loadAdminSimulators();
+    loadStudentActivity();
     showScreen("admin");
   }
 }

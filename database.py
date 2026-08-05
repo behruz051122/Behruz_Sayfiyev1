@@ -380,6 +380,51 @@ def search_users(query: str, limit: int = 20):
         return [dict(r) for r in cur.fetchall()]
 
 
+def get_student_activity(query: str = "", limit: int = 30):
+    """Admin uchun: har bir o'quvchi ANIQ nechta test ishlaganini (nazorat
+    testi, oddiy test, simulyator — alohida-alohida) qaytaradi. Har bir test
+    faqat BIR MARTA hisoblanadi (qayta-qayta ishlangan bo'lsa ham) — chunki
+    savol "nechta test ishlagan" degani "nechta XILMA-XIL testni yakunlagan"
+    ma'nosini anglatadi, qayta urinishlar bilan shishirilmasligi kerak.
+    Bo'sh so'rovda eng faol (jami testi ko'p) o'quvchilar ro'yxati qaytadi."""
+    query = (query or "").strip()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        where_clause = ""
+        params = []
+        if query:
+            if query.isdigit():
+                where_clause = "WHERE u.telegram_id = ? OR CAST(u.telegram_id AS TEXT) LIKE ?"
+                params = [int(query), f"%{query}%"]
+            else:
+                like = f"%{query}%"
+                where_clause = "WHERE u.first_name LIKE ? OR u.username LIKE ?"
+                params = [like, like]
+
+        sql = f"""
+            SELECT u.telegram_id as telegram_id, u.first_name as first_name, u.username as username,
+                (SELECT COUNT(DISTINCT a.test_id) FROM test_attempts a JOIN tests t ON t.id = a.test_id
+                 WHERE a.telegram_id = u.telegram_id AND a.finished_at IS NOT NULL AND t.is_control_test = 1
+                ) as control_test_count,
+                (SELECT COUNT(DISTINCT a.test_id) FROM test_attempts a JOIN tests t ON t.id = a.test_id
+                 WHERE a.telegram_id = u.telegram_id AND a.finished_at IS NOT NULL AND t.is_control_test = 0
+                ) as regular_test_count,
+                (SELECT COUNT(DISTINCT sa.simulator_id) FROM simulator_attempts sa
+                 WHERE sa.telegram_id = u.telegram_id AND sa.finished_at IS NOT NULL
+                ) as simulator_count
+            FROM users u
+            {where_clause}
+            ORDER BY (control_test_count + regular_test_count + simulator_count) DESC, u.id DESC
+            LIMIT ?
+        """
+        params.append(limit)
+        cur.execute(sql, params)
+        rows = [dict(r) for r in cur.fetchall()]
+        for r in rows:
+            r["total_count"] = r["control_test_count"] + r["regular_test_count"] + r["simulator_count"]
+        return rows
+
+
 def add_coins(telegram_id: int, amount: int = 1):
     with get_connection() as conn:
         cur = conn.cursor()
@@ -1060,6 +1105,27 @@ def finish_attempt(attempt_id: int):
         return dict(row) if row else None
 
 
+def is_first_finished_attempt(attempt_id: int) -> bool:
+    """Nazorat testida talaba mashq uchun xohlagancha qayta ishlashi mumkin,
+    LEKIN oylik REYTINGGA faqat shu (talaba, test) juftligi bo'yicha ENG
+    BIRINCHI yakunlangan urinish hisoblanadi (keyingi urinishlar shaxsiy
+    mashq — reytingga ta'sir qilmaydi). Shu funksiya berilgan urinish aynan
+    o'sha "hisoblanadigan" birinchi urinishmi ekanini tekshiradi."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT telegram_id, test_id FROM test_attempts WHERE id = ?", (attempt_id,))
+        row = cur.fetchone()
+        if not row:
+            return False
+        cur.execute("""
+            SELECT id FROM test_attempts
+            WHERE telegram_id = ? AND test_id = ? AND finished_at IS NOT NULL
+            ORDER BY started_at ASC, id ASC LIMIT 1
+        """, (row["telegram_id"], row["test_id"]))
+        first = cur.fetchone()
+        return bool(first and first["id"] == attempt_id)
+
+
 def get_attempt(attempt_id: int):
     with get_connection() as conn:
         cur = conn.cursor()
@@ -1521,23 +1587,35 @@ def get_attempt_answers_grid(attempt_id: int):
 
 def get_control_test_monthly_leaderboard(year: int, month: int, limit: int = 100):
     """Berilgan oy uchun nazorat testlari reytingini qaytaradi.
-    Saralash mezoni: 1) o'rtacha foiz natija (yuqori — yaxshi),
+    Talaba bitta nazorat testini MASHQ uchun xohlagancha qayta ishlashi
+    mumkin — lekin REYTINGGA har (talaba, test) juftligi bo'yicha faqat ENG
+    BIRINCHI yakunlangan urinish kiritiladi (ROW_NUMBER() bilan tanlanadi).
+    Keyingi qayta urinishlar shaxsiy mashq hisoblanadi va natijaga ta'sir
+    qilmaydi. Saralash mezoni: 1) o'rtacha foiz natija (yuqori — yaxshi),
     2) teng natijada — o'rtacha sarflangan vaqt (kam — yaxshi, ya'ni
     bir xil ball to'plagan ikki talaba orasida tezroq ishlagani yuqorida turadi)."""
     month_str = f"{year:04d}-{month:02d}"
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
+            WITH first_attempts AS (
+                SELECT a.*,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY a.telegram_id, a.test_id
+                           ORDER BY a.started_at ASC, a.id ASC
+                       ) as rn
+                FROM test_attempts a
+                JOIN tests t ON t.id = a.test_id
+                WHERE t.is_control_test = 1 AND a.finished_at IS NOT NULL
+            )
             SELECT u.telegram_id as telegram_id, u.first_name as first_name,
-                   AVG(CAST(a.score AS FLOAT) / NULLIF(a.total_questions, 0)) * 100 as avg_percent,
-                   AVG((julianday(a.finished_at) - julianday(a.started_at)) * 86400) as avg_seconds,
-                   COUNT(a.id) as attempts_count
-            FROM test_attempts a
-            JOIN tests t ON t.id = a.test_id
-            JOIN users u ON u.telegram_id = a.telegram_id
-            WHERE t.is_control_test = 1
-              AND a.finished_at IS NOT NULL
-              AND strftime('%Y-%m', a.finished_at) = ?
+                   AVG(CAST(fa.score AS FLOAT) / NULLIF(fa.total_questions, 0)) * 100 as avg_percent,
+                   AVG((julianday(fa.finished_at) - julianday(fa.started_at)) * 86400) as avg_seconds,
+                   COUNT(fa.id) as attempts_count
+            FROM first_attempts fa
+            JOIN users u ON u.telegram_id = fa.telegram_id
+            WHERE fa.rn = 1
+              AND strftime('%Y-%m', fa.finished_at) = ?
             GROUP BY u.telegram_id
             ORDER BY avg_percent DESC, avg_seconds ASC
             LIMIT ?

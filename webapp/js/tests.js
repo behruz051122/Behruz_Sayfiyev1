@@ -614,8 +614,9 @@ async function finishAttempt(timedOut) {
   const total = currentAttempt.test.questions.length;
   const score = finalResult ? finalResult.score : Object.keys(currentAttempt.answers).length;
   const percent = total > 0 ? Math.round((score / total) * 100) : 0;
+  const countsForRanking = finalResult ? finalResult.counts_for_ranking : null;
 
-  await renderAttemptResult(currentAttempt.id, mode, score, total, percent, timedOut);
+  await renderAttemptResult(currentAttempt.id, mode, score, total, percent, timedOut, countsForRanking);
   showScreen("test-result");
   refreshCoins();
 }
@@ -626,9 +627,16 @@ const RESULT_TITLE_BY_MODE = {
   control: "🎓 Nazorat testi yakunlandi",
 };
 
-async function renderAttemptResult(attemptId, mode, score, total, percent, timedOut) {
+async function renderAttemptResult(attemptId, mode, score, total, percent, timedOut, countsForRanking) {
   const content = document.getElementById("testResultContent");
-  const showRetake = mode !== "control"; // rasmiy nazorat testi qayta topshirilmaydi
+  // Nazorat testini talaba mashq uchun xohlagancha qayta ishlashi mumkin —
+  // faqat ENG BIRINCHI yakunlangan urinishi oylik reytingga hisoblanadi.
+  const rankingNote = mode === "control"
+    ? (countsForRanking
+        ? `<div class="ranking-note ranking-note-yes">✅ Bu urinish oylik reytingga hisoblandi</div>`
+        : `<div class="ranking-note ranking-note-no">ℹ️ Bu — mashq urinishi, reytingga ta'sir qilmaydi (birinchi urinishingiz allaqachon hisoblangan)</div>`)
+    : "";
+  const showRetake = true;
 
   content.innerHTML = `
     <div class="test-result-content">
@@ -639,6 +647,7 @@ async function renderAttemptResult(attemptId, mode, score, total, percent, timed
       <div class="result-title">${timedOut ? "⏰ Vaqt tugadi" : (RESULT_TITLE_BY_MODE[mode] || "Yakunlandi")}</div>
       <div class="result-sub">${percentToComment(percent)}</div>
       ${currentAttempt.coinsEarned > 0 ? `<div class="result-coins-badge">+${currentAttempt.coinsEarned} 🪙 coin qo'lga kiritdingiz</div>` : ""}
+      ${rankingNote}
     </div>
     <div class="control-result-stats-row">
       <div class="control-stat correct"><div class="num">${score}</div><div class="lbl">To'g'ri</div></div>
@@ -669,6 +678,7 @@ async function renderAttemptResult(attemptId, mode, score, total, percent, timed
   if (showRetake) {
     document.getElementById("retakeTestBtn").addEventListener("click", () => {
       if (mode === "simulator") startSimulator(currentSimulatorMeta);
+      else if (mode === "control") startTest(currentControlTestMeta, "control");
       else startTest(currentTestMeta);
     });
   }

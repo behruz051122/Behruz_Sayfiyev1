@@ -64,6 +64,41 @@ export async function loadAdminAnalytics() {
   }
 }
 
+// ---------- Talabalar faolligi (har bir o'quvchi nechta test ishlagani) ----------
+
+let saSearchDebounce = null;
+
+export async function loadStudentActivity(query = "") {
+  const box = document.getElementById("studentActivityList");
+  if (!box) return;
+  box.innerHTML = skeletonCards(1);
+  try {
+    const res = await apiFetch(`/api/admin/student-activity?q=${encodeURIComponent(query)}`);
+    const data = await res.json();
+    if (data.students.length === 0) {
+      box.innerHTML = emptyHtml("O'quvchi topilmadi");
+      return;
+    }
+    box.innerHTML = "";
+    data.students.forEach(s => {
+      const row = document.createElement("div");
+      row.className = "admin-row";
+      const name = s.first_name || "Noma'lum";
+      const usernamePart = s.username ? ` · @${s.username}` : "";
+      row.innerHTML = `
+        <div class="info">
+          <div class="t">${name}${usernamePart}</div>
+          <div class="s">🎓 ${s.control_test_count} nazorat testi · 📝 ${s.regular_test_count} oddiy test · 🎯 ${s.simulator_count} simulyator · Jami: ${s.total_count} ta · ID: ${s.telegram_id}</div>
+        </div>
+      `;
+      box.appendChild(row);
+    });
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml();
+  }
+}
+
 // ---------- DTM Simulyatorlari ----------
 
 let currentAdminSimulators = [];
@@ -671,6 +706,12 @@ async function renderAdminQuestions(testId) {
 // ---------- Modulni ishga tushirish (barcha forma va tugmalarni ulaydi) ----------
 
 export function initAdminModule() {
+  document.getElementById("saSearchInput").addEventListener("input", (e) => {
+    const query = e.target.value;
+    clearTimeout(saSearchDebounce);
+    saSearchDebounce = setTimeout(() => loadStudentActivity(query), 300);
+  });
+
   document.getElementById("adminNewCourseBtn").addEventListener("click", () => openAdminCourseForm(null));
   document.getElementById("adminCloseCourseForm").addEventListener("click", () => document.getElementById("adminCourseForm").classList.add("hidden"));
 

@@ -88,6 +88,10 @@ def api_finish_attempt(attempt_id: int, user=Depends(get_verified_telegram_user)
     result = db.finish_attempt(attempt_id)
     if not result:
         raise HTTPException(status_code=404, detail="Urinish topilmadi")
+    # Nazorat testida talaba mashq uchun qayta ishlashi mumkin, lekin
+    # oylik reytingga faqat BIRINCHI yakunlangan urinish kiradi — frontend
+    # shu belgi orqali "bu urinish reytingga hisoblandimi" ko'rsatadi.
+    result["counts_for_ranking"] = db.is_first_finished_attempt(attempt_id)
     return result
 
 
