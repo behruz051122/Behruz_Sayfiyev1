@@ -15,6 +15,7 @@ def api_get_courses(resource_type: str = None, user=Depends(get_verified_telegra
         access = db.compute_course_access(user["telegram_id"], c)
         c.update(access)
         c["lessons_count"] = db.count_course_lessons(c["id"])
+        c["free_lessons_count"] = db.count_free_preview_lessons(c["id"])
         result.append(c)
     return {"courses": result}
 
@@ -31,11 +32,19 @@ def api_get_course(course_id: int, user=Depends(get_verified_telegram_user)):
 
     paragraphs = db.get_paragraphs(course_id)
     watched_ids = set(db.get_watched_lesson_ids(telegram_id, course_id)) if course["unlocked"] else set()
+    # Kurs qulflangan bo'lsa ham, admin "bepul namuna" deb belgilagan darslar
+    # ro'yxatdan o'tmasdan ko'rsatiladi (Kelajakmediklari_bot'dagi "N BEPUL"
+    # belgisi shu ma'noni bildiradi — reklama/namuna sifatida ochiq turadi).
+    free_preview_ids = set() if course["unlocked"] else db.get_free_preview_lesson_ids(course_id)
 
     for p in paragraphs:
-        lessons = db.get_lessons(p["id"]) if course["unlocked"] else []
+        if course["unlocked"]:
+            lessons = db.get_lessons(p["id"])
+        else:
+            lessons = [l for l in db.get_lessons(p["id"]) if l["id"] in free_preview_ids]
         for l in lessons:
             l["watched"] = l["id"] in watched_ids
+            l["is_free_preview"] = bool(l.get("is_free_preview"))
         p["lessons"] = lessons
         p["lessons_count"] = db.count_paragraph_lessons(p["id"])
 

@@ -14,11 +14,38 @@ let activeStatusFilter = "all";
 let activeSubjectFilter = "Hammasi";
 let searchQuery = "";
 
+// ---------- Kurslar: fan tanlash + Nazoratli/Mustaqil guruhlangan ro'yxat ----------
+// (Kelajakmediklari_bot tahlili asosida — ikki bosqichli oqim: avval fan
+// tanlanadi, keyin shu fan bo'yicha "Nazoratli"/"Mustaqil" kurslar ko'rinadi)
+let allSubjectCourses = [];
+let subjectCoursesLoaded = false;
+let activeCourseSubject = null;
+let activeCourseTypeFilter = "all";
+let courseListSearchQuery = "";
+// Kurs detali ekranidan "←" bosilganda qaysi ekranga qaytish kerakligini
+// eslab qoladi — Kurslar oqimi (yangi, guruhlangan) va Kitoblar oqimi (eski,
+// tekis ro'yxat) BITTA "screen-detail" ekranini ishlatadi, shuning uchun
+// orqaga tugmasi kelgan joyiga qarab farqli ekranga qaytishi kerak.
+let courseDetailReturnScreen = "list";
+
+const SUBJECT_BANNER_STYLES = [
+  { cls: "banner-teal", glyph: "🧬" },
+  { cls: "banner-gold", glyph: "🧪" },
+  { cls: "banner-purple", glyph: "📘" },
+];
+
+export function getCourseDetailReturnScreen() {
+  return courseDetailReturnScreen;
+}
+
 export function setListType(type) {
   currentListType = type;
   activeStatusFilter = "all";
   activeSubjectFilter = "Hammasi";
   searchQuery = "";
+  // Bu eski, tekis ro'yxat orqali kirilganda (hozircha faqat Kitoblar
+  // bo'limi) kurs detalidan "←" bosilsa shu tekis ro'yxatga qaytishi kerak.
+  courseDetailReturnScreen = "list";
   const searchInput = document.getElementById("courseSearchInput");
   if (searchInput) searchInput.value = "";
   // Bosma kitoblar do'koniga o'tish banneri faqat "Kitoblar" ro'yxatida
@@ -34,6 +61,196 @@ export function getCurrentCourse() {
 
 export function getCurrentParagraph() {
   return currentParagraph;
+}
+
+// ================================================================
+// KURSLAR: FAN TANLASH (landing)
+// ================================================================
+
+export async function loadCourseSubjects() {
+  const grid = document.getElementById("subjectSelectGrid");
+  grid.innerHTML = skeletonCards(2);
+  try {
+    const res = await apiFetch(`/api/courses?resource_type=course`);
+    const data = await res.json();
+    allSubjectCourses = data.courses;
+    subjectCoursesLoaded = true;
+    renderSubjectLandingCards();
+  } catch (e) {
+    console.error(e);
+    grid.innerHTML = errorHtml();
+  }
+}
+
+function getCourseSubjects() {
+  return [...new Set(allSubjectCourses.map(c => c.subject))];
+}
+
+function renderSubjectLandingCards() {
+  const grid = document.getElementById("subjectSelectGrid");
+  const subjects = getCourseSubjects();
+  grid.innerHTML = "";
+
+  if (subjects.length === 0) {
+    grid.innerHTML = emptyHtml("Hozircha kurslar qo'shilmagan");
+    return;
+  }
+
+  subjects.forEach((subject, i) => {
+    const count = allSubjectCourses.filter(c => c.subject === subject).length;
+    const style = SUBJECT_BANNER_STYLES[i % SUBJECT_BANNER_STYLES.length];
+    const card = document.createElement("button");
+    card.className = `banner-card ${style.cls}`;
+    card.innerHTML = `
+      <div class="banner-content">
+        <div class="banner-title">${subject}</div>
+        <div class="banner-sub">${count} TA KURS</div>
+      </div>
+      <span class="banner-glyph">${style.glyph}</span>
+      <span class="banner-arrow">›</span>
+    `;
+    card.addEventListener("click", () => openSubjectCourseList(subject));
+    grid.appendChild(card);
+  });
+}
+
+// ================================================================
+// KURSLAR: FAN BO'YICHA RO'YXAT (Nazoratli / Mustaqil guruhlar)
+// ================================================================
+
+function openSubjectCourseList(subject) {
+  activeCourseSubject = subject;
+  activeCourseTypeFilter = "all";
+  courseListSearchQuery = "";
+  const searchInput = document.getElementById("courseListSearchInput");
+  if (searchInput) searchInput.value = "";
+  document.getElementById("coursesBySubjectTitle").textContent = subject;
+  renderCourseSubjectTabs();
+  bindCourseTypeFilters();
+  bindCourseListSearch();
+  bindCoursesBySubjectStaticButtons();
+  renderGroupedCourseList();
+  showScreen("courses-by-subject");
+}
+
+function bindCoursesBySubjectStaticButtons() {
+  const backBtn = document.getElementById("coursesBackToSubjectsBtn");
+  if (backBtn && !backBtn.dataset.bound) {
+    backBtn.dataset.bound = "true";
+    backBtn.addEventListener("click", () => showScreen("courses-landing"));
+  }
+  const promoBtn = document.getElementById("promoCodeApplyBtn");
+  if (promoBtn && !promoBtn.dataset.bound) {
+    promoBtn.dataset.bound = "true";
+    promoBtn.addEventListener("click", () => {
+      showToast("Promo-kod tizimi tez orada ishga tushadi");
+    });
+  }
+}
+
+function renderCourseSubjectTabs() {
+  const row = document.getElementById("courseSubjectTabRow");
+  row.innerHTML = "";
+  getCourseSubjects().forEach(subject => {
+    const btn = document.createElement("button");
+    btn.className = "tab-btn" + (subject === activeCourseSubject ? " active" : "");
+    btn.textContent = subject;
+    btn.addEventListener("click", () => openSubjectCourseList(subject));
+    row.appendChild(btn);
+  });
+}
+
+function bindCourseTypeFilters() {
+  document.querySelectorAll("#courseTypeFilterRow .filter-chip").forEach(chip => {
+    chip.classList.toggle("active", chip.getAttribute("data-ctype") === activeCourseTypeFilter);
+    chip.onclick = () => {
+      activeCourseTypeFilter = chip.getAttribute("data-ctype");
+      document.querySelectorAll("#courseTypeFilterRow .filter-chip").forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
+      renderGroupedCourseList();
+    };
+  });
+}
+
+function bindCourseListSearch() {
+  const input = document.getElementById("courseListSearchInput");
+  if (!input || input.dataset.bound) return;
+  input.dataset.bound = "true";
+  input.addEventListener("input", () => {
+    courseListSearchQuery = input.value.trim().toLowerCase();
+    renderGroupedCourseList();
+  });
+}
+
+const COURSE_TYPE_GROUPS = [
+  { key: "nazoratli", title: "Nazoratli", subtitle: "JURNAL · DAVOMAT · MENTOR", icon: "📖" },
+  { key: "mustaqil", title: "Mustaqil", subtitle: "O'Z SUR'ATINGIZDA", icon: "🧑‍💻" },
+];
+
+function renderGroupedCourseList() {
+  const container = document.getElementById("coursesGroupedList");
+  container.innerHTML = "";
+
+  const filtered = allSubjectCourses.filter(c => {
+    if (c.subject !== activeCourseSubject) return false;
+    const courseType = c.course_type || "mustaqil";
+    if (activeCourseTypeFilter === "nazoratli" && courseType !== "nazoratli") return false;
+    if (activeCourseTypeFilter === "mustaqil" && courseType !== "mustaqil") return false;
+    if (activeCourseTypeFilter === "free" && !c.is_free) return false;
+    if (courseListSearchQuery && !(`${c.title} ${c.description || ""}`.toLowerCase().includes(courseListSearchQuery))) return false;
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = emptyHtml(courseListSearchQuery ? `"${courseListSearchQuery}" bo'yicha hech narsa topilmadi` : "Bu bo'limda hozircha kurs yo'q");
+    return;
+  }
+
+  COURSE_TYPE_GROUPS.forEach(group => {
+    const groupCourses = filtered.filter(c => (c.course_type || "mustaqil") === group.key);
+    if (groupCourses.length === 0) return;
+
+    const section = document.createElement("div");
+    section.className = "course-group";
+    section.innerHTML = `
+      <div class="course-group-head">
+        <div class="course-group-icon">${group.icon}</div>
+        <div class="course-group-info">
+          <div class="course-group-title">${group.title}</div>
+          <div class="course-group-sub">${group.subtitle}</div>
+        </div>
+        <div class="course-group-count">${groupCourses.length}</div>
+      </div>
+      <div class="course-row-list"></div>
+    `;
+    const listEl = section.querySelector(".course-row-list");
+    groupCourses.forEach(course => listEl.appendChild(buildCourseRowCard(course)));
+    container.appendChild(section);
+  });
+}
+
+function buildCourseRowCard(course) {
+  const card = document.createElement("div");
+  card.className = "course-row-card";
+  const priceLabel = course.is_free ? "Bepul" : (course.price ? course.price.toLocaleString() + " so'm" : "Yopiq");
+  const freeBadge = course.free_lessons_count > 0 ? `<span class="free-lessons-badge">${course.free_lessons_count} BEPUL</span>` : "";
+  card.innerHTML = `
+    <div class="course-row-icon">${course.thumbnail_emoji || "📘"}</div>
+    <div class="course-row-info">
+      <div class="course-row-title">${course.title}</div>
+      <div class="course-row-meta">${course.duration_text ? `⏱ ${course.duration_text} · ` : ""}${course.lessons_count} dars</div>
+      <div class="course-row-bottom">
+        <span class="course-row-price">${priceLabel}</span>
+        ${freeBadge}
+      </div>
+    </div>
+    <div class="lesson-play">›</div>
+  `;
+  card.addEventListener("click", () => {
+    courseDetailReturnScreen = "courses-by-subject";
+    openCourseDetail(course.id);
+  });
+  return card;
 }
 
 // ---------- Kurslar ro'yxati ----------
@@ -225,6 +442,29 @@ export async function openCourseDetail(courseId) {
         : course.required_referrals > 0
           ? `Ushbu kursni ochish uchun ${course.required_referrals} kishini taklif qiling.`
           : `Ushbu kurs pullik. Narxi: ${(course.price || 0).toLocaleString()} so'm${course.duration_text ? " / " + course.duration_text : ""}.`;
+
+      // Kurs yopiq bo'lsa ham, admin "bepul namuna" deb belgilagan darslar
+      // bor bo'lsa — ularni ro'yxatdan o'tmasdan ko'rish imkonini beramiz
+      // (Kelajakmediklari_bot'dagi "N BEPUL" belgisi shu ma'noni bildiradi).
+      const previewParagraphs = course.paragraphs.filter(p => (p.lessons || []).length > 0);
+      if (previewParagraphs.length > 0) {
+        html += `<p style="margin:0 16px 10px;font-size:11.5px;color:var(--text-dim);">🔓 Quyidagi darslarni ro'yxatdan o'tmasdan bepul ko'rishingiz mumkin:</p>`;
+        html += `<div class="paragraph-list">`;
+        previewParagraphs.forEach((p) => {
+          html += `
+            <div class="paragraph-item" data-p-id="${p.id}">
+              <div class="paragraph-num">🔓</div>
+              <div class="paragraph-info">
+                <div class="paragraph-title">${p.title}</div>
+                <div class="paragraph-meta">${p.lessons.length} ta bepul namuna video</div>
+              </div>
+              <div class="lesson-play">›</div>
+            </div>
+          `;
+        });
+        html += `</div>`;
+      }
+
       html += `
         <div class="locked-box">
           <div class="lock-emoji">🔒</div>

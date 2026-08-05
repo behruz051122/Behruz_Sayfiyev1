@@ -12,7 +12,10 @@
 // tinglab, haqiqiy o'tishni bajaradi. Bu — modullarni bir-biridan mustaqil
 // qiladigan standart dizayn andozasi.
 
-const NAV_SCREEN_INDEX = { home: 0, courses: 1, tests: 2, "student-results": 3, profile: 4 };
+const NAV_SCREEN_INDEX = {
+  home: 0, courses: 1, "courses-landing": 1, "courses-by-subject": 1,
+  tests: 2, "student-results": 3, profile: 4
+};
 
 export function showScreen(name) {
   document.querySelectorAll(".screen").forEach(s => s.classList.add("hidden"));

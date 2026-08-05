@@ -83,6 +83,16 @@ def init_db():
             )
         """)
 
+        # Kurs "turi" — Kelajakmediklari_bot tahlili asosida: 'nazoratli'
+        # (jurnal/davomat/mentor bilan kuzatiladigan) yoki 'mustaqil' (o'z
+        # sur'atida, kuzatuvsiz). Mavjud barcha kurslar avtomatik 'mustaqil'
+        # bo'lib qoladi — admin xohlaganlarini keyin 'nazoratli'ga o'zgartiradi.
+        try:
+            cur.execute("ALTER TABLE courses ADD COLUMN course_type TEXT DEFAULT 'mustaqil'")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # ustun allaqachon mavjud — muammo emas
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS paragraphs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -107,6 +117,15 @@ def init_db():
 
         try:
             cur.execute("ALTER TABLE lessons ADD COLUMN image_url TEXT")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # ustun allaqachon mavjud — muammo emas
+
+        # "Bepul namuna" dars — kurs pullik/yopiq bo'lsa ham, admin belgilagan
+        # bunday darslarni talaba RO'YXATDAN O'TMASDAN ko'ra oladi
+        # (Kelajakmediklari_bot'dagi "N BEPUL" belgisi shu ma'noni bildiradi).
+        try:
+            cur.execute("ALTER TABLE lessons ADD COLUMN is_free_preview INTEGER DEFAULT 0")
             conn.commit()
         except sqlite3.OperationalError:
             pass  # ustun allaqachon mavjud — muammo emas
@@ -948,15 +967,16 @@ def create_course(data: dict) -> int:
         cur.execute("""
             INSERT INTO courses (title, subject, resource_type, description, is_free,
                 required_referrals, price, duration_days, duration_text, students_count,
-                thumbnail_emoji, order_num, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                thumbnail_emoji, order_num, is_active, course_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             data.get("title", ""), data.get("subject", ""), data.get("resource_type", "course"),
             data.get("description", ""), int(data.get("is_free", 1)),
             int(data.get("required_referrals", 0)), int(data.get("price", 0)),
             data.get("duration_days") or None, data.get("duration_text", ""),
             int(data.get("students_count", 0)), data.get("thumbnail_emoji", "📘"),
-            int(data.get("order_num", 0)), int(data.get("is_active", 1))
+            int(data.get("order_num", 0)), int(data.get("is_active", 1)),
+            data.get("course_type") or "mustaqil"
         ))
         conn.commit()
         return cur.lastrowid
@@ -968,7 +988,7 @@ def update_course(course_id: int, data: dict):
         fields, values = [], []
         allowed = ["title", "subject", "resource_type", "description", "is_free",
                    "required_referrals", "price", "duration_days", "duration_text",
-                   "students_count", "thumbnail_emoji", "order_num", "is_active"]
+                   "students_count", "thumbnail_emoji", "order_num", "is_active", "course_type"]
         for key in allowed:
             if key in data:
                 fields.append(f"{key} = ?")
@@ -1244,11 +1264,12 @@ def create_lesson(data: dict) -> int:
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO lessons (paragraph_id, title, video_url, image_url, description, order_num)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO lessons (paragraph_id, title, video_url, image_url, description, order_num, is_free_preview)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
             int(data["paragraph_id"]), data.get("title", ""), data.get("video_url", ""),
-            data.get("image_url", ""), data.get("description", ""), int(data.get("order_num", 0))
+            data.get("image_url", ""), data.get("description", ""), int(data.get("order_num", 0)),
+            int(data.get("is_free_preview", 0))
         ))
         conn.commit()
         return cur.lastrowid
@@ -1258,7 +1279,7 @@ def update_lesson(lesson_id: int, data: dict):
     with get_connection() as conn:
         cur = conn.cursor()
         fields, values = [], []
-        for key in ["title", "video_url", "image_url", "description", "order_num"]:
+        for key in ["title", "video_url", "image_url", "description", "order_num", "is_free_preview"]:
             if key in data:
                 fields.append(f"{key} = ?")
                 values.append(data[key])
@@ -1284,6 +1305,30 @@ def count_course_lessons(course_id: int) -> int:
             WHERE p.course_id = ?
         """, (course_id,))
         return cur.fetchone()["c"]
+
+
+def count_free_preview_lessons(course_id: int) -> int:
+    """Kurs qulflangan bo'lsa ham talaba ro'yxatdan o'tmasdan ko'ra oladigan
+    "bepul namuna" darslar sonini qaytaradi (kurs kartasidagi "N BEPUL" belgisi uchun)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COUNT(*) as c FROM lessons l
+            JOIN paragraphs p ON p.id = l.paragraph_id
+            WHERE p.course_id = ? AND l.is_free_preview = 1
+        """, (course_id,))
+        return cur.fetchone()["c"]
+
+
+def get_free_preview_lesson_ids(course_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT l.id as id FROM lessons l
+            JOIN paragraphs p ON p.id = l.paragraph_id
+            WHERE p.course_id = ? AND l.is_free_preview = 1
+        """, (course_id,))
+        return {r["id"] for r in cur.fetchall()}
 
 
 def count_paragraph_lessons(paragraph_id: int) -> int:

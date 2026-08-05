@@ -23,10 +23,13 @@ function handleNav(target) {
   if (target === "home") {
     showScreen("home");
   } else if (target === "courses") {
+    // Kelajakmediklari_bot tahlili asosida — endi "Kurslar" ikki bosqichli
+    // oqim: avval fan tanlanadi, keyin shu fan bo'yicha Nazoratli/Mustaqil
+    // guruhlangan ro'yxat ko'rinadi (eski tekis ro'yxat endi faqat
+    // "Kitoblar (raqamli)" bo'limida ishlatiladi, pastda ko'ring).
     Courses.setListType("course");
-    document.getElementById("listTitle").textContent = "Kurslar";
-    Courses.loadCourseList();
-    showScreen("list");
+    Courses.loadCourseSubjects();
+    showScreen("courses-landing");
   } else if (target === "books") {
     // "Kitoblar" bosh sahifa kartasi endi TO'G'RIDAN-TO'G'RI bosma kitoblar
     // do'koniga olib boradi (Kelajak Mediklari botidagi kabi) — talaba
@@ -57,7 +60,7 @@ function handleNav(target) {
     loadProfile();
     showScreen("profile");
   } else if (target === "back-to-list") {
-    showScreen("list");
+    showScreen(Courses.getCourseDetailReturnScreen());
   } else if (target === "back-to-course") {
     Courses.openCourseDetail(Courses.getCurrentCourse().id);
   } else if (target === "back-to-paragraph") {

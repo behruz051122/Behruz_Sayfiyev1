@@ -92,7 +92,49 @@
       <div id="gameResultContent"></div>
     </section>
 
-    <!-- COURSE LIST -->
+    <!-- KURSLAR: FAN TANLASH (landing) -->
+    <section id="screen-courses-landing" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="home" aria-label="Orqaga">←</button>
+        <h2>📚 Kurslar</h2>
+      </div>
+      <p class="simulator-intro">Avval faningizni tanlang</p>
+      <div id="subjectSelectGrid" class="banner-cards"></div>
+    </section>
+
+    <!-- KURSLAR: FAN BO'YICHA RO'YXAT (Nazoratli / Mustaqil guruhlar) -->
+    <section id="screen-courses-by-subject" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" id="coursesBackToSubjectsBtn" aria-label="Orqaga">←</button>
+        <h2 id="coursesBySubjectTitle">Kurslar</h2>
+      </div>
+
+      <div class="promo-code-box">
+        <div class="promo-code-label">TAKLIF KODINGIZ BORMI?</div>
+        <div class="promo-code-row">
+          <input type="text" id="promoCodeInput" placeholder="Masalan: AZ140">
+          <button type="button" class="secondary-btn small" id="promoCodeApplyBtn">Qo'llash</button>
+        </div>
+        <div class="promo-code-hint">Promo-kod tizimi tez orada ishga tushadi.</div>
+      </div>
+
+      <div class="tab-row" id="courseSubjectTabRow"></div>
+
+      <div class="search-box">
+        <span class="search-icon" aria-hidden="true">🔍</span>
+        <input type="search" id="courseListSearchInput" class="search-input" placeholder="Kurs qidirish...">
+      </div>
+      <div class="filter-row" id="courseTypeFilterRow">
+        <button class="filter-chip active" data-ctype="all">Barchasi</button>
+        <button class="filter-chip" data-ctype="nazoratli">Nazoratli</button>
+        <button class="filter-chip" data-ctype="mustaqil">Mustaqil</button>
+        <button class="filter-chip" data-ctype="free">Bepul</button>
+      </div>
+
+      <div id="coursesGroupedList"></div>
+    </section>
+
+    <!-- COURSE LIST (eski tekis ro'yxat — hozir faqat Kitoblar bo'limi ishlatadi) -->
     <section id="screen-list" class="screen hidden">
       <div class="screen-header">
         <button class="back-btn" data-nav="home" aria-label="Orqaga">←</button>
@@ -563,6 +605,12 @@
             </select>
           </label>
           <label>Tavsif <textarea id="ac_description"></textarea></label>
+          <label>Kurs turi
+            <select id="ac_course_type">
+              <option value="mustaqil">🧑‍💻 Mustaqil — o'z sur'atida</option>
+              <option value="nazoratli">🎓 Nazoratli — jurnal · davomat · mentor</option>
+            </select>
+          </label>
           <label>Kirish turi
             <select id="ac_is_free">
               <option value="1">Bepul (hamma ko'radi)</option>
@@ -614,6 +662,10 @@
           <label>Video havolasi (YouTube yoki mp4) <input id="al_video_url"></label>
           <label>Tavsif <textarea id="al_description"></textarea></label>
           <label>Tartib raqami <input id="al_order_num" type="number" value="0"></label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="al_is_free_preview">
+            <span>🔓 Bepul namuna dars — kurs yopiq/pullik bo'lsa ham, talaba ro'yxatdan o'tmasdan shu darsni ko'ra oladi.</span>
+          </label>
           <button type="submit" class="gold-btn">Darsni saqlash</button>
         </form>
       </div>

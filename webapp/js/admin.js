@@ -527,10 +527,11 @@ export async function loadAdminCourses() {
       const row = document.createElement("div");
       row.className = "admin-row";
       const accessLabel = c.is_free ? "Bepul" : (c.price > 0 ? c.price.toLocaleString() + " so'm" : c.required_referrals + " taklif");
+      const courseTypeBadge = c.course_type === "nazoratli" ? `<span class="control-badge">🎓 NAZORATLI</span>` : "";
       row.innerHTML = `
         <div class="emoji">${c.thumbnail_emoji || "📘"}</div>
         <div class="info">
-          <div class="t">${c.title}${c.is_active ? "" : " (yashirin)"}</div>
+          <div class="t">${c.title}${c.is_active ? "" : " (yashirin)"}${courseTypeBadge}</div>
           <div class="s">${c.subject} · ${c.resource_type === "book" ? "Kitob" : "Kurs"} · ${c.lessons_count} dars · ${accessLabel}</div>
         </div>
         <div class="row-actions">
@@ -581,6 +582,7 @@ function openAdminCourseForm(course) {
   document.getElementById("ac_thumbnail_emoji").value = course ? (course.thumbnail_emoji || "📘") : "📘";
   document.getElementById("ac_order_num").value = course ? course.order_num : 0;
   document.getElementById("ac_is_active").value = course ? String(course.is_active) : "1";
+  document.getElementById("ac_course_type").value = (course && course.course_type) ? course.course_type : "mustaqil";
 }
 
 async function deleteAdminCourse(id) {
@@ -650,6 +652,7 @@ async function openAdminLessons(paragraphId, title) {
   document.getElementById("al_video_url").value = "";
   document.getElementById("al_description").value = "";
   document.getElementById("al_order_num").value = 0;
+  document.getElementById("al_is_free_preview").checked = false;
   await renderAdminLessons(paragraphId);
 }
 
@@ -662,8 +665,9 @@ async function renderAdminLessons(paragraphId) {
   data.lessons.forEach((l, idx) => {
     const row = document.createElement("div");
     row.className = "admin-row";
+    const previewBadge = l.is_free_preview ? `<span class="unlock-badge" style="display:inline-block;margin-left:6px;">🔓 BEPUL NAMUNA</span>` : "";
     row.innerHTML = `
-      <div class="info"><div class="t">${idx + 1}. ${l.title}</div></div>
+      <div class="info"><div class="t">${idx + 1}. ${l.title}${previewBadge}</div></div>
       <div class="row-actions">
         <button data-a="edit">Tahrirlash / Almashtirish</button>
         <button data-a="delete" class="danger">O'chirish</button>
@@ -675,6 +679,7 @@ async function renderAdminLessons(paragraphId) {
       document.getElementById("al_video_url").value = l.video_url || "";
       document.getElementById("al_description").value = l.description || "";
       document.getElementById("al_order_num").value = l.order_num;
+      document.getElementById("al_is_free_preview").checked = Boolean(l.is_free_preview);
     };
     row.querySelector('[data-a="delete"]').onclick = async () => {
       if (!confirm("Bu videoni o'chirmoqchimisiz?")) return;
@@ -1091,7 +1096,8 @@ export function initAdminModule() {
       duration_text: document.getElementById("ac_duration_text").value,
       thumbnail_emoji: document.getElementById("ac_thumbnail_emoji").value,
       order_num: parseInt(document.getElementById("ac_order_num").value),
-      is_active: parseInt(document.getElementById("ac_is_active").value)
+      is_active: parseInt(document.getElementById("ac_is_active").value),
+      course_type: document.getElementById("ac_course_type").value
     };
     if (id) await apiFetch(`/api/admin/courses/${id}`, { method: "PUT", body: JSON.stringify(data) });
     else await apiFetch(`/api/admin/courses`, { method: "POST", body: JSON.stringify(data) });
@@ -1130,7 +1136,8 @@ export function initAdminModule() {
       title: document.getElementById("al_title").value,
       video_url: document.getElementById("al_video_url").value,
       description: document.getElementById("al_description").value,
-      order_num: parseInt(document.getElementById("al_order_num").value)
+      order_num: parseInt(document.getElementById("al_order_num").value),
+      is_free_preview: document.getElementById("al_is_free_preview").checked ? 1 : 0
     };
     if (id) await apiFetch(`/api/admin/lessons/${id}`, { method: "PUT", body: JSON.stringify(data) });
     else await apiFetch(`/api/admin/lessons`, { method: "POST", body: JSON.stringify(data) });
@@ -1139,6 +1146,7 @@ export function initAdminModule() {
     document.getElementById("al_video_url").value = "";
     document.getElementById("al_description").value = "";
     document.getElementById("al_order_num").value = 0;
+    document.getElementById("al_is_free_preview").checked = false;
     renderAdminLessons(paragraphId);
     loadAdminCourses();
   });

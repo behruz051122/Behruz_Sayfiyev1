@@ -177,6 +177,37 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 .lock-badge { margin-top: 8px; font-size: 11px; font-weight: 700; color: var(--warning); display: flex; align-items: center; gap: 4px; }
 .unlock-badge { margin-top: 8px; font-size: 11px; font-weight: 700; color: var(--success); }
 
+/* ---------- KURSLAR: FAN TANLASH + GURUHLANGAN RO'YXAT ---------- */
+/* (Kelajakmediklari_bot tahlili asosida) */
+
+.promo-code-box { margin: 4px 16px 14px; padding: 14px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); }
+.promo-code-label { font-size: 10px; font-weight: 800; letter-spacing: 0.6px; color: var(--text-dim); margin-bottom: 8px; }
+.promo-code-row { display: flex; gap: 8px; }
+.promo-code-row input { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 13px; color: var(--text); }
+.promo-code-row input:focus { outline: none; border-color: var(--gold); }
+.promo-code-hint { margin-top: 8px; font-size: 10.5px; color: var(--text-dim); line-height: 1.4; }
+
+.course-group { margin: 4px 0 18px; }
+.course-group-head { display: flex; align-items: center; gap: 10px; margin: 0 16px 10px; }
+.course-group-icon { width: 34px; height: 34px; border-radius: 10px; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+.course-group-info { flex: 1; min-width: 0; }
+.course-group-title { font-size: 14px; font-weight: 800; color: var(--text); }
+.course-group-sub { font-size: 9px; font-weight: 700; letter-spacing: 0.5px; color: var(--text-dim); }
+.course-group-count { background: var(--surface2); border: 1px solid var(--border); color: var(--text-dim); font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 20px; }
+
+.course-row-list { margin: 0 16px; display: flex; flex-direction: column; gap: 10px; }
+.course-row-card {
+  display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; padding: 12px 14px; cursor: pointer; box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+}
+.course-row-icon { width: 42px; height: 42px; border-radius: 11px; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 19px; flex-shrink: 0; }
+.course-row-info { flex: 1; min-width: 0; }
+.course-row-title { font-size: 13px; font-weight: 800; color: var(--text); margin-bottom: 3px; }
+.course-row-meta { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; }
+.course-row-bottom { display: flex; align-items: center; gap: 8px; }
+.course-row-price { font-size: 12.5px; font-weight: 800; color: var(--gold); }
+.free-lessons-badge { font-size: 9.5px; font-weight: 800; background: rgba(22,163,74,0.12); color: var(--success); padding: 2px 8px; border-radius: 20px; letter-spacing: 0.3px; }
+
 /* ---------- COURSE DETAIL / PARAGRAPHS ---------- */
 
 .detail-hero { margin: 0 16px 12px; padding: 22px; border-radius: 18px; background: var(--hero-gradient); border: 1px solid var(--border); }
