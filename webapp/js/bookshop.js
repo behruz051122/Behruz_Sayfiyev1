@@ -96,17 +96,19 @@ function renderBookShopList() {
   filtered.forEach(p => {
     const card = document.createElement("div");
     card.className = "book-product-card";
+    const categoryTag = p.is_bundle ? "KOMPLEKT" : (p.category || "");
     card.innerHTML = `
+      ${p.badge_text ? `<div class="book-product-badge">${escapeHtml(p.badge_text)}</div>` : ""}
       ${p.image_url
         ? `<img class="book-product-img" src="${p.image_url}" alt="${escapeHtml(p.title)}">`
         : `<div class="book-product-img book-product-img-placeholder">📘</div>`}
       <div class="book-product-body">
-        ${p.badge_text ? `<div class="book-product-badge">${escapeHtml(p.badge_text)}</div>` : ""}
+        ${categoryTag ? `<div class="book-product-category">${escapeHtml(categoryTag)}</div>` : ""}
         <div class="book-product-title">${escapeHtml(p.title)}</div>
         ${p.subtitle ? `<div class="book-product-sub">${escapeHtml(p.subtitle)}</div>` : ""}
         <div class="book-product-bottom">
           <div class="book-product-price">${p.price ? p.price.toLocaleString() + " so'm" : "Narxi so'ralsin"}</div>
-          <button class="book-product-buy">Xarid qilish</button>
+          <button class="book-product-buy">🛒 Xarid qilish</button>
         </div>
       </div>
     `;

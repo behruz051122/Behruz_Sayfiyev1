@@ -98,20 +98,28 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 
 /* ---------- KITOBLAR DO'KONI (bosma kitoblar) ---------- */
 
-.book-shop-grid { margin: 4px 16px 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.shop-delivery-banner { margin: 4px 16px 14px; padding: 10px 14px; border-radius: 12px; background: rgba(15,118,110,0.08); border: 1px solid rgba(15,118,110,0.25); color: var(--gold); font-size: 11.5px; font-weight: 700; line-height: 1.5; }
+
+/* auto-fill — tor mobil ekranda 2 ta, keng (kompyuter) ekranda avtomatik
+   ko'proq ustun bo'lib, referens do'kon kabi zich karta to'ri hosil bo'ladi */
+.book-shop-grid { margin: 4px 16px 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 12px; }
 .book-product-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
-  overflow: hidden; display: flex; flex-direction: column;
-  box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+  overflow: hidden; display: flex; flex-direction: column; position: relative;
+  box-shadow: 0 1px 2px rgba(15,23,42,0.04); transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
+.book-product-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(15,23,42,0.10); }
 .book-product-img { width: 100%; aspect-ratio: 3/4; object-fit: cover; background: var(--surface2); display: block; }
 .book-product-img-placeholder { display: flex; align-items: center; justify-content: center; font-size: 36px; }
 .book-product-body { padding: 12px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
 .book-product-badge {
-  align-self: flex-start; background: linear-gradient(135deg, var(--gold-light), var(--gold));
+  position: absolute; top: 10px; left: 10px; z-index: 2;
+  background: linear-gradient(135deg, var(--gold-light), var(--gold));
   color: var(--on-accent); font-size: 9px; font-weight: 800; letter-spacing: 0.6px;
   padding: 3px 8px; border-radius: 20px; text-transform: uppercase;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
 }
+.book-product-category { font-size: 9.5px; font-weight: 800; letter-spacing: 0.4px; color: var(--gold); text-transform: uppercase; }
 .book-product-title { font-weight: 800; font-size: 13px; color: var(--text); line-height: 1.35; }
 .book-product-sub { font-size: 11px; color: var(--text-dim); line-height: 1.4; }
 .book-product-bottom { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding-top: 6px; }
@@ -119,7 +127,10 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 .book-product-buy {
   background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: var(--on-accent);
   border: none; border-radius: 10px; padding: 9px; font-weight: 700; font-size: 12px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 4px;
 }
+
+.digital-books-link { display: block; width: calc(100% - 32px); margin: 4px 16px 20px; background: none; border: 1px dashed var(--border); color: var(--text-dim); font-size: 11.5px; font-weight: 700; padding: 10px; border-radius: 12px; cursor: pointer; text-align: center; }
 
 /* ---------- SCREEN HEADER ---------- */
 

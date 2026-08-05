@@ -27,8 +27,19 @@ function handleNav(target) {
     Courses.loadCourseList();
     showScreen("list");
   } else if (target === "books") {
+    // "Kitoblar" bosh sahifa kartasi endi TO'G'RIDAN-TO'G'RI bosma kitoblar
+    // do'koniga olib boradi (Kelajak Mediklari botidagi kabi) — talaba
+    // avvalgidek bo'sh "raqamli kitoblar" ro'yxatini ko'rib, keyin alohida
+    // banner bosib do'konga o'tishi shart emas.
+    loadBookShop();
+    showScreen("book-shop");
+  } else if (target === "digital-books") {
+    // Eski, RAQAMLI kitob/kurs ro'yxati (resource_type='book' courses) —
+    // hozircha kamdan-kam ishlatiladi, lekin admin xohlasa shu turdagi kurs
+    // qo'sha oladi, shuning uchun kirish yo'lini butunlay o'chirmadik —
+    // do'kon ekranidagi kichik havola orqali ochiladi.
     Courses.setListType("book");
-    document.getElementById("listTitle").textContent = "Kitoblar";
+    document.getElementById("listTitle").textContent = "Kitoblar (raqamli)";
     Courses.loadCourseList();
     showScreen("list");
   } else if (target === "referral") {
