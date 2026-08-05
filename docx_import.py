@@ -86,15 +86,97 @@ def _is_greenish_rgb(rgb) -> bool:
     return g > 100 and g > r + 30 and g > b + 30
 
 
-def _run_is_green(run) -> bool:
+def _load_green_styles(document):
+    """Ba'zi hujjatlarda to'g'ri javob to'g'ridan-to'g'ri matn/fon rangini
+    o'zgartirish orqali emas, balki maxsus ravishda YASHIL FONLI qilib
+    QAYTA TA'RIFLANGAN PARAGRAF/BELGI USLUBI (masalan "Heading 1",
+    "Heading 2") orqali belgilanadi — o'qituvchi to'g'ri javob qatoriga
+    shu uslubni qo'llaydi (masalan Word asboblar panelidan "Sarlavha 1"ni
+    tanlaydi), uslubning o'zi esa fayl ichida (word/styles.xml) yashil fon
+    bilan qayta ta'riflab qo'yilgan bo'ladi. Bunday holda variant matnini
+    o'z ichiga olgan RUN'da HECH QANDAY to'g'ridan-to'g'ri formatlash
+    bo'lmaydi (rang butunlay USLUBDAN meros olinadi) — shuning uchun buni
+    alohida, styles.xml'ni oldindan o'qib chiqib aniqlash kerak.
+    Natija: yashil fonli/rangli uslublarning styleId to'plami
+    (masalan {"Heading1", "Heading2", "Heading1Char", "Heading2Char"})."""
+    from docx.oxml.ns import qn
+
+    green_style_ids = set()
+    try:
+        styles_element = document.styles.element
+    except Exception:
+        return green_style_ids
+    if styles_element is None:
+        return green_style_ids
+
+    for style in styles_element.findall(qn("w:style")):
+        style_id = style.get(qn("w:styleId"))
+        if not style_id:
+            continue
+        rPr = style.find(qn("w:rPr"))
+        if rPr is None:
+            continue
+        is_green = False
+
+        shd = rPr.find(qn("w:shd"))
+        if shd is not None:
+            fill = shd.get(qn("w:fill"))
+            if fill and fill.upper() not in ("AUTO", "FFFFFF"):
+                try:
+                    rgb = tuple(int(fill[i:i + 2], 16) for i in (0, 2, 4))
+                    if _is_greenish_rgb(rgb):
+                        is_green = True
+                except Exception:
+                    pass
+
+        if not is_green:
+            color_el = rPr.find(qn("w:color"))
+            if color_el is not None:
+                val = color_el.get(qn("w:val"))
+                if val and val.upper() != "AUTO":
+                    try:
+                        rgb = tuple(int(val[i:i + 2], 16) for i in (0, 2, 4))
+                        if _is_greenish_rgb(rgb):
+                            is_green = True
+                    except Exception:
+                        pass
+
+        if not is_green:
+            highlight_el = rPr.find(qn("w:highlight"))
+            if highlight_el is not None:
+                val = (highlight_el.get(qn("w:val")) or "").upper()
+                if "GREEN" in val:
+                    is_green = True
+
+        if is_green:
+            green_style_ids.add(style_id)
+
+    return green_style_ids
+
+
+def _paragraph_style_id(paragraph):
+    """Paragrafning bevosita bog'langan uslubi (pStyle) ID'sini qaytaradi
+    (masalan "Heading1"), yoki bo'lmasa None."""
+    from docx.oxml.ns import qn
+
+    pPr = paragraph._p.find(qn("w:pPr"))
+    if pPr is None:
+        return None
+    pStyle = pPr.find(qn("w:pStyle"))
+    if pStyle is None:
+        return None
+    return pStyle.get(qn("w:val"))
+
+
+def _run_is_green(run, green_style_ids=None, paragraph_style_id=None) -> bool:
     """Run (matn bo'lagi) YASHIL rangda yozilganmi, YASHIL STANDART
-    highlight bilan belgilanganmi, yoki YASHIL FON (shading/rang bilan
-    bo'yash) bilan belgilanganmi tekshiradi — Word'da "Matn ranggi",
-    "Highlight" va "Shading/Fon rangi" bir-biridan FARQLI XML mexanizmlari,
-    o'qituvchilar esa ko'pincha "Fon rangi" asbobidan foydalanadi (ayniqsa
-    palitradan maxsus rang tanlanganda, Word buni standart highlight emas,
-    balki shading sifatida saqlaydi) — shuning uchun barcha uchalasi ham
-    tekshiriladi."""
+    highlight bilan belgilanganmi, YASHIL FON (shading/rang bilan bo'yash)
+    bilan belgilanganmi, YOKI yashil fonli qilib QAYTA TA'RIFLANGAN
+    USLUBGA (masalan "Heading 1") ega ekanmi tekshiradi — Word'da "Matn
+    ranggi", "Highlight", "Shading/Fon rangi" va "Paragraf/Belgi uslubi"
+    bir-biridan FARQLI XML mexanizmlari, o'qituvchilar esa turlicha usulda
+    (ba'zan hatto uslub tanlash orqali) belgilaydi — shuning uchun
+    barchasi tekshiriladi."""
     try:
         color = run.font.color
         if color is not None and color.type is not None and color.rgb is not None:
@@ -121,6 +203,26 @@ def _run_is_green(run) -> bool:
                         return True
     except Exception:
         pass
+
+    if green_style_ids:
+        # Run o'zining alohida BELGI uslubiga (rStyle) ega bo'lishi mumkin —
+        # bu paragraf uslubidan ustuvor bo'ladi (Word'dagi meros tartibi).
+        try:
+            from docx.oxml.ns import qn
+            rPr = run._r.find(qn("w:rPr"))
+            if rPr is not None:
+                rStyle = rPr.find(qn("w:rStyle"))
+                if rStyle is not None:
+                    r_style_id = rStyle.get(qn("w:val"))
+                    if r_style_id and r_style_id in green_style_ids:
+                        return True
+        except Exception:
+            pass
+        # Aks holda, run RUN o'ziga xos rStyle'ga ega bo'lmasa, paragrafning
+        # UMUMIY uslubidan (pStyle) meros oladi.
+        if paragraph_style_id and paragraph_style_id in green_style_ids:
+            return True
+
     return False
 
 
@@ -212,12 +314,14 @@ def _resolve_auto_list_prefix(paragraph, numbering_info, numid_counters):
     return _format_numbering_value(current_value, info["numFmt"]) + " "
 
 
-def _split_options_with_color(paragraph, prefix=""):
+def _split_options_with_color(paragraph, prefix="", green_style_ids=None):
     """Bitta qatorda bitta YOKI bir nechta variant bo'lishi mumkin (masalan
     "A) 0   B) 25   C) 50   D) 75" — jadval ustunlaridek tab bilan ajratilgan).
     Paragraf RUN'lari (Word'dagi matn formatlash bo'laklari) orqali har bir
     variantning matnini VA shu variant YASHIL rang bilan belgilanganmi-
     yo'qmi aniqlaydi. Natija: {harf: {"text": ..., "green": bool}}"""
+    paragraph_style_id = _paragraph_style_id(paragraph) if green_style_ids else None
+
     runs_info = []
     pos = len(prefix)
     full_text = prefix
@@ -243,10 +347,16 @@ def _split_options_with_color(paragraph, prefix=""):
         # yashil rangga bo'yaydi, ikkalasi ham hisobga olinishi kerak.
         color_start, color_end = m.start(), content_end
         is_green = any(
-            _run_is_green(run)
+            _run_is_green(run, green_style_ids, paragraph_style_id)
             for r_start, r_end, run in runs_info
             if r_start < color_end and r_end > color_start
         )
+        # Agar shu qatorda umuman RUN topilmasa (masalan butun matn faqat
+        # avtomatik ro'yxat prefiksidan iborat bo'lsa) ham, paragraf
+        # o'zining USLUBI orqali (masalan "Heading 1") yashil bo'lishi
+        # mumkin — bunday holatni ham hisobga olamiz.
+        if not is_green and green_style_ids and paragraph_style_id in green_style_ids:
+            is_green = True
 
         result[letter] = {"text": content, "green": is_green}
     return result
@@ -264,7 +374,7 @@ def _table_rows(table):
     return rows
 
 
-def _table_as_single_option(table):
+def _table_as_single_option(table, green_style_ids=None):
     """Ba'zan (odatda tasodifiy formatlash natijasida) bitta variantning
     matni alohida ma'lumot jadvali o'rniga Word jadvaliga tushib qolgan
     bo'ladi (masalan "D) ..." matni). Bunday holatni jadvalning BARCHA
@@ -293,6 +403,22 @@ def _table_as_single_option(table):
                                     is_green = True
                             except Exception:
                                 pass
+                if not is_green and green_style_ids:
+                    # Katak ichidagi paragraf(lar) ham "Heading 1" kabi
+                    # yashil fonli uslubga ega bo'lishi mumkin — shu ham
+                    # tekshiriladi (jadval katakchalari uchun ham xuddi
+                    # oddiy paragraflardagidek uslub merosxo'rligi ishlaydi).
+                    for cell_paragraph in cell.paragraphs:
+                        p_style_id = _paragraph_style_id(cell_paragraph)
+                        if p_style_id and p_style_id in green_style_ids:
+                            is_green = True
+                            break
+                        for run in cell_paragraph.runs:
+                            if _run_is_green(run, green_style_ids, p_style_id):
+                                is_green = True
+                                break
+                        if is_green:
+                            break
 
     joined = " ".join(seen_texts).strip()
     m = MULTI_OPTION_RE.match(joined)
@@ -387,6 +513,13 @@ def parse_docx(file_bytes: bytes):
     numbering_info = _load_numbering_starts(doc)
     numid_counters = {}
 
+    # Ba'zi hujjatlarda to'g'ri javob YASHIL rangga to'g'ridan-to'g'ri
+    # bo'yalmagan, balki maxsus yashil fonli qilib qayta ta'riflangan
+    # PARAGRAF USLUBI (masalan "Heading 1") orqali belgilanadi — buni
+    # oldindan word/styles.xml'dan bilib olamiz (batafsili izoh
+    # _load_green_styles() ichida).
+    green_style_ids = _load_green_styles(doc)
+
     questions = []
     current = None
     order_counter = 0
@@ -404,7 +537,7 @@ def parse_docx(file_bytes: bytes):
     for block in _iter_block_items(doc):
         if isinstance(block, Table):
             if current is not None:
-                option_from_table = _table_as_single_option(block)
+                option_from_table = _table_as_single_option(block, green_style_ids)
                 if option_from_table and len(current.options) < 4:
                     letter, content, is_green = option_from_table
                     current.options[letter] = content
@@ -449,7 +582,7 @@ def parse_docx(file_bytes: bytes):
             inline_match = MULTI_OPTION_RE.search(remainder)
             if inline_match:
                 current.question_text = remainder[:inline_match.start()].strip()
-                inline_found = _split_options_with_color(paragraph, auto_prefix)
+                inline_found = _split_options_with_color(paragraph, auto_prefix, green_style_ids)
                 for letter, info in inline_found.items():
                     current.options[letter] = info["text"]
                     if info["green"]:
@@ -463,7 +596,7 @@ def parse_docx(file_bytes: bytes):
             leading_text = text[:first_match.start()].strip() if first_match else ""
             if leading_text and not current.options:
                 current.question_text = (current.question_text + " " + leading_text).strip()
-            found = _split_options_with_color(paragraph, auto_prefix)
+            found = _split_options_with_color(paragraph, auto_prefix, green_style_ids)
             for letter, info in found.items():
                 current.options[letter] = info["text"]
                 if info["green"]:
