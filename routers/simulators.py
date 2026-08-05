@@ -67,6 +67,12 @@ def api_finish_simulator(attempt_id: int, user=Depends(get_verified_telegram_use
     return result
 
 
+@router.get("/simulator/attempt/{attempt_id}/grid")
+def api_simulator_attempt_grid(attempt_id: int, user=Depends(get_verified_telegram_user)):
+    _get_owned_simulator_attempt_or_403(attempt_id, user["telegram_id"])
+    return {"grid": db.get_simulator_attempt_grid(attempt_id)}
+
+
 @router.get("/my-simulator-results")
 def api_my_simulator_results(user=Depends(get_verified_telegram_user)):
     return {"results": db.get_user_simulator_results(user["telegram_id"])}

@@ -4,6 +4,19 @@ import { errorHtml, emptyHtml, DIFFICULTY_LABELS, formatSeconds, skeletonCards }
 
 const DIFFICULTY_DEFAULT_SECONDS = { oson: 300, orta: 600, qiyin: 900 };
 
+// Vaqt chegarasini soniya o'rniga soat+daqiqa ko'rinishida kiritish/ko'rsatish
+// uchun yordamchi funksiyalar (o'qituvchi uchun 86400 kabi sonlarni qo'lda
+// hisoblashdan ko'ra ancha qulay).
+function secondsToHoursMinutes(totalSeconds) {
+  const s = parseInt(totalSeconds) || 0;
+  return { hours: Math.floor(s / 3600), minutes: Math.floor((s % 3600) / 60) };
+}
+function hoursMinutesToSeconds(hoursStr, minutesStr) {
+  const h = parseInt(hoursStr) || 0;
+  const m = parseInt(minutesStr) || 0;
+  return h * 3600 + m * 60;
+}
+
 let currentAdminCourses = [];
 let currentAdminTests = [];
 
@@ -99,7 +112,11 @@ function openAdminSimulatorForm(sim) {
   document.getElementById("as_id").value = sim ? sim.id : "";
   document.getElementById("as_title").value = sim ? sim.title : "";
   document.getElementById("as_description").value = sim ? (sim.description || "") : "";
-  document.getElementById("as_time_limit").value = sim ? sim.time_limit_seconds : 10800;
+  {
+    const { hours, minutes } = secondsToHoursMinutes(sim ? sim.time_limit_seconds : 10800);
+    document.getElementById("as_time_limit_hours").value = hours || "";
+    document.getElementById("as_time_limit_minutes").value = minutes || "";
+  }
   document.getElementById("as_order_num").value = sim ? sim.order_num : 0;
   document.getElementById("as_is_active").value = sim ? String(sim.is_active) : "1";
 }
@@ -402,7 +419,14 @@ function openAdminTestForm(test) {
   document.getElementById("at_subject").value = test ? test.subject : "";
   document.getElementById("at_title").value = test ? test.title : "";
   document.getElementById("at_difficulty").value = test ? test.difficulty : "orta";
-  document.getElementById("at_time_limit").value = test ? test.time_limit_seconds : "";
+  if (test && test.time_limit_seconds) {
+    const { hours, minutes } = secondsToHoursMinutes(test.time_limit_seconds);
+    document.getElementById("at_time_limit_hours").value = hours || "";
+    document.getElementById("at_time_limit_minutes").value = minutes || "";
+  } else {
+    document.getElementById("at_time_limit_hours").value = "";
+    document.getElementById("at_time_limit_minutes").value = "";
+  }
   document.getElementById("at_order_num").value = test ? test.order_num : 0;
   document.getElementById("at_is_active").value = test ? String(test.is_active) : "1";
 
@@ -742,14 +766,16 @@ export function initAdminModule() {
     e.preventDefault();
     const id = document.getElementById("at_id").value;
     const difficulty = document.getElementById("at_difficulty").value;
-    const rawTimeLimit = document.getElementById("at_time_limit").value;
+    const hoursVal = document.getElementById("at_time_limit_hours").value;
+    const minutesVal = document.getElementById("at_time_limit_minutes").value;
+    const rawTimeLimit = hoursMinutesToSeconds(hoursVal, minutesVal);
     const isControlTest = document.getElementById("at_is_control_test").checked;
     const rawCourseId = document.getElementById("at_course_id").value;
     const data = {
       subject: document.getElementById("at_subject").value,
       title: document.getElementById("at_title").value,
       difficulty: difficulty,
-      time_limit_seconds: rawTimeLimit ? parseInt(rawTimeLimit) : DIFFICULTY_DEFAULT_SECONDS[difficulty],
+      time_limit_seconds: rawTimeLimit > 0 ? rawTimeLimit : DIFFICULTY_DEFAULT_SECONDS[difficulty],
       order_num: parseInt(document.getElementById("at_order_num").value),
       is_active: parseInt(document.getElementById("at_is_active").value),
       is_control_test: isControlTest ? 1 : 0,
@@ -821,10 +847,13 @@ export function initAdminModule() {
   document.getElementById("simulatorFormEl").addEventListener("submit", async (e) => {
     e.preventDefault();
     const id = document.getElementById("as_id").value;
+    const asHours = document.getElementById("as_time_limit_hours").value;
+    const asMinutes = document.getElementById("as_time_limit_minutes").value;
+    const asSeconds = hoursMinutesToSeconds(asHours, asMinutes);
     const data = {
       title: document.getElementById("as_title").value,
       description: document.getElementById("as_description").value,
-      time_limit_seconds: parseInt(document.getElementById("as_time_limit").value || 10800),
+      time_limit_seconds: asSeconds > 0 ? asSeconds : 10800,
       order_num: parseInt(document.getElementById("as_order_num").value),
       is_active: parseInt(document.getElementById("as_is_active").value)
     };

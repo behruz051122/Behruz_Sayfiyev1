@@ -395,7 +395,11 @@
               <option value="qiyin">Qiyin (15 daqiqa)</option>
             </select>
           </label>
-          <label>Vaqt chegarasi, soniya (bo'sh qoldirsangiz — qiyinlik darajasiga qarab avtomatik belgilanadi) <input id="at_time_limit" type="number" min="30"></label>
+          <label>Vaqt chegarasi (bo'sh qoldirsangiz — qiyinlik darajasiga qarab avtomatik belgilanadi)</label>
+          <div class="time-limit-row">
+            <label class="time-limit-sub">Soat <input id="at_time_limit_hours" type="number" min="0" max="72" placeholder="0"></label>
+            <label class="time-limit-sub">Daqiqa <input id="at_time_limit_minutes" type="number" min="0" max="59" placeholder="0"></label>
+          </div>
           <label>Tartib raqami <input id="at_order_num" type="number" value="0"></label>
           <label>Faolmi?
             <select id="at_is_active">
@@ -513,7 +517,11 @@
           <input type="hidden" id="as_id">
           <label>Nomi <input id="as_title" required placeholder="Masalan: DTM Simulyatori #1"></label>
           <label>Tavsif (ixtiyoriy) <textarea id="as_description"></textarea></label>
-          <label>Umumiy vaqt chegarasi, soniya (masalan 10800 = 3 soat) <input id="as_time_limit" type="number" min="60" value="10800"></label>
+          <label>Umumiy vaqt chegarasi</label>
+          <div class="time-limit-row">
+            <label class="time-limit-sub">Soat <input id="as_time_limit_hours" type="number" min="0" max="72" placeholder="3"></label>
+            <label class="time-limit-sub">Daqiqa <input id="as_time_limit_minutes" type="number" min="0" max="59" placeholder="0"></label>
+          </div>
           <label>Tartib raqami <input id="as_order_num" type="number" value="0"></label>
           <label>Faolmi?
             <select id="as_is_active">

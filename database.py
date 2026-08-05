@@ -291,6 +291,33 @@ def init_db():
             )
         """)
 
+        # O'quvchi endi bitta savolga javobini ERKIN o'zgartira oladi (savollar
+        # orasida ham erkin harakatlanadi) — shuning uchun bitta (urinish, savol)
+        # juftligi uchun FAQAT BITTA javob qatori bo'lishi kerak (eskisi
+        # yangisi bilan YANGILANADI, qayta qo'shilmaydi). Avval har bir
+        # o'zgartirish YANGI qator sifatida qo'shilardi — bu endi noto'g'ri
+        # (bir savol bir necha marta hisoblanib, ball noto'g'ri chiqishi
+        # mumkin edi). Avval, agar eski (dublikat qatorli) ma'lumotlar bo'lsa,
+        # ularni tozalab (har juftlik uchun faqat ENG OXIRGISINI qoldirib),
+        # keyin UNIQUE indeks qo'yamiz — shundan keyin INSERT ... ON CONFLICT
+        # DO UPDATE (upsert) ishlata olamiz.
+        cur.execute("""
+            DELETE FROM test_answers
+            WHERE id NOT IN (SELECT MAX(id) FROM test_answers GROUP BY attempt_id, question_id)
+        """)
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_test_answers_attempt_question
+            ON test_answers(attempt_id, question_id)
+        """)
+        cur.execute("""
+            DELETE FROM simulator_answers
+            WHERE id NOT IN (SELECT MAX(id) FROM simulator_answers GROUP BY attempt_id, question_id)
+        """)
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_simulator_answers_attempt_question
+            ON simulator_answers(attempt_id, question_id)
+        """)
+
         conn.commit()
     print("Baza tayyor (v5 — DTM simulyatori bilan): users, courses, paragraphs, lessons, "
           "lesson_progress, enrollments, referrals, tests, simulators.")
@@ -977,8 +1004,13 @@ def start_attempt(telegram_id: int, test_id: int) -> int:
 
 
 def submit_answer(telegram_id: int, attempt_id: int, question_id: int, selected_index: int):
-    """Javobni tekshiradi, yozib qo'yadi, va agar bu savolga birinchi marta to'g'ri
-    javob berilgan bo'lsa 1 coin beradi. {'correct': bool, 'correct_index': int, 'coin_awarded': bool} qaytaradi."""
+    """Javobni tekshiradi va yozib qo'yadi (yoki — agar bu savolga bu urinishda
+    ALLAQACHON javob berilgan bo'lsa, uni YANGILAYDI, chunki o'quvchi savollar
+    orasida erkin harakatlanib, javobini istalgancha o'zgartirishi mumkin).
+    Agar bu savolga birinchi marta to'g'ri javob berilgan bo'lsa 1 coin
+    beradi. {'correct': bool, 'correct_index': int, 'coin_awarded': bool}
+    qaytaradi. Urinishning umumiy bali (score) BU YERDA emas — yakunlash
+    (finish_attempt) vaqtida, barcha javoblar asosida qayta hisoblanadi."""
     question = get_question(question_id)
     if not question:
         return {"correct": False, "correct_index": None, "coin_awarded": False}
@@ -990,9 +1022,9 @@ def submit_answer(telegram_id: int, attempt_id: int, question_id: int, selected_
         cur.execute("""
             INSERT INTO test_answers (attempt_id, question_id, selected_index, is_correct)
             VALUES (?, ?, ?, ?)
+            ON CONFLICT(attempt_id, question_id)
+            DO UPDATE SET selected_index = excluded.selected_index, is_correct = excluded.is_correct
         """, (attempt_id, question_id, selected_index, 1 if is_correct else 0))
-        if is_correct:
-            cur.execute("UPDATE test_attempts SET score = score + 1 WHERE id = ?", (attempt_id,))
         conn.commit()
 
     coin_awarded = False
@@ -1014,9 +1046,14 @@ def submit_answer(telegram_id: int, attempt_id: int, question_id: int, selected_
 
 
 def finish_attempt(attempt_id: int):
+    """Urinishni yakunlaydi. Ball (score) aynan shu yerda, BARCHA saqlangan
+    javoblar bo'yicha qayta hisoblanadi — chunki javoblar erkin o'zgartirilishi
+    mumkin edi, oraliqda saqlangan "score" ustuni ishonchli emas."""
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("UPDATE test_attempts SET finished_at = CURRENT_TIMESTAMP WHERE id = ?", (attempt_id,))
+        cur.execute("SELECT COUNT(*) as c FROM test_answers WHERE attempt_id = ? AND is_correct = 1", (attempt_id,))
+        score = cur.fetchone()["c"]
+        cur.execute("UPDATE test_attempts SET score = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", (score, attempt_id))
         conn.commit()
         cur.execute("SELECT * FROM test_attempts WHERE id = ?", (attempt_id,))
         row = cur.fetchone()
@@ -1241,9 +1278,9 @@ def submit_simulator_answer(telegram_id: int, attempt_id: int, question_id: int,
         cur.execute("""
             INSERT INTO simulator_answers (attempt_id, question_id, selected_index, is_correct)
             VALUES (?, ?, ?, ?)
+            ON CONFLICT(attempt_id, question_id)
+            DO UPDATE SET selected_index = excluded.selected_index, is_correct = excluded.is_correct
         """, (attempt_id, question_id, selected_index, 1 if is_correct else 0))
-        if is_correct:
-            cur.execute("UPDATE simulator_attempts SET score = score + 1 WHERE id = ?", (attempt_id,))
         conn.commit()
 
     coin_awarded = False
@@ -1265,13 +1302,42 @@ def submit_simulator_answer(telegram_id: int, attempt_id: int, question_id: int,
 
 
 def finish_simulator_attempt(attempt_id: int):
+    """Ball (score) shu yerda, BARCHA saqlangan javoblar bo'yicha qayta
+    hisoblanadi — sabab test attempts bilan bir xil (javoblar erkin
+    o'zgartirilishi mumkin edi)."""
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("UPDATE simulator_attempts SET finished_at = CURRENT_TIMESTAMP WHERE id = ?", (attempt_id,))
+        cur.execute("SELECT COUNT(*) as c FROM simulator_answers WHERE attempt_id = ? AND is_correct = 1", (attempt_id,))
+        score = cur.fetchone()["c"]
+        cur.execute("UPDATE simulator_attempts SET score = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", (score, attempt_id))
         conn.commit()
         cur.execute("SELECT * FROM simulator_attempts WHERE id = ?", (attempt_id,))
         row = cur.fetchone()
         return dict(row) if row else None
+
+
+def get_simulator_attempt_grid(attempt_id: int):
+    """Simulyator urinishidagi HAR BIR savol (javob berilgan yoki
+    berilmagan — o'quvchi endi savollarni o'tkazib yuborishi ham mumkin)
+    bo'yicha to'g'ri/noto'g'ri/javobsiz holatini qaytaradi."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT saq.order_num as order_num, sa.selected_index as selected_index, sa.is_correct as is_correct
+            FROM simulator_attempt_questions saq
+            LEFT JOIN simulator_answers sa ON sa.question_id = saq.question_id AND sa.attempt_id = saq.attempt_id
+            WHERE saq.attempt_id = ?
+            ORDER BY saq.order_num ASC
+        """, (attempt_id,))
+        rows = [dict(r) for r in cur.fetchall()]
+    return [
+        {
+            "question_number": i + 1,
+            "answered": r["selected_index"] is not None,
+            "is_correct": bool(r["is_correct"]) if r["selected_index"] is not None else None,
+        }
+        for i, r in enumerate(rows)
+    ]
 
 
 def get_simulator_attempt(attempt_id: int):
@@ -1424,20 +1490,33 @@ def get_control_test_access_list(test_id: int):
 
 
 def get_attempt_answers_grid(attempt_id: int):
-    """Bitta urinishning har bir savoli bo'yicha to'g'ri/noto'g'ri holatini,
-    savol tartib raqami bilan qaytaradi — natija jadvalini (savollar
-    to'ri/noto'g'ri katakchalari) chizish uchun."""
+    """Bitta urinishning HAR BIR savoli (javob berilgan yoki berilmagan —
+    o'quvchi endi savollar orasida erkin harakatlanib, ba'zilarini
+    o'tkazib yuborishi ham mumkin) bo'yicha to'g'ri/noto'g'ri/javobsiz
+    holatini, savol tartib raqami bilan qaytaradi."""
     with get_connection() as conn:
         cur = conn.cursor()
+        cur.execute("SELECT test_id FROM test_attempts WHERE id = ?", (attempt_id,))
+        attempt_row = cur.fetchone()
+        if not attempt_row:
+            return []
+        test_id = attempt_row["test_id"]
         cur.execute("""
-            SELECT q.order_num as order_num, ta.is_correct as is_correct
-            FROM test_answers ta
-            JOIN test_questions q ON q.id = ta.question_id
-            WHERE ta.attempt_id = ?
-            ORDER BY q.order_num ASC, ta.id ASC
-        """, (attempt_id,))
+            SELECT q.order_num as order_num, ta.selected_index as selected_index, ta.is_correct as is_correct
+            FROM test_questions q
+            LEFT JOIN test_answers ta ON ta.question_id = q.id AND ta.attempt_id = ?
+            WHERE q.test_id = ?
+            ORDER BY q.order_num ASC, q.id ASC
+        """, (attempt_id, test_id))
         rows = [dict(r) for r in cur.fetchall()]
-    return [{"question_number": i + 1, "is_correct": bool(r["is_correct"])} for i, r in enumerate(rows)]
+    return [
+        {
+            "question_number": i + 1,
+            "answered": r["selected_index"] is not None,
+            "is_correct": bool(r["is_correct"]) if r["selected_index"] is not None else None,
+        }
+        for i, r in enumerate(rows)
+    ]
 
 
 def get_control_test_monthly_leaderboard(year: int, month: int, limit: int = 100):

@@ -234,6 +234,9 @@ body.no-scroll { overflow: hidden; }
 .admin-form label { font-size: 11px; color: var(--text-dim); display: flex; flex-direction: column; gap: 5px; }
 .admin-form input, .admin-form select, .admin-form textarea { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 10px; border-radius: 8px; font-size: 13px; font-family: inherit; }
 .admin-form textarea { min-height: 55px; resize: vertical; }
+.time-limit-row { display: flex; gap: 10px; }
+.time-limit-row .time-limit-sub { flex: 1; font-size: 11px; color: var(--text-dim); display: flex; flex-direction: column; gap: 5px; }
+.time-limit-row .time-limit-sub input { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 10px; border-radius: 8px; font-size: 13px; font-family: inherit; width: 100%; }
 .version-tag { text-align: center; font-size: 10px; color: var(--text-dim); margin: 20px 16px 8px; letter-spacing: 0.5px; }
 
 /* ================================================================
@@ -575,10 +578,35 @@ a:focus-visible {
 .control-grid-cell { aspect-ratio: 1; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; }
 .control-grid-cell.correct { background: var(--teal); color: var(--on-accent); }
 .control-grid-cell.wrong { background: var(--danger); color: var(--on-accent); }
+.control-grid-cell.unanswered { background: var(--surface2); color: var(--text-dim); border: 1px dashed var(--border); }
 
-/* Nazorat testida javob tanlanganda (to'g'ri/noto'g'ri OSHKOR QILINMAYDI, faqat tanlanган belgisi) */
+/* Javob tanlanganda (to'g'ri/noto'g'ri OSHKOR QILINMAYDI — faqat testni
+   yakunlagach ko'rinadi, hozircha faqat "tanlangan" belgisi ko'rsatiladi) */
 .option-btn.option-selected-neutral { border-color: var(--gold); background: rgba(15,118,110,0.06); }
 .option-btn.option-selected-neutral .option-letter { background: var(--gold); color: var(--on-accent); }
+
+/* ---------- Savollar orasida erkin harakatlanish (raqamlar paneli) ---------- */
+
+.question-nav-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+  gap: 6px; margin: 0 16px 14px;
+}
+.qnav-btn {
+  aspect-ratio: 1; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text-dim); font-weight: 700; font-size: 12px;
+  cursor: pointer; transition: all 0.15s;
+}
+.qnav-btn:hover { border-color: var(--gold-light); }
+.qnav-btn.qnav-answered { background: var(--surface2); color: var(--text); border-color: var(--gold-light); }
+.qnav-btn.qnav-current { border-color: var(--gold); background: var(--gold); color: var(--on-accent); }
+
+.secondary-btn { background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 12px 20px; font-weight: 800; font-size: 13px; cursor: pointer; }
+.secondary-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.test-nav-actions { display: flex; gap: 10px; margin: 0 16px 10px; }
+.test-nav-actions .secondary-btn { flex: 1; }
+.finish-test-wrap { margin: 6px 16px 18px; }
+.finish-test-wrap .gold-btn { width: 100%; }
 
 /* ---------- Nazorat reytingi (leaderboard) ---------- */
 

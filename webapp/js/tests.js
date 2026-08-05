@@ -216,7 +216,7 @@ async function startTest(test, mode = "test") {
       id: startData.attempt_id,
       test: fullTest,
       index: 0,
-      correctCount: 0,
+      answers: {}, // question_id -> tanlangan variant raqami (erkin o'zgartiriladi)
       coinsEarned: 0,
       timeLeft: fullTest.time_limit_seconds,
       timerHandle: null,
@@ -335,7 +335,7 @@ async function startSimulator(sim) {
         questions: questionsData.questions,
       },
       index: 0,
-      correctCount: 0,
+      answers: {}, // question_id -> tanlangan variant raqami (erkin o'zgartiriladi)
       coinsEarned: 0,
       timeLeft: startData.time_limit_seconds,
       timerHandle: null,
@@ -477,12 +477,20 @@ function updateTimerDisplay() {
   el.classList.toggle("timer-warning", currentAttempt.timeLeft <= 30);
 }
 
+// Savollar orasida ERKIN harakatlanish (istalgan savolga to'g'ridan-to'g'ri
+// o'tish, oldinga/orqaga qaytish) va javobni ISTALGANCHA o'zgartirish imkoni
+// — variantni bosish faqat BELGILAYDI, hech qanday darhol to'g'ri/noto'g'ri
+// ko'rsatilmaydi (buni oldin faqat nazorat testi qilardi, endi hammasi shu
+// tarzda ishlaydi). Natija — to'g'ri/noto'g'ri/javobsiz — FAQAT testni
+// yakunlagandan keyin, umumiy natija ekranida ko'rsatiladi.
+
 function renderCurrentQuestion() {
-  const { test, index } = currentAttempt;
+  const { test, index, answers } = currentAttempt;
   const question = test.questions[index];
   const total = test.questions.length;
+  const answeredCount = Object.keys(answers).length;
 
-  document.getElementById("testProgressFill").style.width = `${(index / total) * 100}%`;
+  document.getElementById("testProgressFill").style.width = `${(answeredCount / total) * 100}%`;
 
   const options = [
     ["1", question.option_1], ["2", question.option_2],
@@ -490,10 +498,19 @@ function renderCurrentQuestion() {
   ];
 
   const subjectSuffix = question.subject ? ` · ${question.subject}` : "";
+  const selectedIndex = answers[question.id];
+
+  const navButtons = test.questions.map((q, i) => {
+    const cls = ["qnav-btn"];
+    if (i === index) cls.push("qnav-current");
+    if (answers[q.id] !== undefined) cls.push("qnav-answered");
+    return `<button type="button" class="${cls.join(" ")}" data-index="${i}">${i + 1}</button>`;
+  }).join("");
 
   const content = document.getElementById("testTakingContent");
   content.innerHTML = `
-    <div class="question-counter">${index + 1} / ${total}-SAVOL${subjectSuffix}</div>
+    <div class="question-counter">${index + 1} / ${total}-SAVOL${subjectSuffix} · ${answeredCount}/${total} javob berilgan</div>
+    <div class="question-nav-grid">${navButtons}</div>
     <div class="question-card">
       <div class="question-text">${question.question_text}</div>
       ${question.image_url ? `<img class="question-image" src="${question.image_url}" alt="Savol rasmi">` : ""}
@@ -501,14 +518,17 @@ function renderCurrentQuestion() {
     </div>
     <div class="option-list" id="optionList">
       ${options.map(([idx, text]) => `
-        <button class="option-btn" data-option-index="${idx}">
+        <button class="option-btn ${parseInt(idx) === selectedIndex ? "option-selected-neutral" : ""}" data-option-index="${idx}">
           <span class="option-letter">${idx}</span><span>${text}</span>
         </button>
       `).join("")}
     </div>
-    <div id="answerFeedbackWrap"></div>
-    <div class="next-question-wrap hidden" id="nextQuestionWrap">
-      <button class="gold-btn" id="nextQuestionBtn">${index + 1 === total ? "Yakunlash →" : "Keyingi savol →"}</button>
+    <div class="test-nav-actions">
+      <button class="secondary-btn" id="prevQuestionBtn" ${index === 0 ? "disabled" : ""}>← Oldingi</button>
+      <button class="secondary-btn" id="nextQuestionBtn" ${index === total - 1 ? "disabled" : ""}>Keyingi →</button>
+    </div>
+    <div class="finish-test-wrap">
+      <button class="gold-btn" id="finishTestBtn">✅ Testni yakunlash</button>
     </div>
   `;
 
@@ -519,64 +539,62 @@ function renderCurrentQuestion() {
     btn.addEventListener("click", () => selectOption(parseInt(btn.getAttribute("data-option-index"))));
   });
 
+  content.querySelectorAll(".qnav-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      currentAttempt.index = parseInt(btn.getAttribute("data-index"));
+      renderCurrentQuestion();
+    });
+  });
+
+  const prevBtn = document.getElementById("prevQuestionBtn");
+  prevBtn.addEventListener("click", () => {
+    if (currentAttempt.index > 0) {
+      currentAttempt.index -= 1;
+      renderCurrentQuestion();
+    }
+  });
+
   const nextBtn = document.getElementById("nextQuestionBtn");
   nextBtn.addEventListener("click", () => {
-    currentAttempt.index += 1;
-    if (currentAttempt.index >= total) finishAttempt(false);
-    else renderCurrentQuestion();
+    if (currentAttempt.index < total - 1) {
+      currentAttempt.index += 1;
+      renderCurrentQuestion();
+    }
+  });
+
+  document.getElementById("finishTestBtn").addEventListener("click", () => {
+    const remaining = total - Object.keys(currentAttempt.answers).length;
+    if (remaining > 0) {
+      const ok = confirm(`${remaining} ta savolga hali javob berilmagan. Baribir yakunlaysizmi?`);
+      if (!ok) return;
+    }
+    finishAttempt(false);
   });
 }
 
 async function selectOption(selectedIndex) {
-  const { test, index, id: attemptId, mode } = currentAttempt;
+  const { test, index, id: attemptId } = currentAttempt;
   const question = test.questions[index];
 
-  document.querySelectorAll("#optionList .option-btn").forEach(b => b.disabled = true);
+  // Variantni bosish darhol YAKUNIY javob emas — shunchaki belgilaydi va
+  // qayta chizadi (rang o'zgaradi), o'quvchi xohlagancha boshqa variantga
+  // o'tishi mumkin. Backend'ga ham har safar jimgina (fon rejimida) yuboriladi.
+  currentAttempt.answers[question.id] = selectedIndex;
+  renderCurrentQuestion();
 
-  let result;
   try {
     const res = await apiFetch(`${attemptApiBase()}/${attemptId}/answer`, {
       method: "POST",
       body: JSON.stringify({ question_id: question.id, selected_index: selectedIndex })
     });
-    result = await res.json();
+    const result = await res.json();
+    if (result.coin_awarded) {
+      currentAttempt.coinsEarned += 1;
+      refreshCoins();
+    }
   } catch (e) {
     console.error(e);
-    document.querySelectorAll("#optionList .option-btn").forEach(b => b.disabled = false);
-    return;
   }
-
-  if (result.correct) currentAttempt.correctCount += 1;
-  if (result.coin_awarded) currentAttempt.coinsEarned += 1;
-
-  if (mode === "control") {
-    // Nazorat testida to'g'ri/noto'g'ri DARHOL oshkor qilinmaydi — bu rasmiy
-    // imtihon uslubi, natija faqat yakunda to'liq ko'rsatiladi.
-    document.querySelectorAll("#optionList .option-btn").forEach(btn => {
-      const idx = parseInt(btn.getAttribute("data-option-index"));
-      if (idx === selectedIndex) btn.classList.add("option-selected-neutral");
-    });
-    document.getElementById("answerFeedbackWrap").innerHTML = `
-      <div class="answer-feedback" style="background:var(--surface2);color:var(--text-dim);border:1px solid var(--border);">
-        ✓ Javobingiz qabul qilindi
-      </div>
-    `;
-  } else {
-    document.querySelectorAll("#optionList .option-btn").forEach(btn => {
-      const idx = parseInt(btn.getAttribute("data-option-index"));
-      if (idx === selectedIndex) btn.classList.add(result.correct ? "option-correct" : "option-wrong");
-      else if (idx === result.correct_index) btn.classList.add("option-correct");
-      else btn.classList.add("option-dim");
-    });
-    document.getElementById("answerFeedbackWrap").innerHTML = `
-      <div class="answer-feedback ${result.correct ? "feedback-correct" : "feedback-wrong"}">
-        ${result.correct ? "✓ To'g'ri javob!" + (result.coin_awarded ? " (+1 🪙)" : "") : "✗ Noto'g'ri. To'g'ri javob yashil rangda ko'rsatildi."}
-      </div>
-    `;
-  }
-  document.getElementById("nextQuestionWrap").classList.remove("hidden");
-
-  if (result.coin_awarded) refreshCoins();
 }
 
 async function finishAttempt(timedOut) {
@@ -594,82 +612,68 @@ async function finishAttempt(timedOut) {
   }
 
   const total = currentAttempt.test.questions.length;
-  const score = finalResult ? finalResult.score : currentAttempt.correctCount;
+  const score = finalResult ? finalResult.score : Object.keys(currentAttempt.answers).length;
   const percent = total > 0 ? Math.round((score / total) * 100) : 0;
 
-  if (mode === "control") {
-    await renderControlResult(currentAttempt.id, score, total, percent, timedOut);
-    showScreen("test-result");
-    refreshCoins();
-    return;
-  }
-
-  const content = document.getElementById("testResultContent");
-  content.innerHTML = `
-    <div class="test-result-content">
-      <div class="result-score-circle">
-        <div class="score-num">${score}/${total}</div>
-        <div class="score-total">${percent}%</div>
-      </div>
-      <div class="result-title">${timedOut ? "⏰ Vaqt tugadi" : (mode === "simulator" ? "🎯 Simulyator yakunlandi" : "🎉 Test yakunlandi")}</div>
-      <div class="result-sub">${percentToComment(percent)}</div>
-      ${currentAttempt.coinsEarned > 0 ? `<div class="result-coins-badge">+${currentAttempt.coinsEarned} 🪙 coin qo'lga kiritdingiz</div>` : ""}
-      <div class="result-actions">
-        <button class="gold-btn" id="retakeTestBtn">🔁 Qayta urinish</button>
-        <button class="secondary-btn" id="backToTestsBtn">${mode === "simulator" ? "Simulyatorlar ro'yxatiga qaytish" : "Testlar ro'yxatiga qaytish"}</button>
-      </div>
-    </div>
-  `;
-
-  document.getElementById("retakeTestBtn").addEventListener("click", () => {
-    if (mode === "simulator") startSimulator(currentSimulatorMeta);
-    else startTest(currentTestMeta);
-  });
-  document.getElementById("backToTestsBtn").addEventListener("click", () => {
-    activeTestsTab = mode === "simulator" ? "simulator" : "tests";
-    navigateTo("tests");
-  });
-
+  await renderAttemptResult(currentAttempt.id, mode, score, total, percent, timedOut);
   showScreen("test-result");
   refreshCoins();
 }
 
-async function renderControlResult(attemptId, score, total, percent, timedOut) {
+const RESULT_TITLE_BY_MODE = {
+  test: "🎉 Test yakunlandi",
+  simulator: "🎯 Simulyator yakunlandi",
+  control: "🎓 Nazorat testi yakunlandi",
+};
+
+async function renderAttemptResult(attemptId, mode, score, total, percent, timedOut) {
   const content = document.getElementById("testResultContent");
+  const showRetake = mode !== "control"; // rasmiy nazorat testi qayta topshirilmaydi
+
   content.innerHTML = `
     <div class="test-result-content">
       <div class="result-score-circle">
         <div class="score-num">${score}/${total}</div>
         <div class="score-total">${percent}%</div>
       </div>
-      <div class="result-title">${timedOut ? "⏰ Vaqt tugadi" : "🎓 Nazorat testi yakunlandi"}</div>
+      <div class="result-title">${timedOut ? "⏰ Vaqt tugadi" : (RESULT_TITLE_BY_MODE[mode] || "Yakunlandi")}</div>
       <div class="result-sub">${percentToComment(percent)}</div>
+      ${currentAttempt.coinsEarned > 0 ? `<div class="result-coins-badge">+${currentAttempt.coinsEarned} 🪙 coin qo'lga kiritdingiz</div>` : ""}
     </div>
     <div class="control-result-stats-row">
       <div class="control-stat correct"><div class="num">${score}</div><div class="lbl">To'g'ri</div></div>
-      <div class="control-stat wrong"><div class="num">${total - score}</div><div class="lbl">Noto'g'ri</div></div>
+      <div class="control-stat wrong"><div class="num">${total - score}</div><div class="lbl">Noto'g'ri/javobsiz</div></div>
       <div class="control-stat"><div class="num">${total}</div><div class="lbl">Jami savol</div></div>
     </div>
     <div class="control-grid-title" style="text-align:center;">Savollar natijasi</div>
     <div class="control-answers-grid" id="controlAnswersGrid"></div>
-    <div class="result-actions" style="margin:0 16px;">
-      <button class="secondary-btn" id="backToTestsBtn">Nazorat testlariga qaytish</button>
+    <div class="result-actions" style="margin:16px;">
+      ${showRetake ? `<button class="secondary-btn" id="retakeTestBtn">🔁 Qayta urinish</button>` : ""}
+      <button class="secondary-btn" id="backToTestsBtn">${mode === "simulator" ? "Simulyatorlar ro'yxatiga qaytish" : mode === "control" ? "Nazorat testlariga qaytish" : "Testlar ro'yxatiga qaytish"}</button>
     </div>
   `;
 
   try {
-    const res = await apiFetch(`/api/attempt/${attemptId}/grid`);
+    const gridUrl = mode === "simulator" ? `/api/simulator/attempt/${attemptId}/grid` : `/api/attempt/${attemptId}/grid`;
+    const res = await apiFetch(gridUrl);
     const data = await res.json();
     const gridBox = document.getElementById("controlAnswersGrid");
-    gridBox.innerHTML = data.grid.map(g =>
-      `<div class="control-grid-cell ${g.is_correct ? "correct" : "wrong"}">${g.question_number}</div>`
-    ).join("");
+    gridBox.innerHTML = data.grid.map(g => {
+      const cls = !g.answered ? "unanswered" : (g.is_correct ? "correct" : "wrong");
+      return `<div class="control-grid-cell ${cls}">${g.question_number}</div>`;
+    }).join("");
   } catch (e) {
     console.error(e);
   }
 
+  if (showRetake) {
+    document.getElementById("retakeTestBtn").addEventListener("click", () => {
+      if (mode === "simulator") startSimulator(currentSimulatorMeta);
+      else startTest(currentTestMeta);
+    });
+  }
   document.getElementById("backToTestsBtn").addEventListener("click", () => {
-    activeTestsTab = "control";
+    activeTestsTab = mode === "simulator" ? "simulator" : mode === "control" ? "control" : "tests";
     navigateTo("tests");
   });
 }

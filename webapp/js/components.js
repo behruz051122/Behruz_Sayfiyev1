@@ -99,8 +99,15 @@ export function renderProgressChart(history) {
 }
 
 export function formatSeconds(totalSeconds) {
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
+  const total = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  // Vaqt chegarasi endi soatlab (masalan 24 soatgacha) bo'lishi mumkin —
+  // shuning uchun 1 soatdan oshsa H:MM:SS, aks holda oddiy MM:SS ko'rsatiladi.
+  if (h > 0) {
+    return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  }
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
