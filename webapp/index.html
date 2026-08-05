@@ -57,13 +57,39 @@
     <section id="screen-games" class="screen hidden">
       <div class="screen-header">
         <button class="back-btn" data-nav="home" aria-label="Orqaga">←</button>
-        <h2>O'yinlar</h2>
+        <h2>🕹️ O'yinlar</h2>
       </div>
-      <div class="locked-box">
-        <div style="font-size:40px;margin-bottom:10px;">🕹️</div>
-        <h3 style="margin-bottom:8px;">Tez orada!</h3>
-        <p style="color:var(--text-dim);font-size:13px;">O'quv o'yinlari (masalan kunlik viktorina-duel) hozircha tayyorlanmoqda. Tez orada shu yerda paydo bo'ladi.</p>
+      <button id="myBattlesBtn" class="results-link-btn">⚔️ Mening janglarim ›</button>
+      <p class="simulator-intro">Fan tanlang va "Jang qiling" tugmasini bosing — tizim sizga raqib topadi (agar hozir hech kim kutmasa, birinchi bo'lib savollarga javob berasiz, keyin qo'shiladigan raqib bilan taqqoslanadi).</p>
+      <div id="gameSubjectsList" class="admin-list"></div>
+    </section>
+
+    <!-- MENING JANGLARIM -->
+    <section id="screen-game-battles" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="games" aria-label="Orqaga">←</button>
+        <h2>⚔️ Mening janglarim</h2>
       </div>
+      <div id="gameBattlesList" class="admin-list"></div>
+    </section>
+
+    <!-- BATTLE SAVOLLARI -->
+    <section id="screen-game-quiz" class="screen hidden">
+      <div class="test-taking-header">
+        <button id="exitGameQuizBtn" class="exit-test-btn" aria-label="Chiqish">✕</button>
+        <div class="test-progress-bar"><div id="gameQuizProgressFill" class="test-progress-fill"></div></div>
+        <div id="gameQuizTimer" class="test-timer">0:00</div>
+      </div>
+      <div id="gameQuizContent"></div>
+    </section>
+
+    <!-- BATTLE NATIJASI / KUTISH -->
+    <section id="screen-game-result" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="games" aria-label="Orqaga">←</button>
+        <h2>⚔️ Jang natijasi</h2>
+      </div>
+      <div id="gameResultContent"></div>
     </section>
 
     <!-- COURSE LIST -->

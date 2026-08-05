@@ -14,7 +14,8 @@ from config import BOT_TOKEN, WEBAPP_URL, CHANNEL_USERNAME, CHANNEL_URL, BOT_USE
 from database import (
     init_db, get_or_create_user, add_sample_courses,
     create_pending_referral, confirm_referral, set_user_subscribed,
-    get_confirmed_referral_count, get_enrollments_needing_reminder, mark_reminder_sent
+    get_confirmed_referral_count, get_enrollments_needing_reminder, mark_reminder_sent,
+    get_battles_needing_notification, mark_battle_notified
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -175,6 +176,78 @@ async def send_expiry_reminders_loop():
             logging.error(f"Eslatma tekshiruvi siklida xato: {e}")
 
         await asyncio.sleep(REMINDER_CHECK_INTERVAL_SECONDS)
+
+
+BATTLE_NOTIFY_CHECK_INTERVAL_SECONDS = 15  # o'yin natijasi tezroq yetib borishi kerak
+
+
+def _battle_result_text(my_score, opp_score, opp_name, subject, elo_before, elo_after, is_winner_none, i_won):
+    if is_winner_none:
+        headline = "🤝 Durrang!"
+    elif i_won:
+        headline = "🏆 G'alaba qozondingiz!"
+    else:
+        headline = "😔 Mag'lubiyat"
+    elo_diff = elo_after - elo_before
+    sign = "+" if elo_diff > 0 else ""
+    opponent_display = opp_name or "Noma'lum"
+    return (
+        f"⚔️ Jang yakunlandi!\n\n"
+        f"{headline}\n"
+        f"Fan: {subject}\n"
+        f"Raqib: {opponent_display}\n"
+        f"Hisob: {my_score} : {opp_score}\n"
+        f"ELO: {elo_before} → {elo_after} ({sign}{elo_diff})\n\n"
+        f"Yangi jang uchun Mini App'dagi \"O'yinlar\" bo'limiga o'ting."
+    )
+
+
+async def send_battle_result_notifications_loop():
+    """
+    Battle (1x1 o'yin) ikkala o'yinchi ham javob berib, YAKUNLANGANDA,
+    natija Mini App ichida "Mening janglarim" bo'limida ko'rinadi — lekin
+    o'yinchi o'sha payt ilovani ochib o'tirmagan bo'lishi mumkin (chunki
+    bu ASINXRON o'yin: raqib keyinroq qo'shiladi). Shu sababli natija
+    tayyor bo'lishi bilan ikkala o'yinchiga ham Telegram orqali DARHOL
+    xabar yuboramiz — xuddi eslatmalar sikli (send_expiry_reminders_loop)
+    kabi, lekin ancha tezroq tekshiradigan (15 soniyada bir) alohida sikl.
+    """
+    while True:
+        try:
+            battles = get_battles_needing_notification()
+            for b in battles:
+                try:
+                    p1, p2 = b["player1_telegram_id"], b["player2_telegram_id"]
+                    u1 = get_or_create_user(p1, "O'quvchi")
+                    u2 = get_or_create_user(p2, "O'quvchi")
+                    winner = b["winner_telegram_id"]
+
+                    text1 = _battle_result_text(
+                        b["player1_score"], b["player2_score"], u2.get("first_name"), b["subject"],
+                        b["player1_elo_before"], b["player1_elo_after"],
+                        winner is None, winner == p1
+                    )
+                    text2 = _battle_result_text(
+                        b["player2_score"], b["player1_score"], u1.get("first_name"), b["subject"],
+                        b["player2_elo_before"], b["player2_elo_after"],
+                        winner is None, winner == p2
+                    )
+                    try:
+                        await bot.send_message(p1, text1)
+                    except Exception as send_error:
+                        logging.warning(f"Battle xabari yuborilmadi (telegram_id={p1}): {send_error}")
+                    try:
+                        await bot.send_message(p2, text2)
+                    except Exception as send_error:
+                        logging.warning(f"Battle xabari yuborilmadi (telegram_id={p2}): {send_error}")
+
+                    mark_battle_notified(b["id"])
+                except Exception as inner_error:
+                    logging.warning(f"Battle xabarini tayyorlashda xato (battle_id={b.get('id')}): {inner_error}")
+        except Exception as e:
+            logging.error(f"Battle xabarlari siklida xato: {e}")
+
+        await asyncio.sleep(BATTLE_NOTIFY_CHECK_INTERVAL_SECONDS)
 
 
 async def start_polling_background():

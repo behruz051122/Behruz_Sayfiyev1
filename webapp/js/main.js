@@ -15,6 +15,7 @@ import { loadProfile } from "./profile.js";
 import { loadAdminCourses, loadAdminTests, loadAdminAnalytics, loadAdminSimulators, loadAdminDashboardCards, loadAdminBookProducts, initAdminModule } from "./admin.js";
 import { loadDashboardCards } from "./home.js";
 import { loadBookShop } from "./bookshop.js";
+import { loadGameSubjects, initGamesModule } from "./games.js";
 
 function handleNav(target) {
   if (target === "home") {
@@ -57,7 +58,14 @@ function handleNav(target) {
     loadAdminBookProducts();
     showScreen("admin");
   } else if (target === "games") {
+    loadGameSubjects();
     showScreen("games");
+  } else if (target === "game-battles") {
+    showScreen("game-battles");
+  } else if (target === "game-quiz") {
+    showScreen("game-quiz");
+  } else if (target === "game-result") {
+    showScreen("game-result");
   } else if (target === "book-shop") {
     loadBookShop();
     showScreen("book-shop");
@@ -79,6 +87,7 @@ function bootstrap() {
   Tests.initTestsModule();
   initLeaderboardModule();
   initAdminModule();
+  initGamesModule();
 
   loadBrand();
   loadUser();

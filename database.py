@@ -10,6 +10,7 @@
 
 import sqlite3
 import datetime
+import json
 
 from db_pool import get_connection, init_pool
 from config import DB_PATH
@@ -368,6 +369,54 @@ def init_db():
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_coin_history_telegram_created
             ON coin_history(telegram_id, created_at)
+        """)
+
+        # ---------- O'YINLAR: 1x1 Battle (ELO reytingli, asinxron) ----------
+        # "Asinxron" — ikkala o'yinchi BIR VAQTDA onlayn bo'lishi shart emas:
+        # 1-o'yinchi "O'ynash"ni bosganda kutayotgan boshqa jang bo'lmasa,
+        # yangi jang (savollar to'plami bilan) yaratiladi va DARHOL javob
+        # beradi ("waiting" holatida qoladi); keyinroq 2-o'yinchi shu jangga
+        # qo'shilib, xuddi shu savollarga javob beradi — shundan so'ng
+        # natijalar taqqoslanib, ELO ikkalasi uchun ham yangilanadi.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS game_battles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                subject TEXT NOT NULL,
+                question_ids TEXT NOT NULL,
+                player1_telegram_id INTEGER NOT NULL,
+                player1_score INTEGER,
+                player1_time_seconds INTEGER,
+                player1_finished_at TIMESTAMP,
+                player2_telegram_id INTEGER,
+                player2_score INTEGER,
+                player2_time_seconds INTEGER,
+                player2_finished_at TIMESTAMP,
+                status TEXT DEFAULT 'waiting',
+                winner_telegram_id INTEGER,
+                player1_elo_before INTEGER,
+                player1_elo_after INTEGER,
+                player2_elo_before INTEGER,
+                player2_elo_after INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                finished_at TIMESTAMP,
+                notified INTEGER DEFAULT 0
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_game_battles_subject_status
+            ON game_battles(subject, status)
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS game_ratings (
+                telegram_id INTEGER NOT NULL,
+                subject TEXT NOT NULL,
+                elo INTEGER DEFAULT 1000,
+                wins INTEGER DEFAULT 0,
+                losses INTEGER DEFAULT 0,
+                draws INTEGER DEFAULT 0,
+                PRIMARY KEY (telegram_id, subject)
+            )
         """)
 
         # ---------- Kitoblar do'koni (bosma kitoblar) ----------
@@ -1351,6 +1400,260 @@ def add_sample_courses():
             cur.execute("INSERT INTO paragraphs (course_id, title, order_num) VALUES (?, ?, ?)",
                         (course_id, "1-§. Kirish", 1))
             conn.commit()
+
+
+# ---------- O'YINLAR: 1x1 BATTLE (ELO reytingli, asinxron) ----------
+#
+# Savollar ALOHIDA bank sifatida saqlanmaydi — o'qituvchi allaqachon
+# to'ldirgan "Testlar" bo'limidagi savol bazasidan, FAN bo'yicha tasodifiy
+# tanlab olinadi. Shu sababli Battle rejimi ishlashi uchun o'qituvchi hech
+# qanday QO'SHIMCHA kontent tayyorlashi shart emas.
+
+BATTLE_QUESTIONS_PER_ROUND = 5
+BATTLE_ELO_K_FACTOR = 32
+BATTLE_STARTING_ELO = 1000
+
+ELO_TIERS = [
+    (0, "Temir"), (900, "Bronza"), (1100, "Kumush"),
+    (1300, "Oltin"), (1500, "Platina"), (1700, "Olmos"),
+]
+
+
+def elo_tier_name(elo: int) -> str:
+    name = ELO_TIERS[0][1]
+    for threshold, tier in ELO_TIERS:
+        if elo >= threshold:
+            name = tier
+    return name
+
+
+def get_battle_subjects_with_pool():
+    """Battle o'ynash mumkin bo'lgan fanlar ro'yxatini qaytaradi — ya'ni
+    kamida BATTLE_QUESTIONS_PER_ROUND ta savoli bor fanlar (aks holda
+    o'yin savolsiz qolib, buzilib qoladi)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT t.subject as subject, COUNT(q.id) as cnt
+            FROM tests t JOIN test_questions q ON q.test_id = t.id
+            WHERE t.is_active = 1
+            GROUP BY t.subject
+            HAVING cnt >= ?
+        """, (BATTLE_QUESTIONS_PER_ROUND,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def _pick_random_question_ids(subject: str, count: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT q.id FROM test_questions q
+            JOIN tests t ON t.id = q.test_id
+            WHERE t.subject = ? AND t.is_active = 1
+            ORDER BY RANDOM() LIMIT ?
+        """, (subject, count))
+        return [r["id"] for r in cur.fetchall()]
+
+
+def get_or_create_rating(telegram_id: int, subject: str) -> dict:
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM game_ratings WHERE telegram_id = ? AND subject = ?", (telegram_id, subject))
+        row = cur.fetchone()
+        if row:
+            return dict(row)
+        cur.execute(
+            "INSERT INTO game_ratings (telegram_id, subject, elo) VALUES (?, ?, ?)",
+            (telegram_id, subject, BATTLE_STARTING_ELO)
+        )
+        conn.commit()
+        return {"telegram_id": telegram_id, "subject": subject, "elo": BATTLE_STARTING_ELO,
+                "wins": 0, "losses": 0, "draws": 0}
+
+
+def join_or_create_battle(telegram_id: int, subject: str) -> dict:
+    """Shu fan bo'yicha kutayotgan (2-o'yinchisiz) jang bo'lsa (va u SHU
+    o'yinchining o'zi yaratmagan bo'lsa) — o'shanga 2-o'yinchi sifatida
+    qo'shiladi. Bo'lmasa, yangi jang (1-o'yinchi sifatida, yangi tasodifiy
+    savollar bilan) yaratadi. Natija: {"battle_id", "role", "question_ids"}"""
+    get_or_create_rating(telegram_id, subject)  # reyting yozuvi oldindan mavjud bo'lishini ta'minlaydi
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT * FROM game_battles
+            WHERE subject = ? AND status = 'waiting' AND player1_telegram_id != ?
+            ORDER BY created_at ASC LIMIT 1
+        """, (subject, telegram_id))
+        waiting = cur.fetchone()
+
+        if waiting:
+            cur.execute(
+                "UPDATE game_battles SET player2_telegram_id = ? WHERE id = ?",
+                (telegram_id, waiting["id"])
+            )
+            conn.commit()
+            return {
+                "battle_id": waiting["id"],
+                "role": "player2",
+                "question_ids": json.loads(waiting["question_ids"]),
+            }
+
+        question_ids = _pick_random_question_ids(subject, BATTLE_QUESTIONS_PER_ROUND)
+        cur.execute("""
+            INSERT INTO game_battles (subject, question_ids, player1_telegram_id, status)
+            VALUES (?, ?, ?, 'waiting')
+        """, (subject, json.dumps(question_ids), telegram_id))
+        conn.commit()
+        return {"battle_id": cur.lastrowid, "role": "player1", "question_ids": question_ids}
+
+
+def _calc_elo(rating_a: int, rating_b: int, score_a: float) -> int:
+    """Standart ELO formulasi. score_a: 1 (g'alaba), 0.5 (durrang), 0 (mag'lubiyat)."""
+    expected_a = 1 / (1 + 10 ** ((rating_b - rating_a) / 400))
+    return round(rating_a + BATTLE_ELO_K_FACTOR * (score_a - expected_a))
+
+
+def submit_battle_result(battle_id: int, telegram_id: int, score: int, time_seconds: int):
+    """O'yinchining natijasini yozadi. Ikkala o'yinchi ham tugatgan bo'lsa,
+    g'olibni aniqlab, ELO'ni ikkalasi uchun ham yangilaydi va jangni
+    'finished' deb belgilaydi. Natija: yangilangan battle dict."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM game_battles WHERE id = ?", (battle_id,))
+        battle = cur.fetchone()
+        if not battle:
+            return None
+        battle = dict(battle)
+
+        if battle["player1_telegram_id"] == telegram_id:
+            cur.execute("""
+                UPDATE game_battles SET player1_score = ?, player1_time_seconds = ?,
+                    player1_finished_at = CURRENT_TIMESTAMP WHERE id = ?
+            """, (score, time_seconds, battle_id))
+        elif battle["player2_telegram_id"] == telegram_id:
+            cur.execute("""
+                UPDATE game_battles SET player2_score = ?, player2_time_seconds = ?,
+                    player2_finished_at = CURRENT_TIMESTAMP WHERE id = ?
+            """, (score, time_seconds, battle_id))
+        else:
+            return None
+        conn.commit()
+
+        cur.execute("SELECT * FROM game_battles WHERE id = ?", (battle_id,))
+        battle = dict(cur.fetchone())
+
+        both_finished = (
+            battle["player1_finished_at"] is not None
+            and battle["player2_telegram_id"] is not None
+            and battle["player2_finished_at"] is not None
+        )
+        if both_finished and battle["status"] == "waiting":
+            p1, p2 = battle["player1_telegram_id"], battle["player2_telegram_id"]
+            r1 = get_or_create_rating(p1, battle["subject"])
+            r2 = get_or_create_rating(p2, battle["subject"])
+
+            s1, t1 = battle["player1_score"], battle["player1_time_seconds"]
+            s2, t2 = battle["player2_score"], battle["player2_time_seconds"]
+            if s1 > s2 or (s1 == s2 and t1 < t2):
+                winner, score_a = p1, 1
+            elif s2 > s1 or (s2 == s1 and t2 < t1):
+                winner, score_a = p2, 0
+            else:
+                winner, score_a = None, 0.5
+
+            new_elo1 = _calc_elo(r1["elo"], r2["elo"], score_a)
+            new_elo2 = _calc_elo(r2["elo"], r1["elo"], 1 - score_a)
+
+            cur.execute("""
+                UPDATE game_battles SET status = 'finished', winner_telegram_id = ?,
+                    player1_elo_before = ?, player1_elo_after = ?,
+                    player2_elo_before = ?, player2_elo_after = ?,
+                    finished_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (winner, r1["elo"], new_elo1, r2["elo"], new_elo2, battle_id))
+
+            cur.execute("""
+                UPDATE game_ratings SET elo = ?,
+                    wins = wins + ?, losses = losses + ?, draws = draws + ?
+                WHERE telegram_id = ? AND subject = ?
+            """, (
+                new_elo1,
+                1 if winner == p1 else 0, 1 if winner == p2 else 0, 1 if winner is None else 0,
+                p1, battle["subject"]
+            ))
+            cur.execute("""
+                UPDATE game_ratings SET elo = ?,
+                    wins = wins + ?, losses = losses + ?, draws = draws + ?
+                WHERE telegram_id = ? AND subject = ?
+            """, (
+                new_elo2,
+                1 if winner == p2 else 0, 1 if winner == p1 else 0, 1 if winner is None else 0,
+                p2, battle["subject"]
+            ))
+            conn.commit()
+
+            cur.execute("SELECT * FROM game_battles WHERE id = ?", (battle_id,))
+            battle = dict(cur.fetchone())
+
+        return battle
+
+
+def get_battle(battle_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM game_battles WHERE id = ?", (battle_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def get_my_battles(telegram_id: int, limit: int = 20):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT * FROM game_battles
+            WHERE player1_telegram_id = ? OR player2_telegram_id = ?
+            ORDER BY created_at DESC LIMIT ?
+        """, (telegram_id, telegram_id, limit))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_my_ratings(telegram_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM game_ratings WHERE telegram_id = ?", (telegram_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_battles_needing_notification():
+    """Endigina 'finished' bo'lgan, lekin ikkala o'yinchiga ham hali
+    Telegram orqali xabar YUBORILMAGAN janglar — bot.py'dagi fon vazifasi
+    (background loop) shularni topib, xabar yuborgach 'notified'ga
+    belgilaydi (batafsili izoh bot.py'da)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM game_battles WHERE status = 'finished' AND notified = 0")
+        return [dict(r) for r in cur.fetchall()]
+
+
+def mark_battle_notified(battle_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("UPDATE game_battles SET notified = 1 WHERE id = ?", (battle_id,))
+        conn.commit()
+
+
+def get_battle_leaderboard(subject: str, limit: int = 50):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT gr.telegram_id, u.first_name, gr.elo, gr.wins, gr.losses, gr.draws
+            FROM game_ratings gr
+            JOIN users u ON u.telegram_id = gr.telegram_id
+            WHERE gr.subject = ?
+            ORDER BY gr.elo DESC LIMIT ?
+        """, (subject, limit))
+        return [dict(r) for r in cur.fetchall()]
 
 
 # ---------- DTM/MILLIY SERTIFIKAT SIMULYATORI ----------
