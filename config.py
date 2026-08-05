@@ -64,3 +64,12 @@ _admin_ids_raw = os.environ.get("ADMIN_TELEGRAM_IDS", "7558364715")
 ADMIN_TELEGRAM_IDS = [int(x.strip()) for x in _admin_ids_raw.split(",") if x.strip()]
 
 DB_PATH = os.environ.get("DB_PATH", "database.db")
+
+# Admin panelda yuklangan rasmlar (savol grafigi/jadvali va h.k.) shu papkada
+# saqlanadi. Standart holatda DB_PATH bilan BIR XIL papkada joylashadi —
+# shunday qilib, agar DB_PATH allaqachon Railway Volume'ga (masalan
+# /data/database.db) to'g'ri sozlangan bo'lsa, yuklangan rasmlar ham
+# avtomatik o'sha doimiy xotirada saqlanadi va qayta deploy'da yo'qolmaydi.
+# Alohida sozlash shart emas — lekin xohlasangiz UPLOADS_DIR orqali
+# ustidan yozib qo'yish mumkin.
+UPLOADS_DIR = os.environ.get("UPLOADS_DIR", os.path.join(os.path.dirname(DB_PATH) or ".", "uploads"))

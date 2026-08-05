@@ -427,8 +427,42 @@ async function openAdminQuestions(testId, title) {
   document.getElementById("adminControlAccessPanel").classList.add("hidden");
   document.getElementById("adminQuestionsTitle").textContent = `Savollar — ${title}`;
   document.getElementById("aq_test_id").value = testId;
+  document.getElementById("aq_docx_file").value = "";
+  document.getElementById("docxImportStatus").textContent = "";
+  document.getElementById("docxImportResult").innerHTML = "";
   resetQuestionForm();
   await renderAdminQuestions(testId);
+}
+
+async function importQuestionsFromDocx(testId, file) {
+  const status = document.getElementById("docxImportStatus");
+  const resultBox = document.getElementById("docxImportResult");
+  resultBox.innerHTML = "";
+  status.textContent = "⏳ Fayl o'qilmoqda va savollar qo'shilmoqda...";
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await apiFetch(`/api/admin/tests/${testId}/import-docx`, { method: "POST", body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Yuklab bo'lmadi");
+
+    status.textContent = "";
+    let html = `<div class="watched-confirmed" style="margin-bottom:8px;">✅ ${data.imported} ta savol muvaffaqiyatli qo'shildi (jami ${data.total_found} ta topildi)</div>`;
+    if (data.skipped && data.skipped.length > 0) {
+      html += `<div class="grace-banner" style="margin:0 0 8px;">⚠️ ${data.skipped.length} ta savol o'tkazib yuborildi:</div>`;
+      data.skipped.forEach(s => {
+        html += `<div class="admin-row" style="margin-bottom:6px;"><div class="info"><div class="t">${s.order_num}. ${s.text}</div><div class="s">${s.reason}</div></div></div>`;
+      });
+    }
+    resultBox.innerHTML = html;
+    document.getElementById("aq_docx_file").value = "";
+    renderAdminQuestions(testId);
+    loadAdminTests();
+  } catch (e) {
+    console.error(e);
+    status.textContent = `❌ ${e.message || "Xatolik yuz berdi"}`;
+    document.getElementById("aq_docx_file").value = "";
+  }
 }
 
 // ---------- Nazorat testi: talabalarni tayinlash ----------
@@ -525,12 +559,50 @@ function resetQuestionForm() {
   document.getElementById("aq_id").value = "";
   document.getElementById("aq_question_text").value = "";
   document.getElementById("aq_image_url").value = "";
+  document.getElementById("aq_image_file").value = "";
+  document.getElementById("aqImageUploadStatus").textContent = "";
+  document.getElementById("aqImagePreviewWrap").classList.add("hidden");
+  document.getElementById("aqImagePreview").src = "";
   document.getElementById("aq_option_1").value = "";
   document.getElementById("aq_option_2").value = "";
   document.getElementById("aq_option_3").value = "";
   document.getElementById("aq_option_4").value = "";
   document.getElementById("aq_correct_index").value = "1";
   document.getElementById("aq_order_num").value = 0;
+}
+
+function showQuestionImagePreview(url) {
+  document.getElementById("aq_image_url").value = url || "";
+  const wrap = document.getElementById("aqImagePreviewWrap");
+  const img = document.getElementById("aqImagePreview");
+  if (url) {
+    img.src = url;
+    wrap.classList.remove("hidden");
+  } else {
+    img.src = "";
+    wrap.classList.add("hidden");
+  }
+}
+
+async function uploadQuestionImage(file) {
+  const status = document.getElementById("aqImageUploadStatus");
+  status.textContent = "⏳ Yuklanmoqda...";
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await apiFetch(`/api/admin/upload-image`, { method: "POST", body: formData });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Yuklab bo'lmadi");
+    }
+    const data = await res.json();
+    showQuestionImagePreview(data.url);
+    status.textContent = "✅ Rasm yuklandi";
+  } catch (e) {
+    console.error(e);
+    status.textContent = `❌ ${e.message || "Xatolik yuz berdi"}`;
+    document.getElementById("aq_image_file").value = "";
+  }
 }
 
 async function renderAdminQuestions(testId) {
@@ -552,7 +624,9 @@ async function renderAdminQuestions(testId) {
     row.querySelector('[data-a="edit"]').onclick = () => {
       document.getElementById("aq_id").value = q.id;
       document.getElementById("aq_question_text").value = q.question_text;
-      document.getElementById("aq_image_url").value = q.image_url || "";
+      document.getElementById("aq_image_file").value = "";
+      document.getElementById("aqImageUploadStatus").textContent = "";
+      showQuestionImagePreview(q.image_url || "");
       document.getElementById("aq_option_1").value = q.option_1 || "";
       document.getElementById("aq_option_2").value = q.option_2 || "";
       document.getElementById("aq_option_3").value = q.option_3 || "";
@@ -690,6 +764,23 @@ export function initAdminModule() {
   });
 
   document.getElementById("adminCloseQuestions").addEventListener("click", () => document.getElementById("adminQuestionsPanel").classList.add("hidden"));
+
+  document.getElementById("aq_image_file").addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) uploadQuestionImage(file);
+  });
+
+  document.getElementById("aq_docx_file").addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    const testId = document.getElementById("aq_test_id").value;
+    if (file && testId) importQuestionsFromDocx(testId, file);
+  });
+
+  document.getElementById("aqRemoveImageBtn").addEventListener("click", () => {
+    document.getElementById("aq_image_file").value = "";
+    document.getElementById("aqImageUploadStatus").textContent = "";
+    showQuestionImagePreview("");
+  });
 
   document.getElementById("adminCloseControlAccess").addEventListener("click", () => document.getElementById("adminControlAccessPanel").classList.add("hidden"));
 

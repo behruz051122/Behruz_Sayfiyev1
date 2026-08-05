@@ -24,6 +24,7 @@ import os
 from rate_limit import limiter
 import database as db
 import bot as bot_module
+from config import UPLOADS_DIR
 
 from routers import (
     brand,
@@ -38,6 +39,8 @@ from routers import (
     admin_control_tests,
     admin_analytics,
     admin_simulators,
+    uploads,
+    admin_docx_import,
     diagnostics,
 )
 
@@ -119,8 +122,17 @@ app.include_router(admin_tests.router)
 app.include_router(admin_control_tests.router)
 app.include_router(admin_analytics.router)
 app.include_router(admin_simulators.router)
+app.include_router(uploads.router)
+app.include_router(admin_docx_import.router)
 app.include_router(diagnostics.router)
 
+
+# Admin tomonidan yuklangan rasmlar (savol grafigi/jadvali) shu yo'ldan
+# xizmat qiladi. StaticFiles papka mavjudligini talab qiladi — shuning
+# uchun ulashdan oldin yaratib qo'yamiz (birinchi marta ishga tushganda
+# hali mavjud bo'lmasligi mumkin).
+os.makedirs(UPLOADS_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 
 # Mini App va admin panel statik fayllari (eng oxirida ulanadi —
 # aks holda /api/* so'rovlarini "ushlab qolishi" mumkin)

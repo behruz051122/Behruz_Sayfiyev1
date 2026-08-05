@@ -444,12 +444,41 @@
           <h3 id="adminQuestionsTitle">Savollar</h3>
           <button id="adminCloseQuestions" class="icon-btn" aria-label="Yopish">✕</button>
         </div>
+
+        <div class="admin-section" style="margin:0 0 14px; background:var(--surface2);">
+          <div class="admin-section-head">
+            <h3 style="font-size:13px;">📄 Word orqali ommaviy qo'shish</h3>
+          </div>
+          <p style="font-size:11px;color:var(--text-dim);line-height:1.5;margin-bottom:10px;">
+            Savollarni bittalab yozish o'rniga, Word hujjatida tayyorlab, bitta faylni shu yerga yuklang —
+            barcha savollar (rasm/jadvali bilan birga) avtomatik qo'shiladi.
+          </p>
+          <a href="/savol-shabloni.docx" download class="gold-btn small" style="display:inline-block;text-decoration:none;margin-bottom:10px;">⬇ Namuna shablonni yuklab olish</a>
+          <div class="admin-form" style="margin-top:0;">
+            <label>Tayyor .docx faylni tanlang
+              <input type="file" id="aq_docx_file" accept=".docx">
+            </label>
+          </div>
+          <div id="docxImportStatus" class="subject-pool-hint"></div>
+          <div id="docxImportResult"></div>
+        </div>
+
         <div id="adminQuestionsList" class="admin-list"></div>
         <form id="questionFormEl" class="admin-form">
           <input type="hidden" id="aq_id">
           <input type="hidden" id="aq_test_id">
           <label>Savol matni <textarea id="aq_question_text" required></textarea></label>
-          <label>Rasm havolasi (ixtiyoriy, masalan diagramma yoki formula uchun) <input id="aq_image_url"></label>
+
+          <label>Rasm (ixtiyoriy — grafik, jadval, formula va h.k.)
+            <input type="file" id="aq_image_file" accept="image/png,image/jpeg,image/webp,image/gif">
+          </label>
+          <div id="aqImageUploadStatus" class="subject-pool-hint"></div>
+          <div id="aqImagePreviewWrap" class="hidden" style="margin-top:-4px;">
+            <img id="aqImagePreview" src="" alt="Tanlangan rasm" style="max-width:160px; border-radius:10px; display:block;">
+            <button type="button" id="aqRemoveImageBtn" class="gold-btn small" style="margin-top:6px;">✕ Rasmni olib tashlash</button>
+          </div>
+          <input type="hidden" id="aq_image_url">
+
           <label>1-variant <input id="aq_option_1" required></label>
           <label>2-variant <input id="aq_option_2" required></label>
           <label>3-variant <input id="aq_option_3" required></label>

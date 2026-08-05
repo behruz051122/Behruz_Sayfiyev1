@@ -30,8 +30,14 @@ export const API_BASE = window.location.origin;
  * Server 401 qaytarsa — foydalanuvchiga tushunarli xabar ko'rsatadi.
  */
 export async function apiFetch(path, options = {}) {
+  // Fayl yuklashda (FormData) "Content-Type"ni QO'LDA qo'yish mumkin emas —
+  // brauzer o'zi to'g'ri "multipart/form-data; boundary=..." headerini
+  // qo'yishi kerak. Shuning uchun body FormData bo'lsa, standart JSON
+  // Content-Type'ni qo'shmaymiz.
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+  const baseHeaders = isFormData ? {} : { "Content-Type": "application/json" };
   const headers = Object.assign(
-    { "Content-Type": "application/json" },
+    baseHeaders,
     options.headers || {},
     { "X-Telegram-Init-Data": tg.initData || "" }
   );
