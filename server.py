@@ -35,6 +35,7 @@ from routers import (
     admin_auth,
     admin_courses,
     admin_tests,
+    admin_control_tests,
     admin_analytics,
     admin_simulators,
     diagnostics,
@@ -115,6 +116,7 @@ app.include_router(control_tests.router)
 app.include_router(admin_auth.router)
 app.include_router(admin_courses.router)
 app.include_router(admin_tests.router)
+app.include_router(admin_control_tests.router)
 app.include_router(admin_analytics.router)
 app.include_router(admin_simulators.router)
 app.include_router(diagnostics.router)

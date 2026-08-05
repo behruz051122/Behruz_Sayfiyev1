@@ -405,15 +405,38 @@
           </label>
           <label class="checkbox-label">
             <input type="checkbox" id="at_is_control_test">
-            <span>🎓 Bu — nazorat testi (faqat tanlangan kursga yozilganlar uchun, alohida oylik reytingga kiradi)</span>
+            <span>🎓 Bu — nazorat testi (alohida oylik reytingga kiradi). Testni saqlagach, pastdagi "Talabalar" tugmasi orqali kimlarga ochiq ekanini belgilaysiz.</span>
           </label>
           <div id="atControlCourseWrap" class="hidden">
-            <label>Qaysi kursga bog'lansin?
-              <select id="at_course_id"></select>
+            <label>Qaysi kursga bog'lansin? (ixtiyoriy — kursga yozilganlarga ham avtomatik ochiladi)
+              <select id="at_course_id">
+                <option value="">— Kursga bog'lamaslik —</option>
+              </select>
             </label>
           </div>
           <button type="submit" class="gold-btn">Testni saqlash</button>
         </form>
+      </div>
+
+      <div id="adminControlAccessPanel" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3 id="adminControlAccessTitle">Nazorat testiga talabalarni tayinlash</h3>
+          <button id="adminCloseControlAccess" class="icon-btn" aria-label="Yopish">✕</button>
+        </div>
+        <p style="font-size:11px;color:var(--text-dim);margin:-4px 0 10px;">
+          Bu yerda tanlagan talabalaringiz — kursga yozilgan-yozilmaganidan qat'i nazar — shu nazorat testini topshira oladi.
+        </p>
+        <input type="hidden" id="aca_test_id">
+        <div class="admin-form" style="margin-top:0;">
+          <label>Talaba qidirish (ism, username yoki Telegram ID)
+            <input id="aca_search_input" placeholder="Masalan: Aziz yoki 123456789">
+          </label>
+        </div>
+        <div id="acaSearchResults" class="admin-list"></div>
+        <div class="admin-section-head" style="margin-top:14px;">
+          <h3 style="font-size:12px;">Tayinlangan talabalar</h3>
+        </div>
+        <div id="acaAssignedList" class="admin-list"></div>
       </div>
 
       <div id="adminQuestionsPanel" class="admin-section hidden">

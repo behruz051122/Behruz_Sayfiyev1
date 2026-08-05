@@ -344,6 +344,7 @@ async function renderAdminLessons(paragraphId) {
 export async function loadAdminTests() {
   document.getElementById("adminTestForm").classList.add("hidden");
   document.getElementById("adminQuestionsPanel").classList.add("hidden");
+  document.getElementById("adminControlAccessPanel").classList.add("hidden");
   const box = document.getElementById("adminTestsList");
   box.innerHTML = skeletonCards(2);
   try {
@@ -356,6 +357,7 @@ export async function loadAdminTests() {
       const row = document.createElement("div");
       row.className = "admin-row";
       const controlBadge = t.is_control_test ? `<span class="control-badge">🎓 NAZORAT</span>` : "";
+      const accessBtn = t.is_control_test ? `<button data-a="access">👥 Talabalar</button>` : "";
       row.innerHTML = `
         <div class="info">
           <div class="t">${t.title}${t.is_active ? "" : " (yashirin)"}${controlBadge}</div>
@@ -363,11 +365,13 @@ export async function loadAdminTests() {
         </div>
         <div class="row-actions">
           <button data-a="questions">Savollar</button>
+          ${accessBtn}
           <button data-a="edit">Tahrirlash</button>
           <button data-a="delete" class="danger">O'chirish</button>
         </div>
       `;
       row.querySelector('[data-a="questions"]').onclick = () => openAdminQuestions(t.id, t.title);
+      if (t.is_control_test) row.querySelector('[data-a="access"]').onclick = () => openAdminControlAccess(t.id, t.title);
       row.querySelector('[data-a="edit"]').onclick = () => openAdminTestForm(t);
       row.querySelector('[data-a="delete"]').onclick = () => deleteAdminTest(t.id);
       box.appendChild(row);
@@ -380,7 +384,7 @@ export async function loadAdminTests() {
 
 function populateControlCourseSelect() {
   const select = document.getElementById("at_course_id");
-  select.innerHTML = "";
+  select.innerHTML = `<option value="">— Kursga bog'lamaslik —</option>`;
   currentAdminCourses.forEach(c => {
     const opt = document.createElement("option");
     opt.value = c.id;
@@ -392,6 +396,7 @@ function populateControlCourseSelect() {
 function openAdminTestForm(test) {
   document.getElementById("adminTestForm").classList.remove("hidden");
   document.getElementById("adminQuestionsPanel").classList.add("hidden");
+  document.getElementById("adminControlAccessPanel").classList.add("hidden");
   document.getElementById("adminTestFormTitle").textContent = test ? "Testni tahrirlash" : "Yangi test";
   document.getElementById("at_id").value = test ? test.id : "";
   document.getElementById("at_subject").value = test ? test.subject : "";
@@ -419,10 +424,101 @@ async function deleteAdminTest(id) {
 async function openAdminQuestions(testId, title) {
   document.getElementById("adminQuestionsPanel").classList.remove("hidden");
   document.getElementById("adminTestForm").classList.add("hidden");
+  document.getElementById("adminControlAccessPanel").classList.add("hidden");
   document.getElementById("adminQuestionsTitle").textContent = `Savollar — ${title}`;
   document.getElementById("aq_test_id").value = testId;
   resetQuestionForm();
   await renderAdminQuestions(testId);
+}
+
+// ---------- Nazorat testi: talabalarni tayinlash ----------
+
+let acaSearchDebounce = null;
+
+async function openAdminControlAccess(testId, title) {
+  document.getElementById("adminControlAccessPanel").classList.remove("hidden");
+  document.getElementById("adminTestForm").classList.add("hidden");
+  document.getElementById("adminQuestionsPanel").classList.add("hidden");
+  document.getElementById("adminControlAccessTitle").textContent = `Talabalarni tayinlash — ${title}`;
+  document.getElementById("aca_test_id").value = testId;
+  document.getElementById("aca_search_input").value = "";
+  await Promise.all([
+    renderAssignedStudents(testId),
+    searchAndRenderStudents(testId, "")
+  ]);
+}
+
+async function renderAssignedStudents(testId) {
+  const box = document.getElementById("acaAssignedList");
+  box.innerHTML = skeletonCards(1);
+  try {
+    const res = await apiFetch(`/api/admin/control-tests/${testId}/access`);
+    const data = await res.json();
+    box.innerHTML = "";
+    if (data.access.length === 0) {
+      box.innerHTML = emptyHtml("Hali hech kim tayinlanmagan — qidiruv orqali talaba qo'shing");
+      return;
+    }
+    data.access.forEach(u => {
+      const row = document.createElement("div");
+      row.className = "admin-row";
+      row.innerHTML = `
+        <div class="info">
+          <div class="t">${u.first_name || "Foydalanuvchi"}${u.username ? " · @" + u.username : ""}</div>
+          <div class="s">Telegram ID: ${u.telegram_id}</div>
+        </div>
+        <div class="row-actions">
+          <button data-a="remove" class="danger">O'chirish</button>
+        </div>
+      `;
+      row.querySelector('[data-a="remove"]').onclick = async () => {
+        await apiFetch(`/api/admin/control-tests/${testId}/access/${u.telegram_id}`, { method: "DELETE" });
+        renderAssignedStudents(testId);
+      };
+      box.appendChild(row);
+    });
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml();
+  }
+}
+
+async function searchAndRenderStudents(testId, query) {
+  const box = document.getElementById("acaSearchResults");
+  box.innerHTML = skeletonCards(1);
+  try {
+    const res = await apiFetch(`/api/admin/users/search?q=${encodeURIComponent(query)}`);
+    const data = await res.json();
+    box.innerHTML = "";
+    if (data.users.length === 0) {
+      box.innerHTML = emptyHtml("Foydalanuvchi topilmadi");
+      return;
+    }
+    data.users.forEach(u => {
+      const row = document.createElement("div");
+      row.className = "admin-row";
+      row.innerHTML = `
+        <div class="info">
+          <div class="t">${u.first_name || "Foydalanuvchi"}${u.username ? " · @" + u.username : ""}</div>
+          <div class="s">Telegram ID: ${u.telegram_id}</div>
+        </div>
+        <div class="row-actions">
+          <button data-a="add">+ Tayinlash</button>
+        </div>
+      `;
+      row.querySelector('[data-a="add"]').onclick = async () => {
+        await apiFetch(`/api/admin/control-tests/${testId}/access`, {
+          method: "POST",
+          body: JSON.stringify({ telegram_id: u.telegram_id, first_name: u.first_name, username: u.username })
+        });
+        renderAssignedStudents(testId);
+      };
+      box.appendChild(row);
+    });
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml();
+  }
 }
 
 function resetQuestionForm() {
@@ -574,6 +670,7 @@ export function initAdminModule() {
     const difficulty = document.getElementById("at_difficulty").value;
     const rawTimeLimit = document.getElementById("at_time_limit").value;
     const isControlTest = document.getElementById("at_is_control_test").checked;
+    const rawCourseId = document.getElementById("at_course_id").value;
     const data = {
       subject: document.getElementById("at_subject").value,
       title: document.getElementById("at_title").value,
@@ -582,7 +679,9 @@ export function initAdminModule() {
       order_num: parseInt(document.getElementById("at_order_num").value),
       is_active: parseInt(document.getElementById("at_is_active").value),
       is_control_test: isControlTest ? 1 : 0,
-      course_id: isControlTest ? parseInt(document.getElementById("at_course_id").value) : null
+      // Kurs ixtiyoriy — nazorat testi bo'lsa ham kursga bog'lamaslik mumkin,
+      // chunki kirish huquqi endi asosan "Talabalar" ro'yxati orqali beriladi.
+      course_id: (isControlTest && rawCourseId) ? parseInt(rawCourseId) : null
     };
     if (id) await apiFetch(`/api/admin/tests/${id}`, { method: "PUT", body: JSON.stringify(data) });
     else await apiFetch(`/api/admin/tests`, { method: "POST", body: JSON.stringify(data) });
@@ -591,6 +690,15 @@ export function initAdminModule() {
   });
 
   document.getElementById("adminCloseQuestions").addEventListener("click", () => document.getElementById("adminQuestionsPanel").classList.add("hidden"));
+
+  document.getElementById("adminCloseControlAccess").addEventListener("click", () => document.getElementById("adminControlAccessPanel").classList.add("hidden"));
+
+  document.getElementById("aca_search_input").addEventListener("input", (e) => {
+    const testId = document.getElementById("aca_test_id").value;
+    const query = e.target.value;
+    clearTimeout(acaSearchDebounce);
+    acaSearchDebounce = setTimeout(() => searchAndRenderStudents(testId, query), 300);
+  });
 
   document.getElementById("questionFormEl").addEventListener("submit", async (e) => {
     e.preventDefault();

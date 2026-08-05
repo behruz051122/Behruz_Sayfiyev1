@@ -8,19 +8,14 @@ router = APIRouter(prefix="/api", tags=["tests"])
 
 
 def _ensure_control_test_access(test: dict, telegram_id: int):
-    """Nazorat testi faqat bog'langan kursga yozilgan (yoki bepul bo'lsa —
-    ochiq) o'quvchilarga ruxsat berilishini serverning o'zida tekshiradi.
-    Bu — frontend'dagi ro'yxat filtri buzilsa ham (masalan brauzer konsolidan
-    to'g'ridan-to'g'ri so'rov yuborilsa ham) ishlaydigan haqiqiy himoya."""
-    course_id = test.get("course_id")
-    if not course_id:
-        raise HTTPException(status_code=403, detail="Bu nazorat testi hech qanday kursga bog'lanmagan")
-    course = db.get_course(course_id)
-    if not course:
-        raise HTTPException(status_code=403, detail="Bog'langan kurs topilmadi")
-    access = db.compute_course_access(telegram_id, course)
+    """Nazorat testiga faqat admin tomonidan BEVOSITA tayinlangan yoki
+    bog'langan kursga yozilgan o'quvchilarga ruxsat berilishini serverning
+    o'zida tekshiradi. Bu — frontend'dagi ro'yxat filtri buzilsa ham
+    (masalan brauzer konsolidan to'g'ridan-to'g'ri so'rov yuborilsa ham)
+    ishlaydigan haqiqiy himoya."""
+    access = db.compute_control_test_access(telegram_id, test)
     if not access["unlocked"]:
-        raise HTTPException(status_code=403, detail="Bu nazorat testi faqat tegishli kursga yozilgan o'quvchilar uchun ochiq")
+        raise HTTPException(status_code=403, detail="Bu nazorat testi sizga hali ochilmagan — ustozingiz sizni ro'yxatga qo'shishi kerak")
 
 
 @router.get("/tests")

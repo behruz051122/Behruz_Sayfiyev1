@@ -149,6 +149,22 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # ustun allaqachon mavjud — muammo emas
 
+        # Nazorat testiga TO'G'RIDAN-TO'G'RI (kursdan mustaqil) tayinlangan
+        # o'quvchilar ro'yxati. Admin panelda o'qituvchi aynan qaysi
+        # talabalarga shu nazorat testini topshirishga ruxsat berishni
+        # birma-bir tanlaydi — bu kursga yozilishdan alohida, qo'shimcha
+        # kirish yo'li (ikkalasi ham ishlaydi: kurs ORQALI yoki to'g'ridan-to'g'ri tayinlash orqali).
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS control_test_access (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                test_id INTEGER NOT NULL,
+                telegram_id INTEGER NOT NULL,
+                assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(test_id, telegram_id),
+                FOREIGN KEY (test_id) REFERENCES tests (id) ON DELETE CASCADE
+            )
+        """)
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS test_questions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -287,6 +303,38 @@ def set_user_subscribed(telegram_id: int, value: bool = True):
         cur = conn.cursor()
         cur.execute("UPDATE users SET is_subscribed = ? WHERE telegram_id = ?", (1 if value else 0, telegram_id))
         conn.commit()
+
+
+def search_users(query: str, limit: int = 20):
+    """Admin panelda nazorat testiga talaba tayinlash uchun foydalanuvchi
+    qidiradi — ism, username yoki Telegram ID bo'yicha. Bo'sh so'rovda eng
+    so'nggi ro'yxatdan o'tganlarni qaytaradi (ro'yxatni boshlash uchun qulay)."""
+    query = (query or "").strip()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        if not query:
+            cur.execute(
+                "SELECT telegram_id, first_name, username FROM users ORDER BY id DESC LIMIT ?",
+                (limit,)
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+        if query.isdigit():
+            cur.execute(
+                """SELECT telegram_id, first_name, username FROM users
+                   WHERE telegram_id = ? OR CAST(telegram_id AS TEXT) LIKE ?
+                   ORDER BY id DESC LIMIT ?""",
+                (int(query), f"%{query}%", limit)
+            )
+        else:
+            like = f"%{query}%"
+            cur.execute(
+                """SELECT telegram_id, first_name, username FROM users
+                   WHERE first_name LIKE ? OR username LIKE ?
+                   ORDER BY id DESC LIMIT ?""",
+                (like, like, limit)
+            )
+        return [dict(r) for r in cur.fetchall()]
 
 
 def add_coins(telegram_id: int, amount: int = 1):
@@ -1262,11 +1310,46 @@ def get_user_progress_history(telegram_id: int, limit: int = 30):
         return rows
 
 
-# ---------- NAZORAT TESTLARI (kursga bog'langan, oylik reytingli) ----------
+# ---------- NAZORAT TESTLARI (talabaga tayinlangan va/yoki kursga bog'langan, oylik reytingli) ----------
+
+def user_has_control_test_access(test_id: int, telegram_id: int) -> bool:
+    """Ushbu talaba shu nazorat testiga ADMIN tomonidan to'g'ridan-to'g'ri
+    tayinlanganmi (kursdan mustaqil)?"""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT 1 FROM control_test_access WHERE test_id = ? AND telegram_id = ?",
+            (test_id, telegram_id)
+        )
+        return cur.fetchone() is not None
+
+
+def compute_control_test_access(telegram_id: int, test: dict):
+    """Nazorat testiga kirish huquqini hisoblaydi. Ikki mustaqil yo'l bor —
+    ULARDAN BIRI YETARLI:
+      1) Admin panelda o'quvchi shu testga BEVOSITA tayinlangan bo'lsa
+         (control_test_access jadvali) — bu asosiy, tavsiya etilgan usul.
+      2) Test bir kursga bog'langan bo'lsa (course_id) va o'quvchi shu
+         kursga kirish huquqiga ega bo'lsa (bepul/referal/pullik obuna).
+    Qaytaradi: {'unlocked': bool, 'reason': 'assigned'|'course'|'locked', 'course_title': str|None}
+    """
+    if user_has_control_test_access(test["id"], telegram_id):
+        course = get_course(test["course_id"]) if test.get("course_id") else None
+        return {"unlocked": True, "reason": "assigned", "course_title": course["title"] if course else None}
+
+    course = get_course(test["course_id"]) if test.get("course_id") else None
+    if course:
+        access = compute_course_access(telegram_id, course)
+        if access["unlocked"]:
+            return {"unlocked": True, "reason": "course", "course_title": course["title"]}
+        return {"unlocked": False, "reason": "locked", "course_title": course["title"]}
+
+    return {"unlocked": False, "reason": "locked", "course_title": None}
+
 
 def get_control_tests_for_user(telegram_id: int):
     """Barcha faol nazorat testlarini, har biri uchun foydalanuvchining
-    bog'langan kursga kirish huquqi bor-yo'qligini hisoblab qaytaradi."""
+    kirish huquqi bor-yo'qligini (tayinlash yoki kurs orqali) hisoblab qaytaradi."""
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
@@ -1278,17 +1361,50 @@ def get_control_tests_for_user(telegram_id: int):
 
     result = []
     for t in rows:
-        course = get_course(t["course_id"]) if t.get("course_id") else None
-        if course:
-            access = compute_course_access(telegram_id, course)
-            t["unlocked"] = access["unlocked"]
-            t["course_title"] = course["title"]
-        else:
-            t["unlocked"] = False
-            t["course_title"] = None
+        access = compute_control_test_access(telegram_id, t)
+        t["unlocked"] = access["unlocked"]
+        t["access_reason"] = access["reason"]
+        t["course_title"] = access["course_title"]
         t["question_count"] = count_test_questions(t["id"])
         result.append(t)
     return result
+
+
+# ---------- NAZORAT TESTI — TALABALARNI TAYINLASH (admin) ----------
+
+def assign_control_test_access(test_id: int, telegram_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT OR IGNORE INTO control_test_access (test_id, telegram_id) VALUES (?, ?)",
+            (test_id, telegram_id)
+        )
+        conn.commit()
+
+
+def revoke_control_test_access(test_id: int, telegram_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM control_test_access WHERE test_id = ? AND telegram_id = ?",
+            (test_id, telegram_id)
+        )
+        conn.commit()
+
+
+def get_control_test_access_list(test_id: int):
+    """Shu nazorat testiga tayinlangan barcha talabalarni (ism/username bilan) qaytaradi."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT ca.telegram_id as telegram_id, ca.assigned_at as assigned_at,
+                   u.first_name as first_name, u.username as username
+            FROM control_test_access ca
+            LEFT JOIN users u ON u.telegram_id = ca.telegram_id
+            WHERE ca.test_id = ?
+            ORDER BY ca.assigned_at DESC
+        """, (test_id,))
+        return [dict(r) for r in cur.fetchall()]
 
 
 def get_attempt_answers_grid(attempt_id: int):
@@ -1309,14 +1425,17 @@ def get_attempt_answers_grid(attempt_id: int):
 
 
 def get_control_test_monthly_leaderboard(year: int, month: int, limit: int = 100):
-    """Berilgan oy uchun nazorat testlari bo'yicha o'rtacha foiz natijasiga
-    ko'ra reytingni qaytaradi (yuqoridan pastga, eng yaxshi natija birinchi)."""
+    """Berilgan oy uchun nazorat testlari reytingini qaytaradi.
+    Saralash mezoni: 1) o'rtacha foiz natija (yuqori — yaxshi),
+    2) teng natijada — o'rtacha sarflangan vaqt (kam — yaxshi, ya'ni
+    bir xil ball to'plagan ikki talaba orasida tezroq ishlagani yuqorida turadi)."""
     month_str = f"{year:04d}-{month:02d}"
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
             SELECT u.telegram_id as telegram_id, u.first_name as first_name,
                    AVG(CAST(a.score AS FLOAT) / NULLIF(a.total_questions, 0)) * 100 as avg_percent,
+                   AVG((julianday(a.finished_at) - julianday(a.started_at)) * 86400) as avg_seconds,
                    COUNT(a.id) as attempts_count
             FROM test_attempts a
             JOIN tests t ON t.id = a.test_id
@@ -1325,12 +1444,13 @@ def get_control_test_monthly_leaderboard(year: int, month: int, limit: int = 100
               AND a.finished_at IS NOT NULL
               AND strftime('%Y-%m', a.finished_at) = ?
             GROUP BY u.telegram_id
-            ORDER BY avg_percent DESC
+            ORDER BY avg_percent DESC, avg_seconds ASC
             LIMIT ?
         """, (month_str, limit))
         rows = [dict(r) for r in cur.fetchall()]
         for r in rows:
             r["avg_percent"] = round(r["avg_percent"] or 0, 1)
+            r["avg_seconds"] = round(r["avg_seconds"] or 0)
         return rows
 
 
@@ -1343,6 +1463,7 @@ def get_my_control_test_rank(telegram_id: int, year: int, month: int):
             return {
                 "rank": idx + 1,
                 "avg_percent": row["avg_percent"],
+                "avg_seconds": row["avg_seconds"],
                 "attempts_count": row["attempts_count"],
                 "total_participants": len(leaderboard),
             }

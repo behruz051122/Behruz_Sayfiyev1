@@ -7,6 +7,13 @@ const MONTH_NAMES = [
   "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"
 ];
 
+function formatAvgTime(totalSeconds) {
+  const s = Math.round(totalSeconds || 0);
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return `${m}:${String(rem).padStart(2, "0")}`;
+}
+
 export async function loadLeaderboard() {
   const box = document.getElementById("leaderboardList");
   const rankBox = document.getElementById("myRankBox");
@@ -74,7 +81,7 @@ async function loadControlLeaderboard() {
         <div class="my-rank-label">Sizning o'rningiz</div>
         <div class="my-rank-num">#${data.my_rank.rank}</div>
         <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">
-          ${data.my_rank.avg_percent}% o'rtacha natija · ${data.my_rank.attempts_count} ta test · ${data.my_rank.total_participants} ishtirokchi orasida
+          ${data.my_rank.avg_percent}% o'rtacha natija · ⏱ ${formatAvgTime(data.my_rank.avg_seconds)} o'rtacha vaqt · ${data.my_rank.attempts_count} ta test · ${data.my_rank.total_participants} ishtirokchi orasida
         </div>
       `;
     } else {
@@ -102,7 +109,7 @@ async function loadControlLeaderboard() {
       row.innerHTML = `
         ${medal}
         <span class="lb-name">${u.first_name || "Foydalanuvchi"}</span>
-        <span class="lb-coins">${u.avg_percent}% · ${u.attempts_count} test</span>
+        <span class="lb-coins">${u.avg_percent}% · ⏱ ${formatAvgTime(u.avg_seconds)} · ${u.attempts_count} test</span>
       `;
       box.appendChild(row);
     });

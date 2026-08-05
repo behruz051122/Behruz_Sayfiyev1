@@ -393,8 +393,8 @@ function renderControlTestList() {
         <span>⏱ ${formatSeconds(t.time_limit_seconds)}</span>
       </div>
       ${t.unlocked
-        ? `<div class="unlock-badge">✅ Ochiq${t.course_title ? " · " + t.course_title : ""}</div>`
-        : `<div class="control-locked-note">🔒 Faqat "${t.course_title || "tegishli kurs"}" kursiga yozilganlar uchun</div>`}
+        ? `<div class="unlock-badge">✅ Ochiq${t.access_reason === "assigned" ? " · sizga tayinlangan" : t.course_title ? " · " + t.course_title : ""}</div>`
+        : `<div class="control-locked-note">🔒 Ustozingiz tomonidan tayinlanishi kerak${t.course_title ? ` (yoki "${t.course_title}" kursiga yozilish orqali)` : ""}</div>`}
     `;
     card.addEventListener("click", () => openControlTestDetail(t));
     container.appendChild(card);
@@ -414,7 +414,7 @@ function openControlTestDetail(test) {
       <div class="locked-box">
         <div class="lock-emoji">🔒</div>
         <h3>Bu test hali yopiq</h3>
-        <p>Bu nazorat testi faqat "${test.course_title || "tegishli"}" kursiga yozilgan o'quvchilar uchun ochiq.</p>
+        <p>Bu nazorat testi faqat ustozingiz tomonidan tanlangan o'quvchilar uchun ochiq${test.course_title ? ` (yoki "${test.course_title}" kursiga yozilish orqali)` : ""}.</p>
         <button class="gold-btn" id="controlLockedContactBtn">Admin bilan bog'lanish</button>
       </div>
     `;
