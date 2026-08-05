@@ -96,6 +96,31 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 .banner-arrow { font-size: 24px; opacity: 0.8; z-index: 2; }
 .home-footnote { text-align: center; font-size: 11px; color: var(--text-dim); margin: 24px 0 8px; letter-spacing: 0.5px; }
 
+/* ---------- KITOBLAR DO'KONI (bosma kitoblar) ---------- */
+
+.book-shop-grid { margin: 4px 16px 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.book-product-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+  overflow: hidden; display: flex; flex-direction: column;
+  box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+}
+.book-product-img { width: 100%; aspect-ratio: 3/4; object-fit: cover; background: var(--surface2); display: block; }
+.book-product-img-placeholder { display: flex; align-items: center; justify-content: center; font-size: 36px; }
+.book-product-body { padding: 12px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.book-product-badge {
+  align-self: flex-start; background: linear-gradient(135deg, var(--gold-light), var(--gold));
+  color: var(--on-accent); font-size: 9px; font-weight: 800; letter-spacing: 0.6px;
+  padding: 3px 8px; border-radius: 20px; text-transform: uppercase;
+}
+.book-product-title { font-weight: 800; font-size: 13px; color: var(--text); line-height: 1.35; }
+.book-product-sub { font-size: 11px; color: var(--text-dim); line-height: 1.4; }
+.book-product-bottom { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding-top: 6px; }
+.book-product-price { font-weight: 800; font-size: 13px; color: var(--text); }
+.book-product-buy {
+  background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: var(--on-accent);
+  border: none; border-radius: 10px; padding: 9px; font-weight: 700; font-size: 12px; cursor: pointer;
+}
+
 /* ---------- SCREEN HEADER ---------- */
 
 .screen-header { display: flex; align-items: center; gap: 12px; padding: 16px; }

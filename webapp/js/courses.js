@@ -21,6 +21,11 @@ export function setListType(type) {
   searchQuery = "";
   const searchInput = document.getElementById("courseSearchInput");
   if (searchInput) searchInput.value = "";
+  // Bosma kitoblar do'koniga o'tish banneri faqat "Kitoblar" ro'yxatida
+  // ko'rinadi — bu RAQAMLI kitob/kurs kontentidan (courses jadvali) BUTUNLAY
+  // ALOHIDA, yangi bosma-kitob-do'koni funksiyasi (book_products jadvali).
+  const banner = document.getElementById("listBookShopBanner");
+  if (banner) banner.classList.toggle("hidden", type !== "book");
 }
 
 export function getCurrentCourse() {

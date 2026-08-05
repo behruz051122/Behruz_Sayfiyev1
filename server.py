@@ -44,6 +44,8 @@ from routers import (
     diagnostics,
     dashboard,
     admin_dashboard,
+    bookshop,
+    admin_bookshop,
 )
 
 app = FastAPI(title="Behruz Sayfiyev — Mini App API")
@@ -129,6 +131,8 @@ app.include_router(admin_docx_import.router)
 app.include_router(diagnostics.router)
 app.include_router(dashboard.router)
 app.include_router(admin_dashboard.router)
+app.include_router(bookshop.router)
+app.include_router(admin_bookshop.router)
 
 
 # Admin tomonidan yuklangan rasmlar (savol grafigi/jadvali) shu yo'ldan

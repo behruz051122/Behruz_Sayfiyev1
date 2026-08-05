@@ -107,6 +107,102 @@ function openAdminDashboardCardForm(card) {
   document.getElementById("dc_is_active").value = String(card.is_active);
 }
 
+// ---------- Kitoblar do'koni (bosma kitoblar) ----------
+// E'TIBOR: bu Kurslar/Kitoblar (raqamli o'qish kontenti) dan BUTUNLAY
+// ALOHIDA — bu yerda bosma, pochta orqali yetkaziladigan kitoblar
+// boshqariladi (book_products jadvali).
+
+export async function loadAdminBookProducts() {
+  document.getElementById("adminBookProductForm").classList.add("hidden");
+  const box = document.getElementById("adminBookProductsList");
+  box.innerHTML = skeletonCards(2);
+  try {
+    const res = await apiFetch(`/api/admin/book-products`);
+    const data = await res.json();
+    box.innerHTML = "";
+    if (data.products.length === 0) box.innerHTML = emptyHtml("Hali mahsulot qo'shilmagan");
+    data.products.forEach(p => {
+      const row = document.createElement("div");
+      row.className = "admin-row";
+      const priceLabel = p.price ? `${p.price.toLocaleString()} so'm` : "Narxi ko'rsatilmagan";
+      row.innerHTML = `
+        <div class="emoji">📘</div>
+        <div class="info">
+          <div class="t">${p.title}${p.is_active ? "" : " (yashirin)"}</div>
+          <div class="s">${p.category || "Kategoriyasiz"} · ${priceLabel}</div>
+        </div>
+        <div class="row-actions">
+          <button data-a="edit">Tahrirlash</button>
+          <button data-a="delete" class="danger">O'chirish</button>
+        </div>
+      `;
+      row.querySelector('[data-a="edit"]').onclick = () => openAdminBookProductForm(p);
+      row.querySelector('[data-a="delete"]').onclick = async () => {
+        if (!confirm("Bu mahsulotni butunlay o'chirmoqchimisiz?")) return;
+        await apiFetch(`/api/admin/book-products/${p.id}`, { method: "DELETE" });
+        loadAdminBookProducts();
+      };
+      box.appendChild(row);
+    });
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml();
+  }
+}
+
+function openAdminBookProductForm(product) {
+  document.getElementById("adminBookProductForm").classList.remove("hidden");
+  document.getElementById("adminBookProductFormTitle").textContent = product ? "Mahsulotni tahrirlash" : "Yangi mahsulot";
+  document.getElementById("bp_id").value = product ? product.id : "";
+  document.getElementById("bp_title").value = product ? product.title : "";
+  document.getElementById("bp_subtitle").value = product ? (product.subtitle || "") : "";
+  document.getElementById("bp_description").value = product ? (product.description || "") : "";
+  document.getElementById("bp_category").value = product ? (product.category || "") : "";
+  document.getElementById("bp_price").value = product ? (product.price || 0) : 0;
+  document.getElementById("bp_image_file").value = "";
+  document.getElementById("bpImageUploadStatus").textContent = "";
+  showBookProductImagePreview(product ? (product.image_url || "") : "");
+  document.getElementById("bp_badge_text").value = product ? (product.badge_text || "") : "";
+  document.getElementById("bp_is_bundle").value = product ? String(product.is_bundle) : "0";
+  document.getElementById("bp_contact_username").value = product ? (product.contact_username || "") : "";
+  document.getElementById("bp_order_num").value = product ? product.order_num : 0;
+  document.getElementById("bp_is_active").value = product ? String(product.is_active) : "1";
+}
+
+function showBookProductImagePreview(url) {
+  document.getElementById("bp_image_url").value = url || "";
+  const wrap = document.getElementById("bpImagePreviewWrap");
+  const img = document.getElementById("bpImagePreview");
+  if (url) {
+    img.src = url;
+    wrap.classList.remove("hidden");
+  } else {
+    img.src = "";
+    wrap.classList.add("hidden");
+  }
+}
+
+async function uploadBookProductImage(file) {
+  const status = document.getElementById("bpImageUploadStatus");
+  status.textContent = "⏳ Yuklanmoqda...";
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await apiFetch(`/api/admin/upload-image`, { method: "POST", body: formData });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Yuklab bo'lmadi");
+    }
+    const data = await res.json();
+    showBookProductImagePreview(data.url);
+    status.textContent = "✅ Rasm yuklandi";
+  } catch (e) {
+    console.error(e);
+    status.textContent = `❌ ${e.message || "Xatolik yuz berdi"}`;
+    document.getElementById("bp_image_file").value = "";
+  }
+}
+
 // ---------- Nazorat testi natijalari (bitta test bo'yicha talabalar ballari) ----------
 
 async function openAdminControlResults(testId, title) {
@@ -947,6 +1043,44 @@ export function initAdminModule() {
     await apiFetch(`/api/admin/dashboard-cards/${key}`, { method: "PUT", body: JSON.stringify(data) });
     document.getElementById("adminDashboardCardForm").classList.add("hidden");
     loadAdminDashboardCards();
+  });
+
+  // --- Kitoblar do'koni (bosma kitoblar) ---
+
+  document.getElementById("adminNewBookProductBtn").addEventListener("click", () => openAdminBookProductForm(null));
+  document.getElementById("adminCloseBookProductForm").addEventListener("click", () => document.getElementById("adminBookProductForm").classList.add("hidden"));
+
+  document.getElementById("bp_image_file").addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) uploadBookProductImage(file);
+  });
+
+  document.getElementById("bpRemoveImageBtn").addEventListener("click", () => {
+    document.getElementById("bp_image_file").value = "";
+    document.getElementById("bpImageUploadStatus").textContent = "";
+    showBookProductImagePreview("");
+  });
+
+  document.getElementById("bookProductFormEl").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const id = document.getElementById("bp_id").value;
+    const data = {
+      title: document.getElementById("bp_title").value,
+      subtitle: document.getElementById("bp_subtitle").value,
+      description: document.getElementById("bp_description").value,
+      category: document.getElementById("bp_category").value,
+      price: parseInt(document.getElementById("bp_price").value || 0),
+      image_url: document.getElementById("bp_image_url").value,
+      badge_text: document.getElementById("bp_badge_text").value,
+      is_bundle: parseInt(document.getElementById("bp_is_bundle").value),
+      contact_username: document.getElementById("bp_contact_username").value,
+      order_num: parseInt(document.getElementById("bp_order_num").value),
+      is_active: parseInt(document.getElementById("bp_is_active").value)
+    };
+    if (id) await apiFetch(`/api/admin/book-products/${id}`, { method: "PUT", body: JSON.stringify(data) });
+    else await apiFetch(`/api/admin/book-products`, { method: "POST", body: JSON.stringify(data) });
+    document.getElementById("adminBookProductForm").classList.add("hidden");
+    loadAdminBookProducts();
   });
 
   // --- DTM Simulyatorlari ---

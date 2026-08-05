@@ -370,6 +370,32 @@ def init_db():
             ON coin_history(telegram_id, created_at)
         """)
 
+        # ---------- Kitoblar do'koni (bosma kitoblar) ----------
+        # E'TIBOR: bu "courses" jadvalidagi resource_type='book' (RAQAMLI
+        # o'qish kontenti — bo'lim/dars strukturasi bilan) dan BUTUNLAY
+        # ALOHIDA tushuncha — bu yerda BOSMA (pochta orqali yetkaziladigan)
+        # kitoblar sotiladi. Hozircha to'lov tizimi (Payme/Click) ULANMAGAN
+        # — "Xarid qilish" tugmasi shunchaki talabani shu kitobga biriktirilgan
+        # (yoki bo'sh bo'lsa umumiy) admin Telegram kontaktiga olib boradi,
+        # xarid o'sha yerda qo'lda kelishiladi.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS book_products (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                subtitle TEXT DEFAULT '',
+                description TEXT DEFAULT '',
+                category TEXT DEFAULT '',
+                price INTEGER DEFAULT 0,
+                image_url TEXT,
+                badge_text TEXT DEFAULT '',
+                is_bundle INTEGER DEFAULT 0,
+                contact_username TEXT DEFAULT '',
+                order_num INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         conn.commit()
     print("Baza tayyor (v5 — DTM simulyatori bilan): users, courses, paragraphs, lessons, "
           "lesson_progress, enrollments, referrals, tests, simulators.")
@@ -594,6 +620,72 @@ def delete_course(course_id: int):
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("DELETE FROM courses WHERE id = ?", (course_id,))
+        conn.commit()
+
+
+# ---------- KITOBLAR DO'KONI (bosma kitoblar, courses'dan alohida) ----------
+
+def get_book_products(category: str = None, only_active: bool = True):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = "SELECT * FROM book_products WHERE 1=1"
+        params = []
+        if category:
+            query += " AND category = ?"
+            params.append(category)
+        if only_active:
+            query += " AND is_active = 1"
+        query += " ORDER BY order_num ASC, id DESC"
+        cur.execute(query, params)
+        return [dict(row) for row in cur.fetchall()]
+
+
+def get_book_product(product_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM book_products WHERE id = ?", (product_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def create_book_product(data: dict) -> int:
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO book_products (title, subtitle, description, category, price,
+                image_url, badge_text, is_bundle, contact_username, order_num, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            data.get("title", ""), data.get("subtitle", ""), data.get("description", ""),
+            data.get("category", ""), int(data.get("price", 0) or 0),
+            data.get("image_url") or None, data.get("badge_text", ""),
+            int(data.get("is_bundle", 0)), data.get("contact_username", ""),
+            int(data.get("order_num", 0)), int(data.get("is_active", 1))
+        ))
+        conn.commit()
+        return cur.lastrowid
+
+
+def update_book_product(product_id: int, data: dict):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        fields, values = [], []
+        allowed = ["title", "subtitle", "description", "category", "price", "image_url",
+                   "badge_text", "is_bundle", "contact_username", "order_num", "is_active"]
+        for key in allowed:
+            if key in data:
+                fields.append(f"{key} = ?")
+                values.append(data[key] if data[key] != "" else ("" if key in ("subtitle", "description", "category", "badge_text", "contact_username") else None))
+        if fields:
+            values.append(product_id)
+            cur.execute(f"UPDATE book_products SET {', '.join(fields)} WHERE id = ?", values)
+            conn.commit()
+
+
+def delete_book_product(product_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM book_products WHERE id = ?", (product_id,))
         conn.commit()
 
 

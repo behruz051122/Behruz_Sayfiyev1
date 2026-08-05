@@ -12,8 +12,9 @@ import * as Tests from "./tests.js";
 import { loadReferral } from "./referral.js";
 import { loadLeaderboard, initLeaderboardModule } from "./leaderboard.js";
 import { loadProfile } from "./profile.js";
-import { loadAdminCourses, loadAdminTests, loadAdminAnalytics, loadAdminSimulators, loadAdminDashboardCards, initAdminModule } from "./admin.js";
+import { loadAdminCourses, loadAdminTests, loadAdminAnalytics, loadAdminSimulators, loadAdminDashboardCards, loadAdminBookProducts, initAdminModule } from "./admin.js";
 import { loadDashboardCards } from "./home.js";
+import { loadBookShop } from "./bookshop.js";
 
 function handleNav(target) {
   if (target === "home") {
@@ -53,9 +54,13 @@ function handleNav(target) {
     loadAdminAnalytics();
     loadAdminSimulators();
     loadAdminDashboardCards();
+    loadAdminBookProducts();
     showScreen("admin");
   } else if (target === "games") {
     showScreen("games");
+  } else if (target === "book-shop") {
+    loadBookShop();
+    showScreen("book-shop");
   }
 }
 
