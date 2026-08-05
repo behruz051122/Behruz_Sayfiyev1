@@ -34,26 +34,11 @@
         <p>Bugun ham birga o'rganamiz. Maqsadingizga bir qadam yaqinroq.</p>
       </section>
 
+      <div class="dashboard-grid" id="dashboardGrid">
+        <!-- js/home.js orqali /api/dashboard-cards'dan to'ldiriladi -->
+      </div>
+
       <div class="banner-cards">
-        <button class="banner-card banner-gold" data-nav="courses">
-          <div class="banner-badge">ONLINE</div>
-          <div class="banner-content">
-            <div class="banner-title">📚 Kurslar</div>
-            <div class="banner-sub">Video darslar va mavzulashtirilgan masalalar</div>
-          </div>
-          <div class="banner-glyph">🎓</div>
-          <div class="banner-arrow">›</div>
-        </button>
-
-        <button class="banner-card banner-purple" data-nav="books">
-          <div class="banner-content">
-            <div class="banner-title">📗 Kitoblar</div>
-            <div class="banner-sub">Shaxsan yechilgan masalalar to'plami</div>
-          </div>
-          <div class="banner-glyph">📖</div>
-          <div class="banner-arrow">›</div>
-        </button>
-
         <button class="banner-card banner-teal" data-nav="referral">
           <div class="banner-badge banner-badge-hot">BEPUL OCHISH</div>
           <div class="banner-content">
@@ -66,6 +51,19 @@
       </div>
 
       <div class="home-footnote">Behruz Sayfiyev · Premium ta'lim platformasi</div>
+    </section>
+
+    <!-- GAMES (placeholder) -->
+    <section id="screen-games" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="home" aria-label="Orqaga">←</button>
+        <h2>O'yinlar</h2>
+      </div>
+      <div class="locked-box">
+        <div style="font-size:40px;margin-bottom:10px;">🕹️</div>
+        <h3 style="margin-bottom:8px;">Tez orada!</h3>
+        <p style="color:var(--text-dim);font-size:13px;">O'quv o'yinlari (masalan kunlik viktorina-duel) hozircha tayyorlanmoqda. Tez orada shu yerda paydo bo'ladi.</p>
+      </div>
     </section>
 
     <!-- COURSE LIST -->
@@ -273,6 +271,34 @@
         </div>
         <div id="analyticsStatsGrid" class="analytics-grid"></div>
         <div id="analyticsTopLists" class="analytics-top-lists"></div>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-section-head">
+          <h3>🏠 Bosh sahifa kartalari</h3>
+        </div>
+        <div id="adminDashboardCardsList" class="admin-list"></div>
+      </div>
+
+      <div id="adminDashboardCardForm" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3 id="adminDashboardCardFormTitle">Kartani tahrirlash</h3>
+          <button id="adminCloseDashboardCardForm" class="icon-btn" aria-label="Yopish">✕</button>
+        </div>
+        <form id="dashboardCardFormEl" class="admin-form">
+          <input type="hidden" id="dc_key">
+          <label>Sarlavha <input id="dc_title" required></label>
+          <label>Teg matni (kichik yozuv, masalan "DTM · MAVZULI · SERTIFIKAT") <input id="dc_subtitle"></label>
+          <label>Belgi (emoji) <input id="dc_icon"></label>
+          <label>Tartib raqami <input id="dc_order_num" type="number" value="0"></label>
+          <label>Bosh sahifada ko'rinsinmi?
+            <select id="dc_is_active">
+              <option value="1">Ha</option>
+              <option value="0">Yo'q (yashirilgan)</option>
+            </select>
+          </label>
+          <button type="submit" class="gold-btn">Saqlash</button>
+        </form>
       </div>
 
       <div class="admin-section">

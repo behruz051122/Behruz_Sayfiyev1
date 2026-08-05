@@ -12,7 +12,8 @@ import * as Tests from "./tests.js";
 import { loadReferral } from "./referral.js";
 import { loadLeaderboard, initLeaderboardModule } from "./leaderboard.js";
 import { loadProfile } from "./profile.js";
-import { loadAdminCourses, loadAdminTests, loadAdminAnalytics, loadAdminSimulators, initAdminModule } from "./admin.js";
+import { loadAdminCourses, loadAdminTests, loadAdminAnalytics, loadAdminSimulators, loadAdminDashboardCards, initAdminModule } from "./admin.js";
+import { loadDashboardCards } from "./home.js";
 
 function handleNav(target) {
   if (target === "home") {
@@ -51,7 +52,10 @@ function handleNav(target) {
     loadAdminTests();
     loadAdminAnalytics();
     loadAdminSimulators();
+    loadAdminDashboardCards();
     showScreen("admin");
+  } else if (target === "games") {
+    showScreen("games");
   }
 }
 
@@ -74,6 +78,7 @@ function bootstrap() {
   loadBrand();
   loadUser();
   checkIsAdmin();
+  loadDashboardCards();
   showScreen("home");
 }
 

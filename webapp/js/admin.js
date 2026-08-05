@@ -64,6 +64,49 @@ export async function loadAdminAnalytics() {
   }
 }
 
+// ---------- Bosh sahifa kartalari (Kurslar/Testlar/Reyting/Kitoblar/O'yinlar/Natijalar) ----------
+
+export async function loadAdminDashboardCards() {
+  document.getElementById("adminDashboardCardForm").classList.add("hidden");
+  const box = document.getElementById("adminDashboardCardsList");
+  box.innerHTML = skeletonCards(2);
+  try {
+    const res = await apiFetch(`/api/admin/dashboard-cards`);
+    const data = await res.json();
+    box.innerHTML = "";
+    data.cards.forEach(c => {
+      const row = document.createElement("div");
+      row.className = "admin-row";
+      row.innerHTML = `
+        <div class="emoji">${c.icon || "✨"}</div>
+        <div class="info">
+          <div class="t">${c.title}${c.is_active ? "" : " (yashirin)"}</div>
+          <div class="s">${c.subtitle || ""}</div>
+        </div>
+        <div class="row-actions">
+          <button data-a="edit">Tahrirlash</button>
+        </div>
+      `;
+      row.querySelector('[data-a="edit"]').onclick = () => openAdminDashboardCardForm(c);
+      box.appendChild(row);
+    });
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml();
+  }
+}
+
+function openAdminDashboardCardForm(card) {
+  document.getElementById("adminDashboardCardForm").classList.remove("hidden");
+  document.getElementById("adminDashboardCardFormTitle").textContent = `Kartani tahrirlash — ${card.title}`;
+  document.getElementById("dc_key").value = card.card_key;
+  document.getElementById("dc_title").value = card.title;
+  document.getElementById("dc_subtitle").value = card.subtitle || "";
+  document.getElementById("dc_icon").value = card.icon || "";
+  document.getElementById("dc_order_num").value = card.order_num;
+  document.getElementById("dc_is_active").value = String(card.is_active);
+}
+
 // ---------- Nazorat testi natijalari (bitta test bo'yicha talabalar ballari) ----------
 
 async function openAdminControlResults(testId, title) {
@@ -885,6 +928,25 @@ export function initAdminModule() {
     resetQuestionForm();
     renderAdminQuestions(testId);
     loadAdminTests();
+  });
+
+  // --- Bosh sahifa kartalari ---
+
+  document.getElementById("adminCloseDashboardCardForm").addEventListener("click", () => document.getElementById("adminDashboardCardForm").classList.add("hidden"));
+
+  document.getElementById("dashboardCardFormEl").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const key = document.getElementById("dc_key").value;
+    const data = {
+      title: document.getElementById("dc_title").value,
+      subtitle: document.getElementById("dc_subtitle").value,
+      icon: document.getElementById("dc_icon").value,
+      order_num: parseInt(document.getElementById("dc_order_num").value),
+      is_active: parseInt(document.getElementById("dc_is_active").value)
+    };
+    await apiFetch(`/api/admin/dashboard-cards/${key}`, { method: "PUT", body: JSON.stringify(data) });
+    document.getElementById("adminDashboardCardForm").classList.add("hidden");
+    loadAdminDashboardCards();
   });
 
   // --- DTM Simulyatorlari ---

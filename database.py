@@ -14,6 +14,19 @@ import datetime
 from db_pool import get_connection, init_pool
 from config import DB_PATH
 
+# Bosh sahifa kartalarining STANDART (birinchi marta ishga tushganda
+# to'ldiriladigan) qiymatlari — (card_key, title, subtitle, icon, order_num).
+# card_key HECH QACHON o'zgarmaydi (frontend shu bo'yicha qaysi ekranga
+# olib borishni aniqlaydi), qolgan maydonlar admin panelidan tahrirlanadi.
+DASHBOARD_CARD_DEFAULTS = [
+    ("courses", "📚 Kurslar", "NAZORATLI · MUSTAQIL · BEPUL", "🎓", 1),
+    ("tests", "📝 Testlar", "DTM · MAVZULI · SERTIFIKAT", "📄", 2),
+    ("rating", "🏆 Reyting", "SIZNING O'RNINGIZ", "🥇", 3),
+    ("books", "📗 Kitoblar", "DO'KON · PROMOKODLAR", "📖", 4),
+    ("games", "🎮 O'yinlar", "TEZ ORADA", "🕹️", 5),
+    ("results", "📊 Natijalar", "TEST NATIJALARI TARIXI", "📈", 6),
+]
+
 
 def init_db():
     init_pool()
@@ -318,9 +331,65 @@ def init_db():
             ON simulator_answers(attempt_id, question_id)
         """)
 
+        # ---------- Bosh sahifa kartalari (dashboard) ----------
+        # Bosh sahifadagi 6 ta katakli menyu (Kurslar, Testlar, Reyting,
+        # Kitoblar, O'yinlar, Natijalar) — har birining SARLAVHASI, TEG
+        # matni va belgisi (emoji) shu jadvalda saqlanadi va admin panelidan
+        # o'zgartiriladi. Qaysi ekranga olib borishi (nav) esa FUNKSIONAL
+        # bog'lanish bo'lgani uchun frontend kodida qattiq belgilangan —
+        # faqat KO'RINISHI (matn/belgi) shu yerdan boshqariladi.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS dashboard_cards (
+                card_key TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                subtitle TEXT DEFAULT '',
+                icon TEXT DEFAULT '✨',
+                is_active INTEGER DEFAULT 1,
+                order_num INTEGER DEFAULT 0
+            )
+        """)
+        for card_key, title, subtitle, icon, order_num in DASHBOARD_CARD_DEFAULTS:
+            cur.execute("""
+                INSERT OR IGNORE INTO dashboard_cards (card_key, title, subtitle, icon, is_active, order_num)
+                VALUES (?, ?, ?, ?, 1, ?)
+            """, (card_key, title, subtitle, icon, order_num))
+
         conn.commit()
     print("Baza tayyor (v5 — DTM simulyatori bilan): users, courses, paragraphs, lessons, "
           "lesson_progress, enrollments, referrals, tests, simulators.")
+
+
+# ---------- DASHBOARD CARDS (bosh sahifa kartalari) ----------
+
+def get_dashboard_cards(only_active: bool = False):
+    """Bosh sahifadagi 6 ta katakli menyu kartalarini tartib bo'yicha
+    qaytaradi. only_active=True bo'lsa, faqat admin "faol" deb belgilagan
+    kartalar qaytadi (student-facing Mini App shu variantdan foydalanadi)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = "SELECT * FROM dashboard_cards"
+        if only_active:
+            query += " WHERE is_active = 1"
+        query += " ORDER BY order_num ASC, card_key ASC"
+        cur.execute(query)
+        return [dict(row) for row in cur.fetchall()]
+
+
+def update_dashboard_card(card_key: str, data: dict):
+    """Bitta kartaning sarlavha/teg/belgi/faollik/tartib qiymatlarini
+    yangilaydi. card_key o'zi o'zgarmaydi (jadvalning asosiy kaliti)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        fields, values = [], []
+        allowed = ["title", "subtitle", "icon", "is_active", "order_num"]
+        for key in allowed:
+            if key in data:
+                fields.append(f"{key} = ?")
+                values.append(data[key])
+        if fields:
+            values.append(card_key)
+            cur.execute(f"UPDATE dashboard_cards SET {', '.join(fields)} WHERE card_key = ?", values)
+            conn.commit()
 
 
 # ---------- USERS ----------

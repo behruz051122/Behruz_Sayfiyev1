@@ -55,6 +55,27 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 .hello h1 { font-size: 22px; margin: 8px 0 6px; }
 .hello p { color: var(--text-dim); font-size: 13px; line-height: 1.5; }
 
+.dashboard-grid { margin: 16px 16px 4px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.dashboard-card {
+  position: relative; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; padding: 16px; display: flex; flex-direction: column;
+  align-items: flex-start; gap: 8px; cursor: pointer; text-align: left;
+  min-height: 108px; box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+}
+.dc-icon {
+  width: 40px; height: 40px; border-radius: 12px; color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 19px;
+}
+.dc-teal { background: linear-gradient(135deg, var(--teal-light), var(--teal)); }
+.dc-blue { background: linear-gradient(135deg, #60a5fa, #2563eb); }
+.dc-gold { background: linear-gradient(135deg, #fbbf24, var(--gold)); }
+.dc-purple { background: linear-gradient(135deg, #a78bfa, var(--purple)); }
+.dc-pink { background: linear-gradient(135deg, #f472b6, #db2777); }
+.dc-cyan { background: linear-gradient(135deg, #22d3ee, #0891b2); }
+.dc-title { font-weight: 800; font-size: 14px; color: var(--text); line-height: 1.3; }
+.dc-sub { font-size: 9px; font-weight: 700; letter-spacing: 0.6px; color: var(--text-dim); text-transform: uppercase; }
+.dc-arrow { position: absolute; top: 14px; right: 14px; color: var(--text-dim); font-size: 16px; }
+
 .banner-cards { margin: 16px; display: flex; flex-direction: column; gap: 14px; }
 .banner-card {
   position: relative; display: flex; align-items: center; gap: 14px;
