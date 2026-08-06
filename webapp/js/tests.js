@@ -213,6 +213,18 @@ function renderPracticeGroupList() {
       openPracticeGroupTests(g);
     });
     box.appendChild(row);
+
+    // Qulflangan guruh ostiga — nega qulf ekanini tushuntiruvchi, chiroyli
+    // alohida izoh qatori (foydalanuvchi so'ragan "pastiga izoh" ko'rinishi).
+    if (!g.unlocked) {
+      const prevGroup = practiceGroups[i - 1];
+      const hint = document.createElement("div");
+      hint.className = "group-lock-hint";
+      hint.innerHTML = prevGroup
+        ? `🔒 Avval <strong>"${prevGroup.title}"</strong> bo'limidagi barcha testlarni tugating`
+        : `🔒 Bu bo'lim hali ochilmagan`;
+      box.appendChild(hint);
+    }
   });
 }
 
