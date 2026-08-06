@@ -34,6 +34,52 @@ def admin_delete_test(test_id: int, admin=Depends(require_admin)):
     return {"ok": True}
 
 
+# ---------- Mavzuli test: fan kartalari va guruhlar ----------
+
+@router.get("/test-subject-cards")
+def admin_list_test_subject_cards(admin=Depends(require_admin)):
+    return {"cards": db.get_test_subject_cards(only_active=False)}
+
+
+@router.post("/test-subject-cards")
+def admin_create_test_subject_card(data: dict = Body(...), admin=Depends(require_admin)):
+    return {"id": db.create_test_subject_card(data)}
+
+
+@router.put("/test-subject-cards/{card_id}")
+def admin_update_test_subject_card(card_id: int, data: dict = Body(...), admin=Depends(require_admin)):
+    db.update_test_subject_card(card_id, data)
+    return {"ok": True}
+
+
+@router.delete("/test-subject-cards/{card_id}")
+def admin_delete_test_subject_card(card_id: int, admin=Depends(require_admin)):
+    db.delete_test_subject_card(card_id)
+    return {"ok": True}
+
+
+@router.get("/test-groups")
+def admin_list_test_groups(admin=Depends(require_admin)):
+    return {"groups": db.get_all_test_groups(only_active=False)}
+
+
+@router.post("/test-groups")
+def admin_create_test_group(data: dict = Body(...), admin=Depends(require_admin)):
+    return {"id": db.create_test_group(data)}
+
+
+@router.put("/test-groups/{group_id}")
+def admin_update_test_group(group_id: int, data: dict = Body(...), admin=Depends(require_admin)):
+    db.update_test_group(group_id, data)
+    return {"ok": True}
+
+
+@router.delete("/test-groups/{group_id}")
+def admin_delete_test_group(group_id: int, admin=Depends(require_admin)):
+    db.delete_test_group(group_id)
+    return {"ok": True}
+
+
 # ---------- Savollar ----------
 
 @router.get("/tests/{test_id}/questions")

@@ -18,11 +18,41 @@ def _ensure_control_test_access(test: dict, telegram_id: int):
         raise HTTPException(status_code=403, detail="Bu nazorat testi sizga hali ochilmagan — ustozingiz sizni ro'yxatga qo'shishi kerak")
 
 
+def _ensure_practice_group_unlocked(test: dict, telegram_id: int):
+    """Mavzuli test guruhlari KETMA-KET ochiladi (avvalgi guruhdagi barcha
+    testlar tugatilmaguncha keyingisi qulflangan). Frontend qulflangan
+    guruhga kirish tugmasini ko'rsatmaydi, lekin haqiqiy himoya shu yerda —
+    to'g'ridan-to'g'ri so'rov yuborilsa ham chetlab o'tib bo'lmaydi."""
+    group_id = test.get("test_group_id")
+    if not group_id:
+        return  # eski/guruhsiz testlar cheklovsiz qoladi
+    group = db.get_test_group(group_id)
+    if not group:
+        return
+    groups = db.compute_groups_with_unlock(telegram_id, group["subject_card_id"])
+    this_group = next((g for g in groups if g["id"] == group_id), None)
+    if this_group and not this_group["unlocked"]:
+        raise HTTPException(status_code=403, detail="Bu bo'lim sizga hali ochilmagan — avvalgi bo'limdagi testlarni tugating")
+
+
+@router.get("/test-subject-cards")
+def api_get_test_subject_cards():
+    return {"cards": db.get_test_subject_cards(only_active=True)}
+
+
+@router.get("/test-subject-cards/{card_id}/groups")
+def api_get_test_groups(card_id: int, user=Depends(get_verified_telegram_user)):
+    groups = db.compute_groups_with_unlock(user["telegram_id"], card_id)
+    return {"groups": groups}
+
+
 @router.get("/tests")
-def api_get_tests(subject: str = None, user=Depends(get_verified_telegram_user)):
+def api_get_tests(subject: str = None, group_id: int = None, user=Depends(get_verified_telegram_user)):
     # Faqat "oddiy/mavzuli" testlar — Attestatsiya alohida /api/attestation-tests
     # orqali, Nazorat testlari esa /api/control-tests orqali ko'rsatiladi.
     tests = db.get_all_tests(subject=subject, include_control=False, test_kind="practice")
+    if group_id is not None:
+        tests = [t for t in tests if t.get("test_group_id") == group_id]
     for t in tests:
         t["question_count"] = db.count_test_questions(t["id"])
     return {"tests": tests}
@@ -46,6 +76,8 @@ def api_get_test(test_id: int, user=Depends(get_verified_telegram_user)):
         raise HTTPException(status_code=404, detail="Test topilmadi")
     if test.get("is_control_test"):
         _ensure_control_test_access(test, user["telegram_id"])
+    else:
+        _ensure_practice_group_unlocked(test, user["telegram_id"])
     questions = db.get_questions(test_id)
     safe_questions = []
     for q in questions:
@@ -66,6 +98,8 @@ def api_start_test(test_id: int, user=Depends(get_verified_telegram_user)):
         raise HTTPException(status_code=404, detail="Test topilmadi")
     if test.get("is_control_test"):
         _ensure_control_test_access(test, user["telegram_id"])
+    else:
+        _ensure_practice_group_unlocked(test, user["telegram_id"])
     telegram_id = user["telegram_id"]
     db.get_or_create_user(telegram_id, user["first_name"], user.get("username"))
     attempt_id = db.start_attempt(telegram_id, test_id)

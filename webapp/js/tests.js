@@ -9,10 +9,18 @@ import { refreshCoins } from "./user.js";
 
 // ---------- Oddiy testlar holati ----------
 let allTests = [];
-let activeTestSubjectFilter = "Hammasi";
 let testSearchQuery = "";
 let myTestResults = [];
 let currentTestMeta = null;
+
+// ---------- Mavzuli test: fan -> guruh -> testlar (ko'p kishi ishlatishi
+// uchun, bir marta ishlangan testni qayta ko'rsatmaslik maqsadida guruhlar
+// KETMA-KET ochiladi) ----------
+let practiceSubjectCards = [];
+let practiceSubjectsLoaded = false;
+let activePracticeSubject = null;
+let practiceGroups = [];
+let activePracticeGroup = null;
 
 // ---------- Simulyator holati ----------
 let allSimulators = [];
@@ -38,7 +46,6 @@ let currentAttempt = null;
 export function resetTestState() {
   stopTestTimer();
   currentAttempt = null;
-  activeTestSubjectFilter = "Hammasi";
   testSearchQuery = "";
   const searchInput = document.getElementById("testSearchInput");
   if (searchInput) searchInput.value = "";
@@ -88,6 +95,10 @@ function switchTestsTab(tab) {
   document.getElementById("controlTabContent").classList.toggle("hidden", tab !== "control");
   document.getElementById("attestationTabContent").classList.toggle("hidden", tab !== "attestation");
 
+  if (tab === "tests") {
+    resetPracticeFlowToSubjects();
+    loadPracticeSubjects();
+  }
   if (tab === "simulator" && !simulatorsLoaded) {
     loadSimulatorList();
   }
@@ -100,23 +111,136 @@ function switchTestsTab(tab) {
 }
 
 // ================================================================
-// ODDIY TESTLAR RO'YXATI
+// MAVZULI TEST: 1) FAN TANLASH -> 2) GURUH (ketma-ket ochiladi) -> 3) TESTLAR
+// Ko'proq kishi foydalanishi va bir marta ishlangan testni qayta
+// ko'rsatmaslik uchun — talaba avval fanni, keyin guruhni tanlaydi;
+// guruhlar admin belgilagan tartib bo'yicha KETMA-KET ochiladi (oldingi
+// guruhdagi barcha testlar tugatilmaguncha keyingisi qulflangan turadi).
 // ================================================================
 
-export async function loadTestList() {
+function resetPracticeFlowToSubjects() {
+  document.getElementById("practiceSubjectLanding").classList.remove("hidden");
+  document.getElementById("practiceGroupLanding").classList.add("hidden");
+  document.getElementById("practiceTestListView").classList.add("hidden");
+  activePracticeSubject = null;
+  activePracticeGroup = null;
+}
+
+async function loadPracticeSubjects() {
+  const grid = document.getElementById("practiceSubjectGrid");
+  grid.innerHTML = skeletonCards(2);
+  try {
+    const res = await apiFetch(`/api/test-subject-cards`);
+    const data = await res.json();
+    practiceSubjectCards = data.cards;
+    practiceSubjectsLoaded = true;
+    renderPracticeSubjectCards();
+  } catch (e) {
+    console.error(e);
+    grid.innerHTML = errorHtml();
+  }
+}
+
+function renderPracticeSubjectCards() {
+  const grid = document.getElementById("practiceSubjectGrid");
+  grid.innerHTML = "";
+  if (practiceSubjectCards.length === 0) {
+    grid.innerHTML = emptyHtml("Hozircha fan qo'shilmagan");
+    return;
+  }
+  practiceSubjectCards.forEach(card => {
+    const el = document.createElement("button");
+    el.className = `subject-card subject-${card.color_key || "teal"}`;
+    el.innerHTML = `
+      <div class="subject-card-icon">${card.icon || "📘"}</div>
+      <div class="subject-card-body">
+        <div class="subject-card-title">${card.title}</div>
+        <div class="subject-card-sub">MAVZULI TEST</div>
+        <div class="subject-card-cta">OCHISH →</div>
+      </div>
+    `;
+    el.addEventListener("click", () => openPracticeGroups(card));
+    grid.appendChild(el);
+  });
+}
+
+async function openPracticeGroups(card) {
+  activePracticeSubject = card;
+  activePracticeGroup = null;
+  document.getElementById("practiceSubjectLanding").classList.add("hidden");
+  document.getElementById("practiceGroupLanding").classList.remove("hidden");
+  document.getElementById("practiceTestListView").classList.add("hidden");
+  document.getElementById("practiceGroupLandingTitle").textContent = `${card.icon || "📘"} ${card.title}`;
+  const box = document.getElementById("practiceGroupList");
+  box.innerHTML = skeletonCards(2);
+  try {
+    const res = await apiFetch(`/api/test-subject-cards/${card.id}/groups`);
+    const data = await res.json();
+    practiceGroups = data.groups;
+    renderPracticeGroupList();
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml();
+  }
+}
+
+function renderPracticeGroupList() {
+  const box = document.getElementById("practiceGroupList");
+  box.innerHTML = "";
+  if (practiceGroups.length === 0) {
+    box.innerHTML = emptyHtml("Bu fan uchun hozircha guruh qo'shilmagan");
+    return;
+  }
+  practiceGroups.forEach((g, i) => {
+    const row = document.createElement("div");
+    row.className = "module-item" + (g.unlocked ? "" : " module-locked");
+    const metaText = g.total_count > 0
+      ? `${g.completed_count}/${g.total_count} test tugallandi${g.is_done ? " · ✅ Tugallangan" : ""}`
+      : "Hozircha test qo'shilmagan";
+    row.innerHTML = `
+      <div class="module-num">${g.unlocked ? (g.icon || (i + 1)) : "🔒"}</div>
+      <div class="module-info">
+        <div class="module-title">${g.title}</div>
+        <div class="module-meta">${g.subtitle ? g.subtitle + " · " : ""}${metaText}</div>
+      </div>
+      <div class="module-arrow">${g.unlocked ? "›" : ""}</div>
+    `;
+    row.addEventListener("click", () => {
+      if (!g.unlocked) {
+        tg.showAlert ? tg.showAlert("🔒 Bu guruh hali ochilmagan — avvalgi guruhdagi barcha testlarni tugating") : alert("Bu guruh hali ochilmagan");
+        return;
+      }
+      openPracticeGroupTests(g);
+    });
+    box.appendChild(row);
+  });
+}
+
+async function openPracticeGroupTests(group) {
+  activePracticeGroup = group;
+  document.getElementById("practiceGroupLanding").classList.add("hidden");
+  document.getElementById("practiceTestListView").classList.remove("hidden");
+  document.getElementById("practiceTestListTitle").textContent = `${group.icon || "📂"} ${group.title}`;
+  testSearchQuery = "";
+  const searchInput = document.getElementById("testSearchInput");
+  if (searchInput) searchInput.value = "";
+  bindTestSearchInput();
+  await refreshPracticeGroupTests();
+}
+
+// Testni tugatgach shu ro'yxatga qaytilganda ham chaqiriladi — natijalar
+// (bajarilgan belgisi) va progress yangilanishi uchun.
+async function refreshPracticeGroupTests() {
+  if (!activePracticeGroup) return;
   const container = document.getElementById("testList");
   container.innerHTML = skeletonCards(3);
-  bindTestSearchInput();
   try {
     const [testsRes, resultsRes] = await Promise.all([
-      apiFetch(`/api/tests`),
+      apiFetch(`/api/tests?group_id=${activePracticeGroup.id}`),
       apiFetch(`/api/my-test-results`)
     ]);
-    const testsData = await testsRes.json();
-    const resultsData = await resultsRes.json();
-    allTests = testsData.tests;
-    myTestResults = resultsData.results;
-    buildTestSubjectFilters();
+    allTests = (await testsRes.json()).tests;
+    myTestResults = (await resultsRes.json()).results;
     renderTestList();
   } catch (e) {
     console.error(e);
@@ -134,24 +258,6 @@ function bindTestSearchInput() {
   });
 }
 
-function buildTestSubjectFilters() {
-  const row = document.getElementById("testSubjectFilterRow");
-  const subjects = ["Hammasi", ...new Set(allTests.map(t => t.subject))];
-  row.innerHTML = "";
-  subjects.forEach(subj => {
-    const chip = document.createElement("button");
-    chip.className = "filter-chip" + (subj === activeTestSubjectFilter ? " active" : "");
-    chip.textContent = subj;
-    chip.onclick = () => {
-      activeTestSubjectFilter = subj;
-      document.querySelectorAll("#testSubjectFilterRow .filter-chip").forEach(c => c.classList.remove("active"));
-      chip.classList.add("active");
-      renderTestList();
-    };
-    row.appendChild(chip);
-  });
-}
-
 function bestResultForTest(testId) {
   return myTestResults.find(r => r.test_id === testId) || null;
 }
@@ -161,13 +267,12 @@ function renderTestList() {
   container.innerHTML = "";
 
   const filtered = allTests.filter(t => {
-    if (activeTestSubjectFilter !== "Hammasi" && t.subject !== activeTestSubjectFilter) return false;
     if (testSearchQuery && !(`${t.title} ${t.subject}`.toLowerCase().includes(testSearchQuery))) return false;
     return true;
   });
 
   if (filtered.length === 0) {
-    container.innerHTML = emptyHtml(testSearchQuery ? `"${testSearchQuery}" bo'yicha hech narsa topilmadi` : "Bu fan bo'yicha hozircha test yo'q");
+    container.innerHTML = emptyHtml(testSearchQuery ? `"${testSearchQuery}" bo'yicha hech narsa topilmadi` : "Bu guruhda hozircha test yo'q");
     return;
   }
 
@@ -884,6 +989,17 @@ async function renderAttemptResult(attemptId, mode, score, total, percent, timed
     });
   }
   document.getElementById("backToTestsBtn").addEventListener("click", () => {
+    // Mavzuli test (mode === "test") bo'lsa va talaba biror guruhdan kelgan
+    // bo'lsa — to'liq "tests" ekraniga qaytib, fan tanlashdan boshlash
+    // o'rniga, TO'G'RIDAN-TO'G'RI o'sha guruhning testlar ro'yxatiga
+    // qaytamiz (yangi tugallangan test/ochilgan keyingi guruh ko'rinishi
+    // uchun ro'yxat yangilanadi).
+    if (mode === "test" && activePracticeGroup) {
+      activeTestsTab = "tests";
+      showScreen("tests");
+      refreshPracticeGroupTests();
+      return;
+    }
     activeTestsTab = mode === "simulator" ? "simulator" : mode === "control" ? "control" : mode === "attestation" ? "attestation" : "tests";
     navigateTo("tests");
   });
@@ -970,6 +1086,12 @@ export function initTestsModule() {
   document.getElementById("tabBtnSimulator").addEventListener("click", () => switchTestsTab("simulator"));
   document.getElementById("tabBtnControl").addEventListener("click", () => switchTestsTab("control"));
   document.getElementById("tabBtnAttestation").addEventListener("click", () => switchTestsTab("attestation"));
+
+  document.getElementById("practiceBackToSubjectsBtn").addEventListener("click", () => resetPracticeFlowToSubjects());
+  document.getElementById("practiceBackToGroupsBtn").addEventListener("click", () => {
+    if (activePracticeSubject) openPracticeGroups(activePracticeSubject);
+    else resetPracticeFlowToSubjects();
+  });
 
   document.getElementById("exitTestBtn").addEventListener("click", () => {
     const ok = confirm("Testdan chiqmoqchimisiz? Joriy urinishingiz saqlanmaydi.");

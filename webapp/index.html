@@ -278,12 +278,28 @@
       </div>
 
       <div id="testsTabContent" class="hidden">
-        <div class="search-box">
-          <span class="search-icon" aria-hidden="true">🔍</span>
-          <input type="search" id="testSearchInput" class="search-input" placeholder="Test qidirish..." aria-label="Test qidirish">
+        <!-- 1-bosqich: fan tanlash (Kimyo/Biologiya/..., admin panelidan boshqariladi) -->
+        <div id="practiceSubjectLanding">
+          <div id="practiceSubjectGrid" class="subject-select-grid"></div>
         </div>
-        <div class="filter-row" id="testSubjectFilterRow"></div>
-        <div id="testList" class="test-list"></div>
+
+        <!-- 2-bosqich: tanlangan fan ichidagi guruhlar (ketma-ket ochiladi) -->
+        <div id="practiceGroupLanding" class="hidden">
+          <button class="results-link-btn" id="practiceBackToSubjectsBtn">‹ Fanlarga qaytish</button>
+          <h3 id="practiceGroupLandingTitle" style="margin:0 16px 10px;font-size:15px;font-weight:800;"></h3>
+          <div id="practiceGroupList" class="module-list"></div>
+        </div>
+
+        <!-- 3-bosqich: guruh ichidagi testlar -->
+        <div id="practiceTestListView" class="hidden">
+          <button class="results-link-btn" id="practiceBackToGroupsBtn">‹ Guruhlarga qaytish</button>
+          <h3 id="practiceTestListTitle" style="margin:0 16px 10px;font-size:15px;font-weight:800;"></h3>
+          <div class="search-box">
+            <span class="search-icon" aria-hidden="true">🔍</span>
+            <input type="search" id="testSearchInput" class="search-input" placeholder="Test qidirish..." aria-label="Test qidirish">
+          </div>
+          <div id="testList" class="test-list"></div>
+        </div>
       </div>
 
       <div id="simulatorTabContent" class="hidden">
@@ -756,9 +772,76 @@
       <div class="admin-section">
         <div class="admin-section-head">
           <h3>Testlar</h3>
-          <button id="adminNewTestBtn" class="gold-btn small">+ Yangi test</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button id="adminManageTestSubjectsBtn" class="gold-btn small" style="background:var(--surface2);color:var(--text);">📚 Fanlar</button>
+            <button id="adminManageTestGroupsBtn" class="gold-btn small" style="background:var(--surface2);color:var(--text);">🗂 Guruhlar</button>
+            <button id="adminNewTestBtn" class="gold-btn small">+ Yangi test</button>
+          </div>
         </div>
         <div id="adminTestsList" class="admin-list"></div>
+      </div>
+
+      <div id="adminTestSubjectCardsPanel" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3>Mavzuli test — Fanlar</h3>
+          <button id="adminCloseTestSubjectCards" class="icon-btn" aria-label="Yopish">✕</button>
+        </div>
+        <p style="font-size:11px;color:var(--text-dim);margin:-4px 0 10px;">
+          "Mavzuli test" bo'limida talaba avval shu fanlardan birini tanlaydi (masalan Kimyo,
+          Biologiya). Istasangiz yana fan qo'sha olasiz.
+        </p>
+        <div id="adminTestSubjectCardsList" class="admin-list"></div>
+        <form id="testSubjectCardFormEl" class="admin-form">
+          <input type="hidden" id="tsc_id">
+          <label>Fan nomi (masalan: Kimyo) <input id="tsc_title" required></label>
+          <label>Emoji <input id="tsc_icon" value="📘"></label>
+          <label>Rang
+            <select id="tsc_color_key">
+              <option value="teal">Yashil-moviy</option>
+              <option value="orange">Apelsin</option>
+              <option value="purple">Binafsha</option>
+              <option value="cyan">Ko'k-yashil</option>
+            </select>
+          </label>
+          <label>Tartib raqami <input id="tsc_order_num" type="number" value="0"></label>
+          <label>Faolmi?
+            <select id="tsc_is_active">
+              <option value="1">Ha</option>
+              <option value="0">Yo'q (yashirilgan)</option>
+            </select>
+          </label>
+          <button type="submit" class="gold-btn">Fanni saqlash</button>
+        </form>
+      </div>
+
+      <div id="adminTestGroupsPanel" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3>Mavzuli test — Guruhlar</h3>
+          <button id="adminCloseTestGroups" class="icon-btn" aria-label="Yopish">✕</button>
+        </div>
+        <p style="font-size:11px;color:var(--text-dim);margin:-4px 0 10px;">
+          Har bir fan ichida guruhlar (masalan "Mavzulashtirilgan testlar", "Aralash testlar")
+          bo'ladi. Guruhlar TARTIB RAQAMI bo'yicha KETMA-KET ochiladi — talaba avvalgi
+          guruhdagi barcha testlarni tugatmaguncha keyingisi qulflangan turadi.
+        </p>
+        <div id="adminTestGroupsList" class="admin-list"></div>
+        <form id="testGroupFormEl" class="admin-form">
+          <input type="hidden" id="tg_id">
+          <label>Fan
+            <select id="tg_subject_card_id" required></select>
+          </label>
+          <label>Guruh nomi (masalan: Mavzulashtirilgan testlar) <input id="tg_title" required></label>
+          <label>Qo'shimcha matn (ixtiyoriy) <input id="tg_subtitle"></label>
+          <label>Emoji <input id="tg_icon" value="📂"></label>
+          <label>Tartib raqami (ochilish ketma-ketligi) <input id="tg_order_num" type="number" value="0"></label>
+          <label>Faolmi?
+            <select id="tg_is_active">
+              <option value="1">Ha</option>
+              <option value="0">Yo'q (yashirilgan)</option>
+            </select>
+          </label>
+          <button type="submit" class="gold-btn">Guruhni saqlash</button>
+        </form>
       </div>
 
       <div class="admin-section">
@@ -813,6 +896,13 @@
           <p style="font-size:11px;color:var(--text-dim);margin:-6px 0 4px;">
             "Attestatsiya" tanlansangiz — test Testlar bo'limidagi alohida "Attestatsiya" kartasida chiqadi, erkin kirish (tayinlash shart emas), talabalar "Belgilash" va "E'tiroz bildirish" tugmalaridan foydalana oladi, natijada to'g'ri javob ko'rsatilmaydi.
           </p>
+          <div id="atPracticeGroupWrap">
+            <label>Mavzuli test guruhi (ixtiyoriy — tanlasangiz test "Testlar → Mavzuli test" bo'limida shu fan/guruh ostida, ketma-ket ochilish tartibida chiqadi)
+              <select id="at_test_group_id">
+                <option value="">— Guruhga bog'lamaslik —</option>
+              </select>
+            </label>
+          </div>
           <label class="checkbox-label">
             <input type="checkbox" id="at_is_control_test">
             <span>🎓 Bu — nazorat testi (alohida oylik reytingga kiradi). Testni saqlagach, pastdagi "Talabalar" tugmasi orqali kimlarga ochiq ekanini belgilaysiz.</span>

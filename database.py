@@ -309,6 +309,121 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # ustun allaqachon mavjud — muammo emas
 
+        # ---------- MAVZULI TEST: FAN KARTALARI + KETMA-KET OCHILADIGAN GURUHLAR ----------
+        # Talaba ko'p bo'lishi uchun "Mavzuli test" bo'limi endi uch bosqichli:
+        # Fan (Kimyo/Biologiya/...) -> shu fan ichidagi GURUH (masalan
+        # "Mavzulashtirilgan testlar", "Aralash testlar" — admin o'zi
+        # istagancha qo'shadi/nomlaydi) -> guruh ichidagi testlar. Guruhlar
+        # order_num bo'yicha KETMA-KET ochiladi: talaba avvalgi guruhdagi
+        # BARCHA testlarni tugatmaguncha keyingisi qulflangan turadi — bu
+        # "bir marta ishlagan testni qayta ko'rsatmaslik" talabini ham
+        # tabiiy ravishda ta'minlaydi (har guruhda YANGI testlar).
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS test_subject_cards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                icon TEXT DEFAULT '📘',
+                color_key TEXT DEFAULT 'teal',
+                order_num INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS test_groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                subject_card_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                subtitle TEXT,
+                icon TEXT DEFAULT '📂',
+                order_num INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (subject_card_id) REFERENCES test_subject_cards (id) ON DELETE CASCADE
+            )
+        """)
+        conn.commit()
+
+        try:
+            cur.execute("ALTER TABLE tests ADD COLUMN test_group_id INTEGER")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # ustun allaqachon mavjud — muammo emas
+
+        # Migratsiya (har safar ishga tushishda ham xavfsiz — faqat yetishmayotganini to'ldiradi):
+        # 1) "Kimyo" va "Biologiya" kartalari har doim mavjud bo'lishini kafolatlaymiz.
+        # 2) Mavjud "oddiy/mavzuli" testlardagi boshqa subject qiymatlari uchun ham karta yaratamiz.
+        # 3) Kartada birorta ham guruh bo'lmasa — "Barcha testlar" degan default guruh qo'shamiz.
+        # 4) test_group_id hali belgilanmagan (NULL) testlarni subject nomi mos kelgan
+        #    kartaning birinchi guruhiga avtomatik bog'laymiz — shunda hech qanday mavjud
+        #    test talaba ko'zidan g'oyib bo'lib qolmaydi.
+        def _get_or_create_subject_card(title, order_num):
+            cur.execute("SELECT id FROM test_subject_cards WHERE title = ?", (title,))
+            row = cur.fetchone()
+            if row:
+                return row["id"]
+            icons = ["🧪", "🧬", "📘", "🔬", "📗", "📙"]
+            colors = ["teal", "orange", "purple", "cyan"]
+            cur.execute("""
+                INSERT INTO test_subject_cards (title, icon, color_key, order_num, is_active)
+                VALUES (?, ?, ?, ?, 1)
+            """, (title, icons[order_num % len(icons)], colors[order_num % len(colors)], order_num))
+            conn.commit()
+            return cur.lastrowid
+
+        chemistry_id = _get_or_create_subject_card("Kimyo", 0)
+        biology_id = _get_or_create_subject_card("Biologiya", 1)
+
+        cur.execute("""
+            SELECT DISTINCT subject FROM tests
+            WHERE (test_kind IS NULL OR test_kind = 'practice')
+              AND (is_control_test IS NULL OR is_control_test = 0)
+              AND subject IS NOT NULL AND subject != ''
+        """)
+        existing_subjects = [row["subject"] for row in cur.fetchall()]
+        next_order = 2
+        for subj in existing_subjects:
+            if subj in ("Kimyo", "Biologiya"):
+                continue
+            _get_or_create_subject_card(subj, next_order)
+            next_order += 1
+
+        cur.execute("SELECT id FROM test_subject_cards")
+        all_card_ids = [row["id"] for row in cur.fetchall()]
+        default_group_id_by_card = {}
+        for card_id in all_card_ids:
+            cur.execute("SELECT id FROM test_groups WHERE subject_card_id = ? ORDER BY order_num ASC, id ASC LIMIT 1", (card_id,))
+            row = cur.fetchone()
+            if row:
+                default_group_id_by_card[card_id] = row["id"]
+            else:
+                cur.execute("""
+                    INSERT INTO test_groups (subject_card_id, title, subtitle, icon, order_num, is_active)
+                    VALUES (?, 'Barcha testlar', NULL, '📂', 1, 1)
+                """, (card_id,))
+                conn.commit()
+                default_group_id_by_card[card_id] = cur.lastrowid
+
+        cur.execute("SELECT id, title FROM test_subject_cards")
+        card_id_by_title = {row["title"]: row["id"] for row in cur.fetchall()}
+
+        cur.execute("""
+            SELECT id, subject FROM tests
+            WHERE test_group_id IS NULL
+              AND (test_kind IS NULL OR test_kind = 'practice')
+              AND (is_control_test IS NULL OR is_control_test = 0)
+        """)
+        ungrouped = cur.fetchall()
+        for row in ungrouped:
+            card_id = card_id_by_title.get(row["subject"])
+            if not card_id:
+                continue
+            group_id = default_group_id_by_card.get(card_id)
+            if group_id:
+                cur.execute("UPDATE tests SET test_group_id = ? WHERE id = ?", (group_id, row["id"]))
+        conn.commit()
+
         # Nazorat testiga TO'G'RIDAN-TO'G'RI (kursdan mustaqil) tayinlangan
         # o'quvchilar ro'yxati. Admin panelda o'qituvchi aynan qaysi
         # talabalarga shu nazorat testini topshirishga ruxsat berishni
@@ -2008,13 +2123,14 @@ def create_test(data: dict) -> int:
         difficulty = data.get("difficulty", "orta")
         time_limit = data.get("time_limit_seconds") or DIFFICULTY_TIME_SECONDS.get(difficulty, 600)
         cur.execute("""
-            INSERT INTO tests (subject, title, difficulty, time_limit_seconds, order_num, is_active, is_control_test, course_id, test_kind)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO tests (subject, title, difficulty, time_limit_seconds, order_num, is_active, is_control_test, course_id, test_kind, test_group_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             data.get("subject", ""), data.get("title", ""), difficulty, int(time_limit),
             int(data.get("order_num", 0)), int(data.get("is_active", 1)),
             int(data.get("is_control_test", 0)), data.get("course_id") or None,
-            data.get("test_kind") or "practice"
+            data.get("test_kind") or "practice",
+            int(data["test_group_id"]) if data.get("test_group_id") else None
         ))
         conn.commit()
         return cur.lastrowid
@@ -2029,6 +2145,9 @@ def update_test(test_id: int, data: dict):
             if key in data:
                 fields.append(f"{key} = ?")
                 values.append(data[key] if data[key] != "" else None)
+        if "test_group_id" in data:
+            fields.append("test_group_id = ?")
+            values.append(int(data["test_group_id"]) if data["test_group_id"] else None)
         if fields:
             values.append(test_id)
             cur.execute(f"UPDATE tests SET {', '.join(fields)} WHERE id = ?", values)
@@ -2040,6 +2159,196 @@ def delete_test(test_id: int):
         cur = conn.cursor()
         cur.execute("DELETE FROM tests WHERE id = ?", (test_id,))
         conn.commit()
+
+
+# ---------- MAVZULI TEST: FAN KARTALARI VA GURUHLAR ----------
+
+def get_test_subject_cards(only_active: bool = True):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = "SELECT * FROM test_subject_cards WHERE 1=1"
+        if only_active:
+            query += " AND is_active = 1"
+        query += " ORDER BY order_num ASC, id ASC"
+        cur.execute(query)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_test_subject_card(card_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM test_subject_cards WHERE id = ?", (card_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def create_test_subject_card(data: dict) -> int:
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO test_subject_cards (title, icon, color_key, order_num, is_active)
+            VALUES (?, ?, ?, ?, ?)
+        """, (
+            data.get("title", ""), data.get("icon") or "📘", data.get("color_key") or "teal",
+            int(data.get("order_num", 0)), int(data.get("is_active", 1))
+        ))
+        conn.commit()
+        return cur.lastrowid
+
+
+def update_test_subject_card(card_id: int, data: dict):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        fields, values = [], []
+        for key in ["title", "icon", "color_key", "order_num", "is_active"]:
+            if key in data:
+                fields.append(f"{key} = ?")
+                values.append(data[key])
+        if fields:
+            values.append(card_id)
+            cur.execute(f"UPDATE test_subject_cards SET {', '.join(fields)} WHERE id = ?", values)
+            conn.commit()
+
+
+def delete_test_subject_card(card_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM test_subject_cards WHERE id = ?", (card_id,))
+        conn.commit()
+
+
+def get_test_groups(subject_card_id: int, only_active: bool = True):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = "SELECT * FROM test_groups WHERE subject_card_id = ?"
+        params = [subject_card_id]
+        if only_active:
+            query += " AND is_active = 1"
+        query += " ORDER BY order_num ASC, id ASC"
+        cur.execute(query, params)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_all_test_groups(only_active: bool = False):
+    """Admin panel uchun — barcha guruhlarni, fan nomi bilan birga qaytaradi."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = """
+            SELECT g.*, c.title AS subject_title FROM test_groups g
+            JOIN test_subject_cards c ON c.id = g.subject_card_id
+            WHERE 1=1
+        """
+        if only_active:
+            query += " AND g.is_active = 1"
+        query += " ORDER BY c.order_num ASC, g.order_num ASC, g.id ASC"
+        cur.execute(query)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_test_group(group_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM test_groups WHERE id = ?", (group_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def create_test_group(data: dict) -> int:
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO test_groups (subject_card_id, title, subtitle, icon, order_num, is_active)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            int(data["subject_card_id"]), data.get("title", ""), data.get("subtitle") or None,
+            data.get("icon") or "📂", int(data.get("order_num", 0)), int(data.get("is_active", 1))
+        ))
+        conn.commit()
+        return cur.lastrowid
+
+
+def update_test_group(group_id: int, data: dict):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        fields, values = [], []
+        for key in ["subject_card_id", "title", "subtitle", "icon", "order_num", "is_active"]:
+            if key in data:
+                fields.append(f"{key} = ?")
+                values.append(data[key] if data[key] != "" else None)
+        if fields:
+            values.append(group_id)
+            cur.execute(f"UPDATE test_groups SET {', '.join(fields)} WHERE id = ?", values)
+            conn.commit()
+
+
+def delete_test_group(group_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM test_groups WHERE id = ?", (group_id,))
+        conn.commit()
+
+
+def count_group_tests(group_id: int, only_active: bool = True) -> int:
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = "SELECT COUNT(*) as c FROM tests WHERE test_group_id = ?"
+        params = [group_id]
+        if only_active:
+            query += " AND is_active = 1"
+        cur.execute(query, params)
+        return cur.fetchone()["c"]
+
+
+def has_student_completed_test(telegram_id: int, test_id: int) -> bool:
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT 1 FROM test_attempts WHERE telegram_id = ? AND test_id = ? AND finished_at IS NOT NULL LIMIT 1
+        """, (telegram_id, test_id))
+        return cur.fetchone() is not None
+
+
+def compute_group_progress(telegram_id: int, group_id: int):
+    """Berilgan guruhdagi FAOL testlardan nechtasi shu talaba tomonidan
+    tugallanganini hisoblaydi."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM tests WHERE test_group_id = ? AND is_active = 1", (group_id,))
+        test_ids = [row["id"] for row in cur.fetchall()]
+        total = len(test_ids)
+        if total == 0:
+            return {"completed": 0, "total": 0}
+        placeholders = ",".join("?" for _ in test_ids)
+        cur.execute(f"""
+            SELECT COUNT(DISTINCT test_id) as c FROM test_attempts
+            WHERE telegram_id = ? AND finished_at IS NOT NULL AND test_id IN ({placeholders})
+        """, [telegram_id] + test_ids)
+        completed = cur.fetchone()["c"]
+        return {"completed": completed, "total": total}
+
+
+def compute_groups_with_unlock(telegram_id: int, subject_card_id: int):
+    """Fan ichidagi guruhlarni order_num bo'yicha qaytaradi, har biriga
+    'unlocked' (shu guruhni boshlash mumkinmi) va progress (completed/total)
+    qo'shib. Birinchi guruh doim ochiq. Keyingi guruh — faqat oldingisidagi
+    BARCHA (faol) testlar tugallangandan keyin ochiladi. Agar oldingi guruhda
+    umuman test bo'lmasa (admin hali qo'shmagan bo'lsa), u "tugallangan"
+    hisoblanib, keyingisini bloklamaydi (talaba abadiy qulflanib qolmasin)."""
+    groups = get_test_groups(subject_card_id, only_active=True)
+    result = []
+    prev_completed = True
+    for g in groups:
+        progress = compute_group_progress(telegram_id, g["id"])
+        unlocked = prev_completed
+        g_out = dict(g)
+        g_out["completed_count"] = progress["completed"]
+        g_out["total_count"] = progress["total"]
+        g_out["unlocked"] = unlocked
+        g_out["is_done"] = progress["total"] > 0 and progress["completed"] >= progress["total"]
+        result.append(g_out)
+        # Keyingi guruh uchun: shu guruh tugallanganmi (bo'sh guruh ham "tugallangan" hisoblanadi)
+        prev_completed = (progress["total"] == 0) or (progress["completed"] >= progress["total"])
+    return result
 
 
 # ---------- SAVOLLAR ----------

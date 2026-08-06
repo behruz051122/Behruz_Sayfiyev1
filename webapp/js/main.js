@@ -51,7 +51,6 @@ function handleNav(target) {
     showScreen("referral");
   } else if (target === "tests") {
     Tests.resetTestState();
-    Tests.loadTestList();
     showScreen("tests");
   } else if (target === "leaderboard") {
     loadLeaderboard();

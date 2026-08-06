@@ -20,6 +20,8 @@ function hoursMinutesToSeconds(hoursStr, minutesStr) {
 let currentAdminCourses = [];
 let currentAdminCourseCategories = [];
 let currentAdminTests = [];
+let currentTestSubjectCards = [];
+let currentTestGroups = [];
 let objectionsStatusFilter = "pending";
 
 // ---------- Statistika (dashboard) ----------
@@ -863,12 +865,21 @@ export async function loadAdminTests() {
   document.getElementById("adminQuestionsPanel").classList.add("hidden");
   document.getElementById("adminControlAccessPanel").classList.add("hidden");
   document.getElementById("adminControlResultsPanel").classList.add("hidden");
+  document.getElementById("adminTestSubjectCardsPanel").classList.add("hidden");
+  document.getElementById("adminTestGroupsPanel").classList.add("hidden");
   const box = document.getElementById("adminTestsList");
   box.innerHTML = skeletonCards(2);
   try {
-    const res = await apiFetch(`/api/admin/tests`);
-    const data = await res.json();
+    const [testsRes, cardsRes, groupsRes] = await Promise.all([
+      apiFetch(`/api/admin/tests`),
+      apiFetch(`/api/admin/test-subject-cards`),
+      apiFetch(`/api/admin/test-groups`)
+    ]);
+    const data = await testsRes.json();
     currentAdminTests = data.tests;
+    currentTestSubjectCards = (await cardsRes.json()).cards;
+    currentTestGroups = (await groupsRes.json()).groups;
+    const groupById = Object.fromEntries(currentTestGroups.map(g => [g.id, g]));
     box.innerHTML = "";
     if (currentAdminTests.length === 0) box.innerHTML = emptyHtml("Hali test qo'shilmagan");
     currentAdminTests.forEach(t => {
@@ -876,11 +887,13 @@ export async function loadAdminTests() {
       row.className = "admin-row";
       const controlBadge = t.is_control_test ? `<span class="control-badge">🎓 NAZORAT</span>` : "";
       const attestationBadge = t.test_kind === "attestation" ? `<span class="control-badge">📋 ATTESTATSIYA</span>` : "";
+      const group = t.test_group_id ? groupById[t.test_group_id] : null;
+      const groupBadge = group ? `<span class="control-badge">${group.icon || "📂"} ${group.subject_title} · ${group.title}</span>` : "";
       const accessBtn = t.is_control_test ? `<button data-a="access">👥 Talabalar</button>` : "";
       const resultsBtn = t.is_control_test ? `<button data-a="results">📊 Natijalar</button>` : "";
       row.innerHTML = `
         <div class="info">
-          <div class="t">${t.title}${t.is_active ? "" : " (yashirin)"}${controlBadge}${attestationBadge}</div>
+          <div class="t">${t.title}${t.is_active ? "" : " (yashirin)"}${controlBadge}${attestationBadge}${groupBadge}</div>
           <div class="s">${t.subject} · ${DIFFICULTY_LABELS[t.difficulty] || t.difficulty} · ${t.question_count} savol · ${formatSeconds(t.time_limit_seconds)}</div>
         </div>
         <div class="row-actions">
@@ -917,11 +930,38 @@ function populateControlCourseSelect() {
   });
 }
 
+function populateTestGroupSelect(selectedId) {
+  const select = document.getElementById("at_test_group_id");
+  select.innerHTML = `<option value="">— Guruhga bog'lamaslik —</option>`;
+  currentTestSubjectCards.forEach(card => {
+    const groups = currentTestGroups.filter(g => g.subject_card_id === card.id);
+    if (groups.length === 0) return;
+    const optgroup = document.createElement("optgroup");
+    optgroup.label = `${card.icon || "📘"} ${card.title}`;
+    groups.forEach(g => {
+      const opt = document.createElement("option");
+      opt.value = g.id;
+      opt.textContent = g.title;
+      optgroup.appendChild(opt);
+    });
+    select.appendChild(optgroup);
+  });
+  select.value = selectedId ? String(selectedId) : "";
+}
+
+function updatePracticeGroupVisibility() {
+  const testKind = document.getElementById("at_test_kind").value;
+  const isControl = document.getElementById("at_is_control_test").checked;
+  document.getElementById("atPracticeGroupWrap").classList.toggle("hidden", testKind !== "practice" || isControl);
+}
+
 function openAdminTestForm(test) {
   document.getElementById("adminTestForm").classList.remove("hidden");
   document.getElementById("adminQuestionsPanel").classList.add("hidden");
   document.getElementById("adminControlAccessPanel").classList.add("hidden");
   document.getElementById("adminControlResultsPanel").classList.add("hidden");
+  document.getElementById("adminTestSubjectCardsPanel").classList.add("hidden");
+  document.getElementById("adminTestGroupsPanel").classList.add("hidden");
   document.getElementById("adminTestFormTitle").textContent = test ? "Testni tahrirlash" : "Yangi test";
   document.getElementById("at_id").value = test ? test.id : "";
   document.getElementById("at_subject").value = test ? test.subject : "";
@@ -940,16 +980,145 @@ function openAdminTestForm(test) {
   document.getElementById("at_test_kind").value = (test && test.test_kind) ? test.test_kind : "practice";
 
   populateControlCourseSelect();
+  populateTestGroupSelect(test ? test.test_group_id : null);
   const isControl = test ? Boolean(test.is_control_test) : false;
   document.getElementById("at_is_control_test").checked = isControl;
   document.getElementById("atControlCourseWrap").classList.toggle("hidden", !isControl);
   if (test && test.course_id) document.getElementById("at_course_id").value = String(test.course_id);
+  updatePracticeGroupVisibility();
 }
 
 async function deleteAdminTest(id) {
   if (!confirm("Bu testni butunlay o'chirmoqchimisiz? Barcha savollar ham o'chadi.")) return;
   await apiFetch(`/api/admin/tests/${id}`, { method: "DELETE" });
   loadAdminTests();
+}
+
+// ---------- Mavzuli test: Fan kartalari ----------
+
+async function openAdminTestSubjectCards() {
+  document.getElementById("adminTestSubjectCardsPanel").classList.remove("hidden");
+  document.getElementById("adminTestGroupsPanel").classList.add("hidden");
+  document.getElementById("adminTestForm").classList.add("hidden");
+  resetTestSubjectCardForm();
+  await renderAdminTestSubjectCards();
+}
+
+function resetTestSubjectCardForm() {
+  document.getElementById("tsc_id").value = "";
+  document.getElementById("tsc_title").value = "";
+  document.getElementById("tsc_icon").value = "📘";
+  document.getElementById("tsc_color_key").value = "teal";
+  document.getElementById("tsc_order_num").value = 0;
+  document.getElementById("tsc_is_active").value = "1";
+}
+
+async function renderAdminTestSubjectCards() {
+  const res = await apiFetch(`/api/admin/test-subject-cards`);
+  const data = await res.json();
+  currentTestSubjectCards = data.cards;
+  const box = document.getElementById("adminTestSubjectCardsList");
+  box.innerHTML = "";
+  if (data.cards.length === 0) box.innerHTML = emptyHtml("Hali fan qo'shilmagan");
+  data.cards.forEach(card => {
+    const row = document.createElement("div");
+    row.className = "admin-row";
+    row.innerHTML = `
+      <div class="emoji">${card.icon || "📘"}</div>
+      <div class="info">
+        <div class="t">${card.title}${card.is_active ? "" : " (yashirin)"}</div>
+        <div class="s">Rang: ${card.color_key}</div>
+      </div>
+      <div class="row-actions">
+        <button data-a="edit">Tahrirlash</button>
+        <button data-a="delete" class="danger">O'chirish</button>
+      </div>
+    `;
+    row.querySelector('[data-a="edit"]').onclick = () => {
+      document.getElementById("tsc_id").value = card.id;
+      document.getElementById("tsc_title").value = card.title;
+      document.getElementById("tsc_icon").value = card.icon || "📘";
+      document.getElementById("tsc_color_key").value = card.color_key || "teal";
+      document.getElementById("tsc_order_num").value = card.order_num;
+      document.getElementById("tsc_is_active").value = String(card.is_active);
+    };
+    row.querySelector('[data-a="delete"]').onclick = async () => {
+      if (!confirm(`"${card.title}" fanini o'chirmoqchimisiz? Uning barcha guruhlari ham o'chadi.`)) return;
+      await apiFetch(`/api/admin/test-subject-cards/${card.id}`, { method: "DELETE" });
+      renderAdminTestSubjectCards();
+    };
+    box.appendChild(row);
+  });
+}
+
+// ---------- Mavzuli test: Guruhlar ----------
+
+async function openAdminTestGroups() {
+  document.getElementById("adminTestGroupsPanel").classList.remove("hidden");
+  document.getElementById("adminTestSubjectCardsPanel").classList.add("hidden");
+  document.getElementById("adminTestForm").classList.add("hidden");
+  resetTestGroupForm();
+  populateSubjectCardSelectForGroupForm();
+  await renderAdminTestGroups();
+}
+
+function populateSubjectCardSelectForGroupForm() {
+  const select = document.getElementById("tg_subject_card_id");
+  select.innerHTML = "";
+  currentTestSubjectCards.forEach(card => {
+    const opt = document.createElement("option");
+    opt.value = card.id;
+    opt.textContent = `${card.icon || "📘"} ${card.title}`;
+    select.appendChild(opt);
+  });
+}
+
+function resetTestGroupForm() {
+  document.getElementById("tg_id").value = "";
+  document.getElementById("tg_title").value = "";
+  document.getElementById("tg_subtitle").value = "";
+  document.getElementById("tg_icon").value = "📂";
+  document.getElementById("tg_order_num").value = 0;
+  document.getElementById("tg_is_active").value = "1";
+}
+
+async function renderAdminTestGroups() {
+  const res = await apiFetch(`/api/admin/test-groups`);
+  const data = await res.json();
+  currentTestGroups = data.groups;
+  const box = document.getElementById("adminTestGroupsList");
+  box.innerHTML = "";
+  if (data.groups.length === 0) box.innerHTML = emptyHtml("Hali guruh qo'shilmagan");
+  data.groups.forEach(g => {
+    const row = document.createElement("div");
+    row.className = "admin-row";
+    row.innerHTML = `
+      <div class="emoji">${g.icon || "📂"}</div>
+      <div class="info">
+        <div class="t">${g.title}${g.is_active ? "" : " (yashirin)"}</div>
+        <div class="s">${g.subject_title} · tartib: ${g.order_num}${g.subtitle ? " · " + g.subtitle : ""}</div>
+      </div>
+      <div class="row-actions">
+        <button data-a="edit">Tahrirlash</button>
+        <button data-a="delete" class="danger">O'chirish</button>
+      </div>
+    `;
+    row.querySelector('[data-a="edit"]').onclick = () => {
+      document.getElementById("tg_id").value = g.id;
+      document.getElementById("tg_subject_card_id").value = String(g.subject_card_id);
+      document.getElementById("tg_title").value = g.title;
+      document.getElementById("tg_subtitle").value = g.subtitle || "";
+      document.getElementById("tg_icon").value = g.icon || "📂";
+      document.getElementById("tg_order_num").value = g.order_num;
+      document.getElementById("tg_is_active").value = String(g.is_active);
+    };
+    row.querySelector('[data-a="delete"]').onclick = async () => {
+      if (!confirm(`"${g.title}" guruhini o'chirmoqchimisiz?`)) return;
+      await apiFetch(`/api/admin/test-groups/${g.id}`, { method: "DELETE" });
+      renderAdminTestGroups();
+    };
+    box.appendChild(row);
+  });
 }
 
 // ---------- Attestatsiya: E'tirozlar ----------
@@ -1377,9 +1546,50 @@ export function initAdminModule() {
   document.getElementById("adminNewTestBtn").addEventListener("click", () => openAdminTestForm(null));
   document.getElementById("adminCloseTestForm").addEventListener("click", () => document.getElementById("adminTestForm").classList.add("hidden"));
 
+  document.getElementById("adminManageTestSubjectsBtn").addEventListener("click", () => openAdminTestSubjectCards());
+  document.getElementById("adminCloseTestSubjectCards").addEventListener("click", () => document.getElementById("adminTestSubjectCardsPanel").classList.add("hidden"));
+
+  document.getElementById("testSubjectCardFormEl").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const id = document.getElementById("tsc_id").value;
+    const data = {
+      title: document.getElementById("tsc_title").value,
+      icon: document.getElementById("tsc_icon").value || "📘",
+      color_key: document.getElementById("tsc_color_key").value,
+      order_num: parseInt(document.getElementById("tsc_order_num").value),
+      is_active: parseInt(document.getElementById("tsc_is_active").value)
+    };
+    if (id) await apiFetch(`/api/admin/test-subject-cards/${id}`, { method: "PUT", body: JSON.stringify(data) });
+    else await apiFetch(`/api/admin/test-subject-cards`, { method: "POST", body: JSON.stringify(data) });
+    resetTestSubjectCardForm();
+    renderAdminTestSubjectCards();
+  });
+
+  document.getElementById("adminManageTestGroupsBtn").addEventListener("click", () => openAdminTestGroups());
+  document.getElementById("adminCloseTestGroups").addEventListener("click", () => document.getElementById("adminTestGroupsPanel").classList.add("hidden"));
+
+  document.getElementById("testGroupFormEl").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const id = document.getElementById("tg_id").value;
+    const data = {
+      subject_card_id: parseInt(document.getElementById("tg_subject_card_id").value),
+      title: document.getElementById("tg_title").value,
+      subtitle: document.getElementById("tg_subtitle").value,
+      icon: document.getElementById("tg_icon").value || "📂",
+      order_num: parseInt(document.getElementById("tg_order_num").value),
+      is_active: parseInt(document.getElementById("tg_is_active").value)
+    };
+    if (id) await apiFetch(`/api/admin/test-groups/${id}`, { method: "PUT", body: JSON.stringify(data) });
+    else await apiFetch(`/api/admin/test-groups`, { method: "POST", body: JSON.stringify(data) });
+    resetTestGroupForm();
+    renderAdminTestGroups();
+  });
+
   document.getElementById("at_is_control_test").addEventListener("change", (e) => {
     document.getElementById("atControlCourseWrap").classList.toggle("hidden", !e.target.checked);
+    updatePracticeGroupVisibility();
   });
+  document.getElementById("at_test_kind").addEventListener("change", () => updatePracticeGroupVisibility());
 
   document.getElementById("testFormEl").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1390,6 +1600,7 @@ export function initAdminModule() {
     const rawTimeLimit = hoursMinutesToSeconds(hoursVal, minutesVal);
     const isControlTest = document.getElementById("at_is_control_test").checked;
     const rawCourseId = document.getElementById("at_course_id").value;
+    const rawGroupId = document.getElementById("at_test_group_id").value;
     const data = {
       subject: document.getElementById("at_subject").value,
       title: document.getElementById("at_title").value,
@@ -1401,7 +1612,8 @@ export function initAdminModule() {
       // Kurs ixtiyoriy — nazorat testi bo'lsa ham kursga bog'lamaslik mumkin,
       // chunki kirish huquqi endi asosan "Talabalar" ro'yxati orqali beriladi.
       course_id: (isControlTest && rawCourseId) ? parseInt(rawCourseId) : null,
-      test_kind: document.getElementById("at_test_kind").value
+      test_kind: document.getElementById("at_test_kind").value,
+      test_group_id: (!isControlTest && rawGroupId) ? parseInt(rawGroupId) : null
     };
     if (id) await apiFetch(`/api/admin/tests/${id}`, { method: "PUT", body: JSON.stringify(data) });
     else await apiFetch(`/api/admin/tests`, { method: "POST", body: JSON.stringify(data) });
