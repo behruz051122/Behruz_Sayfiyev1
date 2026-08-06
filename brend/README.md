@@ -41,6 +41,25 @@ Nishon + **BEHRUZ SAYFIYEV** / KIMYO · BIOLOGIYA.
 Prezentatsiya sarlavhasi, video intro/outro, kitob muqovasi, banner, vizitka —
 ismingiz ko'rinishi kerak bo'lgan **hamma joyda shu ishlatiladi**.
 
+## 4. Kvadrat lokap (`kvadrat/` papkasi)
+
+`kvadrat/kvadrat_2048.png` · `_1080.png` · `_1024.png` · `_512.png`
+
+Nishon tepada, ostida **Behruz Sayfiyev** va **KIMYO · BIOLOGIYA**.
+To'q ko'k fon (`#0a0f1c`) + nishon ortida yumshoq nur.
+
+Qayerda ishlatiladi:
+
+- Instagram va YouTube **profil rasmi**
+- post muqovasi, karusel birinchi sahifasi
+- video thumbnail fonи, intro/outro
+- prezentatsiya sarlavha slaydi
+- kitob orqa muqovasi, sertifikat blankasi
+
+**Telegram bot avatariga qo'ymang** — 40 px da yozuv o'qilmaydi, u yerda
+`avatar_1024.png` ishlatiladi. `kvadrat/compare_sq.png` da 4 xil nishon
+varianti taqqoslangan (arxiv sifatida saqlangan).
+
 ## Foydalanish qoidalari
 
 1. **Minimal o'lcham:** avatar 40 px, kontur nishon 32 px, lokap 160 px (eni).
