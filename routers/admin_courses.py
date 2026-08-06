@@ -12,25 +12,59 @@ router = APIRouter(prefix="/api/admin", tags=["admin-courses"])
 @router.get("/courses")
 def admin_list_courses(admin=Depends(require_admin)):
     courses = db.get_all_courses(only_active=False)
+    category_map = db.get_category_ids_for_courses([c["id"] for c in courses])
     for c in courses:
         c["lessons_count"] = db.count_course_lessons(c["id"])
+        c["category_ids"] = category_map.get(c["id"], [])
     return {"courses": courses}
 
 
 @router.post("/courses")
 def admin_create_course(data: dict = Body(...), admin=Depends(require_admin)):
-    return {"id": db.create_course(data)}
+    course_id = db.create_course(data)
+    if "category_ids" in data:
+        db.set_course_categories(course_id, data["category_ids"])
+    return {"id": course_id}
 
 
 @router.put("/courses/{course_id}")
 def admin_update_course(course_id: int, data: dict = Body(...), admin=Depends(require_admin)):
     db.update_course(course_id, data)
+    if "category_ids" in data:
+        db.set_course_categories(course_id, data["category_ids"])
     return {"ok": True}
 
 
 @router.delete("/courses/{course_id}")
 def admin_delete_course(course_id: int, admin=Depends(require_admin)):
     db.delete_course(course_id)
+    return {"ok": True}
+
+
+# ---------- Kurs bo'limlari (kategoriyalari) ----------
+# Admin o'zi istalgan nomda bo'lim yaratadi va kurslarni (bir nechtasiga
+# baravar) shu bo'limlarga biriktiradi — course_type kabi qattiq
+# belgilangan 2 ta variant o'rniga to'liq moslashuvchan tizim.
+
+@router.get("/course-categories")
+def admin_list_course_categories(admin=Depends(require_admin)):
+    return {"categories": db.get_course_categories(only_active=False)}
+
+
+@router.post("/course-categories")
+def admin_create_course_category(data: dict = Body(...), admin=Depends(require_admin)):
+    return {"id": db.create_course_category(data)}
+
+
+@router.put("/course-categories/{category_id}")
+def admin_update_course_category(category_id: int, data: dict = Body(...), admin=Depends(require_admin)):
+    db.update_course_category(category_id, data)
+    return {"ok": True}
+
+
+@router.delete("/course-categories/{category_id}")
+def admin_delete_course_category(category_id: int, admin=Depends(require_admin)):
+    db.delete_course_category(category_id)
     return {"ok": True}
 
 

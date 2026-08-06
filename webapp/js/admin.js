@@ -18,6 +18,7 @@ function hoursMinutesToSeconds(hoursStr, minutesStr) {
 }
 
 let currentAdminCourses = [];
+let currentAdminCourseCategories = [];
 let currentAdminTests = [];
 let objectionsStatusFilter = "pending";
 
@@ -517,24 +518,35 @@ export async function loadAdminCourses() {
   document.getElementById("adminParagraphsPanel").classList.add("hidden");
   document.getElementById("adminLessonsPanel").classList.add("hidden");
   document.getElementById("adminPricingTiersPanel").classList.add("hidden");
+  document.getElementById("adminCourseCategoriesPanel").classList.add("hidden");
   const box = document.getElementById("adminCoursesList");
   box.innerHTML = skeletonCards(2);
   try {
-    const res = await apiFetch(`/api/admin/courses`);
-    const data = await res.json();
+    const [coursesRes, categoriesRes] = await Promise.all([
+      apiFetch(`/api/admin/courses`),
+      apiFetch(`/api/admin/course-categories`)
+    ]);
+    const data = await coursesRes.json();
+    const categoriesData = await categoriesRes.json();
     currentAdminCourses = data.courses;
+    currentAdminCourseCategories = categoriesData.categories;
+    const categoryById = Object.fromEntries(currentAdminCourseCategories.map(c => [c.id, c]));
     box.innerHTML = "";
     currentAdminCourses.forEach(c => {
       const row = document.createElement("div");
       row.className = "admin-row";
       const accessLabel = c.is_free ? "Bepul" : (c.price > 0 ? c.price.toLocaleString() + " so'm" : c.required_referrals + " taklif");
-      const courseTypeBadge = c.course_type === "nazoratli" ? `<span class="control-badge">🎓 NAZORATLI</span>` : "";
+      const categoryBadges = (c.category_ids || [])
+        .map(cid => categoryById[cid])
+        .filter(Boolean)
+        .map(cat => `<span class="control-badge">${cat.icon || "📁"} ${cat.title.toUpperCase()}</span>`)
+        .join("");
       const pricingBtn = !c.is_free ? `<button data-a="pricing">💳 Paketlar</button>` : "";
       row.innerHTML = `
         <div class="emoji">${c.thumbnail_emoji || "📘"}</div>
         <div class="info">
-          <div class="t">${c.title}${c.is_active ? "" : " (yashirin)"}${courseTypeBadge}</div>
-          <div class="s">${c.subject} · ${c.resource_type === "book" ? "Kitob" : "Kurs"} · ${c.lessons_count} dars · ${accessLabel}</div>
+          <div class="t">${c.title}${c.is_active ? "" : " (yashirin)"}${categoryBadges}</div>
+          <div class="s">${c.subject} · ${c.resource_type === "book" ? "Kitob" : "Kurs"} · ${c.lessons_count} dars${c.lessons_count_override ? " (qo'lda)" : ""} · ${accessLabel}</div>
         </div>
         <div class="row-actions">
           <button data-a="paragraphs">Bo'limlar</button>
@@ -572,6 +584,7 @@ function openAdminCourseForm(course) {
   document.getElementById("adminParagraphsPanel").classList.add("hidden");
   document.getElementById("adminLessonsPanel").classList.add("hidden");
   document.getElementById("adminPricingTiersPanel").classList.add("hidden");
+  document.getElementById("adminCourseCategoriesPanel").classList.add("hidden");
   document.getElementById("adminCourseFormTitle").textContent = course ? "Kursni tahrirlash" : "Yangi kurs";
   document.getElementById("ac_id").value = course ? course.id : "";
   document.getElementById("ac_title").value = course ? course.title : "";
@@ -584,10 +597,26 @@ function openAdminCourseForm(course) {
   document.getElementById("ac_duration_days").value = course && course.duration_days ? course.duration_days : "";
   document.getElementById("ac_students_count").value = course ? (course.students_count || 0) : 0;
   document.getElementById("ac_duration_text").value = course ? (course.duration_text || "") : "";
+  document.getElementById("ac_lessons_override").value = course && course.lessons_count_override ? course.lessons_count_override : "";
   document.getElementById("ac_thumbnail_emoji").value = course ? (course.thumbnail_emoji || "📘") : "📘";
   document.getElementById("ac_order_num").value = course ? course.order_num : 0;
   document.getElementById("ac_is_active").value = course ? String(course.is_active) : "1";
-  document.getElementById("ac_course_type").value = (course && course.course_type) ? course.course_type : "mustaqil";
+  renderCourseCategoryCheckboxes(course ? (course.category_ids || []) : []);
+}
+
+function renderCourseCategoryCheckboxes(selectedIds) {
+  const box = document.getElementById("ac_category_checkboxes");
+  box.innerHTML = "";
+  if (currentAdminCourseCategories.length === 0) {
+    box.innerHTML = `<div class="admin-checkbox-list-empty">Hali guruh yaratilmagan — yuqoridagi "🗂 Guruhlar" tugmasi orqali qo'shing.</div>`;
+    return;
+  }
+  currentAdminCourseCategories.forEach(cat => {
+    const label = document.createElement("label");
+    label.className = "checkbox-label";
+    label.innerHTML = `<input type="checkbox" value="${cat.id}" ${selectedIds.includes(cat.id) ? "checked" : ""}><span>${cat.icon || "📁"} ${cat.title}</span>`;
+    box.appendChild(label);
+  });
 }
 
 async function deleteAdminCourse(id) {
@@ -657,6 +686,68 @@ async function renderAdminPricingTiers(courseId) {
       if (!confirm("Bu paketni o'chirmoqchimisiz?")) return;
       await apiFetch(`/api/admin/pricing-tiers/${t.id}`, { method: "DELETE" });
       renderAdminPricingTiers(courseId);
+    };
+    box.appendChild(row);
+  });
+}
+
+// ---------- Kurs guruhlari (kategoriyalari) ----------
+// Admin o'zi istalgan nomda guruh yaratadi (masalan "Nazoratli", "Mustaqil",
+// "Bepul kurs") va kurs formasida har bir kursni bir nechta guruhga baravar
+// biriktiradi. Bu barcha kurslar uchun umumiy (global) ro'yxat.
+
+async function openAdminCourseCategories() {
+  document.getElementById("adminCourseCategoriesPanel").classList.remove("hidden");
+  document.getElementById("adminCourseForm").classList.add("hidden");
+  document.getElementById("adminParagraphsPanel").classList.add("hidden");
+  document.getElementById("adminLessonsPanel").classList.add("hidden");
+  document.getElementById("adminPricingTiersPanel").classList.add("hidden");
+  resetCourseCategoryForm();
+  await renderAdminCourseCategories();
+}
+
+function resetCourseCategoryForm() {
+  document.getElementById("cc_id").value = "";
+  document.getElementById("cc_title").value = "";
+  document.getElementById("cc_subtitle").value = "";
+  document.getElementById("cc_icon").value = "📁";
+  document.getElementById("cc_order_num").value = 0;
+  document.getElementById("cc_is_active").value = "1";
+}
+
+async function renderAdminCourseCategories() {
+  const res = await apiFetch(`/api/admin/course-categories`);
+  const data = await res.json();
+  currentAdminCourseCategories = data.categories;
+  const box = document.getElementById("adminCourseCategoriesList");
+  box.innerHTML = "";
+  if (data.categories.length === 0) box.innerHTML = emptyHtml("Hali guruh qo'shilmagan");
+  data.categories.forEach(cat => {
+    const row = document.createElement("div");
+    row.className = "admin-row";
+    row.innerHTML = `
+      <div class="emoji">${cat.icon || "📁"}</div>
+      <div class="info">
+        <div class="t">${cat.title}${cat.is_active ? "" : " (yashirin)"}</div>
+        <div class="s">${cat.subtitle || ""}</div>
+      </div>
+      <div class="row-actions">
+        <button data-a="edit">Tahrirlash</button>
+        <button data-a="delete" class="danger">O'chirish</button>
+      </div>
+    `;
+    row.querySelector('[data-a="edit"]').onclick = () => {
+      document.getElementById("cc_id").value = cat.id;
+      document.getElementById("cc_title").value = cat.title;
+      document.getElementById("cc_subtitle").value = cat.subtitle || "";
+      document.getElementById("cc_icon").value = cat.icon || "📁";
+      document.getElementById("cc_order_num").value = cat.order_num;
+      document.getElementById("cc_is_active").value = String(cat.is_active);
+    };
+    row.querySelector('[data-a="delete"]').onclick = async () => {
+      if (!confirm(`"${cat.title}" guruhini o'chirmoqchimisiz? Unga bog'langan kurslardan ham bu guruh olib tashlanadi (kurslarning o'zi o'chmaydi).`)) return;
+      await apiFetch(`/api/admin/course-categories/${cat.id}`, { method: "DELETE" });
+      renderAdminCourseCategories();
     };
     box.appendChild(row);
   });
@@ -1157,6 +1248,7 @@ export function initAdminModule() {
   document.getElementById("courseFormEl").addEventListener("submit", async (e) => {
     e.preventDefault();
     const id = document.getElementById("ac_id").value;
+    const categoryIds = Array.from(document.querySelectorAll("#ac_category_checkboxes input:checked")).map(el => parseInt(el.value));
     const data = {
       title: document.getElementById("ac_title").value,
       subject: document.getElementById("ac_subject").value,
@@ -1168,15 +1260,35 @@ export function initAdminModule() {
       duration_days: document.getElementById("ac_duration_days").value || null,
       students_count: parseInt(document.getElementById("ac_students_count").value),
       duration_text: document.getElementById("ac_duration_text").value,
+      lessons_count_override: document.getElementById("ac_lessons_override").value || null,
       thumbnail_emoji: document.getElementById("ac_thumbnail_emoji").value,
       order_num: parseInt(document.getElementById("ac_order_num").value),
       is_active: parseInt(document.getElementById("ac_is_active").value),
-      course_type: document.getElementById("ac_course_type").value
+      category_ids: categoryIds
     };
     if (id) await apiFetch(`/api/admin/courses/${id}`, { method: "PUT", body: JSON.stringify(data) });
     else await apiFetch(`/api/admin/courses`, { method: "POST", body: JSON.stringify(data) });
     document.getElementById("adminCourseForm").classList.add("hidden");
     loadAdminCourses();
+  });
+
+  document.getElementById("adminManageCategoriesBtn").addEventListener("click", () => openAdminCourseCategories());
+  document.getElementById("adminCloseCourseCategories").addEventListener("click", () => document.getElementById("adminCourseCategoriesPanel").classList.add("hidden"));
+
+  document.getElementById("courseCategoryFormEl").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const id = document.getElementById("cc_id").value;
+    const data = {
+      title: document.getElementById("cc_title").value,
+      subtitle: document.getElementById("cc_subtitle").value,
+      icon: document.getElementById("cc_icon").value || "📁",
+      order_num: parseInt(document.getElementById("cc_order_num").value),
+      is_active: parseInt(document.getElementById("cc_is_active").value)
+    };
+    if (id) await apiFetch(`/api/admin/course-categories/${id}`, { method: "PUT", body: JSON.stringify(data) });
+    else await apiFetch(`/api/admin/course-categories`, { method: "POST", body: JSON.stringify(data) });
+    resetCourseCategoryForm();
+    renderAdminCourseCategories();
   });
 
   document.getElementById("adminClosePricingTiers").addEventListener("click", () => document.getElementById("adminPricingTiersPanel").classList.add("hidden"));

@@ -137,12 +137,7 @@
         <span class="search-icon" aria-hidden="true">🔍</span>
         <input type="search" id="courseListSearchInput" class="search-input" placeholder="Kurs qidirish...">
       </div>
-      <div class="filter-row" id="courseTypeFilterRow">
-        <button class="filter-chip active" data-ctype="all">Barchasi</button>
-        <button class="filter-chip" data-ctype="nazoratli">Nazoratli</button>
-        <button class="filter-chip" data-ctype="mustaqil">Mustaqil</button>
-        <button class="filter-chip" data-ctype="free">Bepul</button>
-      </div>
+      <div class="filter-row" id="courseTypeFilterRow"></div>
 
       <div id="coursesGroupedList"></div>
     </section>
@@ -597,9 +592,39 @@
       <div class="admin-section">
         <div class="admin-section-head">
           <h3>Kurslar / Kitoblar</h3>
-          <button id="adminNewCourseBtn" class="gold-btn small">+ Yangi qo'shish</button>
+          <div style="display:flex;gap:8px;">
+            <button id="adminManageCategoriesBtn" class="gold-btn small" style="background:var(--surface2);color:var(--text);">🗂 Guruhlar</button>
+            <button id="adminNewCourseBtn" class="gold-btn small">+ Yangi qo'shish</button>
+          </div>
         </div>
         <div id="adminCoursesList" class="admin-list"></div>
+      </div>
+
+      <div id="adminCourseCategoriesPanel" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3>Kurs guruhlari</h3>
+          <button id="adminCloseCourseCategories" class="icon-btn" aria-label="Yopish">✕</button>
+        </div>
+        <p style="font-size:11px;color:var(--text-dim);margin:-4px 0 10px;">
+          Bu yerda o'zingiz istalgan nomda guruh (masalan "Nazoratli", "Mustaqil", "Bepul kurs")
+          yaratasiz. Har bir kursni pastdagi kurs formasida bir nechta guruhga baravar
+          biriktirishingiz mumkin — kurs shu guruhlarning hammasida ko'rinadi.
+        </p>
+        <div id="adminCourseCategoriesList" class="admin-list"></div>
+        <form id="courseCategoryFormEl" class="admin-form">
+          <input type="hidden" id="cc_id">
+          <label>Guruh nomi (masalan: Nazoratli) <input id="cc_title" required></label>
+          <label>Qo'shimcha matn (ixtiyoriy, masalan: JURNAL · DAVOMAT · MENTOR) <input id="cc_subtitle"></label>
+          <label>Emoji <input id="cc_icon" value="📁"></label>
+          <label>Tartib raqami <input id="cc_order_num" type="number" value="0"></label>
+          <label>Faolmi?
+            <select id="cc_is_active">
+              <option value="1">Ha</option>
+              <option value="0">Yo'q (yashirilgan)</option>
+            </select>
+          </label>
+          <button type="submit" class="gold-btn">Guruhni saqlash</button>
+        </form>
       </div>
 
       <div id="adminCourseForm" class="admin-section hidden">
@@ -618,11 +643,8 @@
             </select>
           </label>
           <label>Tavsif <textarea id="ac_description"></textarea></label>
-          <label>Kurs turi
-            <select id="ac_course_type">
-              <option value="mustaqil">🧑‍💻 Mustaqil — o'z sur'atida</option>
-              <option value="nazoratli">🎓 Nazoratli — jurnal · davomat · mentor</option>
-            </select>
+          <label>Kurs guruhlari (bir nechtasini tanlash mumkin)
+            <div id="ac_category_checkboxes" class="admin-checkbox-list"></div>
           </label>
           <label>Kirish turi
             <select id="ac_is_free">
@@ -635,6 +657,7 @@
           <label>Obuna muddati, kun (bo'sh = muddatsiz) <input id="ac_duration_days" type="number" min="0"></label>
           <label>O'quvchilar soni <input id="ac_students_count" type="number" min="0" value="0"></label>
           <label>Muddat matni (masalan: 3 oy) <input id="ac_duration_text"></label>
+          <label>Jami darslar soni (ixtiyoriy — bo'sh bo'lsa platformadagi haqiqiy darslar soni ko'rsatiladi) <input id="ac_lessons_override" type="number" min="0"></label>
           <label>Emoji <input id="ac_thumbnail_emoji" value="📘"></label>
           <label>Tartib raqami <input id="ac_order_num" type="number" value="0"></label>
           <label>Faolmi?

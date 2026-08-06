@@ -888,6 +888,11 @@ a:focus-visible {
 .checkbox-label input[type="checkbox"] { width: 18px; height: 18px; margin-top: 2px; flex-shrink: 0; accent-color: var(--gold); }
 .checkbox-label span { font-size: 12px; color: var(--text); line-height: 1.4; }
 
+/* Kurs guruhlari (kategoriyalari) ko'p-tanlov ro'yxati — kurs formasida */
+.admin-checkbox-list { display: flex; flex-direction: column; gap: 6px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.admin-checkbox-list .checkbox-label { padding: 3px 0; }
+.admin-checkbox-list-empty { font-size: 11px; color: var(--text-dim); padding: 4px 0; }
+
 .control-badge { display: inline-block; font-size: 9px; font-weight: 800; background: rgba(124,92,255,0.15); color: var(--purple); padding: 2px 8px; border-radius: 20px; margin-left: 6px; vertical-align: middle; }
 
 /* ---------- Nazorat testi kartasi: qulflangan holat ---------- */

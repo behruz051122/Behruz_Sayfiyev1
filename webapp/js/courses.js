@@ -22,6 +22,10 @@ let subjectCoursesLoaded = false;
 let activeCourseSubject = null;
 let activeCourseTypeFilter = "all";
 let courseListSearchQuery = "";
+// Kurs "guruhlari" (kategoriyalari) — admin panelidan o'zi yaratadigan,
+// moslashuvchan bo'limlar ro'yxati (masalan "Nazoratli", "Mustaqil", "Bepul
+// kurs"). Avvalgi qattiq belgilangan Nazoratli/Mustaqil massiv o'rnini oldi.
+let courseCategories = [];
 // Kurs detali ekranidan "←" bosilganda qaysi ekranga qaytish kerakligini
 // eslab qoladi — Kurslar oqimi (yangi, guruhlangan) va Kitoblar oqimi (eski,
 // tekis ro'yxat) BITTA "screen-detail" ekranini ishlatadi, shuning uchun
@@ -72,9 +76,14 @@ export async function loadCourseSubjects() {
   const grid = document.getElementById("subjectSelectGrid");
   grid.innerHTML = skeletonCards(2);
   try {
-    const res = await apiFetch(`/api/courses?resource_type=course`);
-    const data = await res.json();
+    const [coursesRes, categoriesRes] = await Promise.all([
+      apiFetch(`/api/courses?resource_type=course`),
+      apiFetch(`/api/course-categories`)
+    ]);
+    const data = await coursesRes.json();
+    const categoriesData = await categoriesRes.json();
     allSubjectCourses = data.courses;
+    courseCategories = categoriesData.categories;
     subjectCoursesLoaded = true;
     renderSubjectLandingCards();
   } catch (e) {
@@ -127,7 +136,7 @@ function openSubjectCourseList(subject) {
   if (searchInput) searchInput.value = "";
   document.getElementById("coursesBySubjectTitle").textContent = subject;
   renderCourseSubjectTabs();
-  bindCourseTypeFilters();
+  renderCourseTypeFilters();
   bindCourseListSearch();
   bindCoursesBySubjectStaticButtons();
   renderGroupedCourseList();
@@ -161,16 +170,29 @@ function renderCourseSubjectTabs() {
   });
 }
 
-function bindCourseTypeFilters() {
-  document.querySelectorAll("#courseTypeFilterRow .filter-chip").forEach(chip => {
-    chip.classList.toggle("active", chip.getAttribute("data-ctype") === activeCourseTypeFilter);
+// Filter chip qatori endi admin o'zi yaratgan guruhlar asosida DINAMIK
+// quriladi ("Barchasi" va "Bepul" doim bor, o'rtada har bir faol guruh).
+function renderCourseTypeFilters() {
+  const row = document.getElementById("courseTypeFilterRow");
+  row.innerHTML = "";
+
+  const makeChip = (value, label) => {
+    const chip = document.createElement("button");
+    chip.className = "filter-chip" + (activeCourseTypeFilter === value ? " active" : "");
+    chip.textContent = label;
     chip.onclick = () => {
-      activeCourseTypeFilter = chip.getAttribute("data-ctype");
-      document.querySelectorAll("#courseTypeFilterRow .filter-chip").forEach(c => c.classList.remove("active"));
-      chip.classList.add("active");
+      activeCourseTypeFilter = value;
+      renderCourseTypeFilters();
       renderGroupedCourseList();
     };
+    return chip;
+  };
+
+  row.appendChild(makeChip("all", "Barchasi"));
+  courseCategories.forEach(cat => {
+    row.appendChild(makeChip(String(cat.id), `${cat.icon || ""} ${cat.title}`.trim()));
   });
+  row.appendChild(makeChip("free", "Bepul"));
 }
 
 function bindCourseListSearch() {
@@ -183,21 +205,17 @@ function bindCourseListSearch() {
   });
 }
 
-const COURSE_TYPE_GROUPS = [
-  { key: "nazoratli", title: "Nazoratli", subtitle: "JURNAL · DAVOMAT · MENTOR", icon: "📖" },
-  { key: "mustaqil", title: "Mustaqil", subtitle: "O'Z SUR'ATINGIZDA", icon: "🧑‍💻" },
-];
-
 function renderGroupedCourseList() {
   const container = document.getElementById("coursesGroupedList");
   container.innerHTML = "";
 
   const filtered = allSubjectCourses.filter(c => {
     if (c.subject !== activeCourseSubject) return false;
-    const courseType = c.course_type || "mustaqil";
-    if (activeCourseTypeFilter === "nazoratli" && courseType !== "nazoratli") return false;
-    if (activeCourseTypeFilter === "mustaqil" && courseType !== "mustaqil") return false;
+    const categoryIds = c.category_ids || [];
     if (activeCourseTypeFilter === "free" && !c.is_free) return false;
+    if (activeCourseTypeFilter !== "all" && activeCourseTypeFilter !== "free") {
+      if (!categoryIds.includes(parseInt(activeCourseTypeFilter))) return false;
+    }
     if (courseListSearchQuery && !(`${c.title} ${c.description || ""}`.toLowerCase().includes(courseListSearchQuery))) return false;
     return true;
   });
@@ -207,18 +225,21 @@ function renderGroupedCourseList() {
     return;
   }
 
-  COURSE_TYPE_GROUPS.forEach(group => {
-    const groupCourses = filtered.filter(c => (c.course_type || "mustaqil") === group.key);
+  // Bitta kurs bir nechta guruhga tegishli bo'lishi mumkin — shuning uchun
+  // har bir faol guruh o'ziga tegishli kurslarni ALOHIDA bo'lim sifatida
+  // ko'rsatadi (kurs bir nechta bo'limda takrorlanishi mumkin).
+  courseCategories.forEach(group => {
+    const groupCourses = filtered.filter(c => (c.category_ids || []).includes(group.id));
     if (groupCourses.length === 0) return;
 
     const section = document.createElement("div");
     section.className = "course-group";
     section.innerHTML = `
       <div class="course-group-head">
-        <div class="course-group-icon">${group.icon}</div>
+        <div class="course-group-icon">${group.icon || "📁"}</div>
         <div class="course-group-info">
           <div class="course-group-title">${group.title}</div>
-          <div class="course-group-sub">${group.subtitle}</div>
+          ${group.subtitle ? `<div class="course-group-sub">${group.subtitle}</div>` : ""}
         </div>
         <div class="course-group-count">${groupCourses.length}</div>
       </div>
@@ -228,6 +249,28 @@ function renderGroupedCourseList() {
     groupCourses.forEach(course => listEl.appendChild(buildCourseRowCard(course)));
     container.appendChild(section);
   });
+
+  // Hech qanday guruhga biriktirilmagan kurslar yo'qolib qolmasligi uchun
+  // "Boshqa" degan qo'shimcha bo'limda ko'rsatiladi.
+  const uncategorized = filtered.filter(c => (c.category_ids || []).length === 0);
+  if (uncategorized.length > 0) {
+    const section = document.createElement("div");
+    section.className = "course-group";
+    section.innerHTML = `
+      <div class="course-group-head">
+        <div class="course-group-icon">📁</div>
+        <div class="course-group-info">
+          <div class="course-group-title">Boshqa</div>
+          <div class="course-group-sub">GURUHGA BIRIKTIRILMAGAN</div>
+        </div>
+        <div class="course-group-count">${uncategorized.length}</div>
+      </div>
+      <div class="course-row-list"></div>
+    `;
+    const listEl = section.querySelector(".course-row-list");
+    uncategorized.forEach(course => listEl.appendChild(buildCourseRowCard(course)));
+    container.appendChild(section);
+  }
 }
 
 function buildCourseRowCard(course) {
@@ -372,9 +415,12 @@ function renderCourseList() {
 let selectedTierId = null;
 
 function buildCourseHero(course, totalLessons) {
-  const typeBadge = course.course_type === "nazoratli"
-    ? `<span class="hero-badge hero-badge-accent">🎓 NAZORATLI KURS</span>`
-    : `<span class="hero-badge hero-badge-accent">🧑‍💻 MUSTAQIL KURS</span>`;
+  // Kurs guruhlari endi admin o'zi yaratgan moslashuvchan ro'yxatdan keladi
+  // (course_type kabi qattiq belgilangan 2 variant o'rniga) — kurs bir
+  // nechta guruhga tegishli bo'lsa, HAMMASI badge sifatida ko'rsatiladi.
+  const categoryBadges = (course.categories || [])
+    .map(cat => `<span class="hero-badge hero-badge-accent">${cat.icon || "📁"} ${cat.title.toUpperCase()}</span>`)
+    .join("");
   const tiers = (course.pricing_tiers || []).filter(t => t.is_active);
   const thirdPill = course.is_free
     ? { num: "🔓", lbl: "Bepul kirish" }
@@ -383,7 +429,7 @@ function buildCourseHero(course, totalLessons) {
   return `
     <div class="course-hero">
       <div class="hero-badges">
-        ${typeBadge}
+        ${categoryBadges}
         <span class="hero-badge">${course.subject}</span>
       </div>
       <h1 class="hero-title">${course.title}</h1>
@@ -463,8 +509,13 @@ export async function openCourseDetail(courseId) {
     currentCourse = course;
     document.getElementById("detailTitle").textContent = course.title;
 
-    const totalLessons = course.paragraphs.reduce((a, p) => a + p.lessons_count, 0);
-    let html = buildCourseHero(course, totalLessons);
+    // Haqiqiy (platformadagi) darslar soni — "tugallandi" hisobi shunga
+    // asoslanadi. Hero'da ko'rsatiladigan son esa admin qo'lda kiritgan
+    // lessons_count qiymati (agar berilgan bo'lsa) — server shuni allaqachon
+    // hisoblab course.lessons_count'ga qo'ygan (aks holda haqiqiy son bilan bir xil).
+    const realLessonsTotal = course.paragraphs.reduce((a, p) => a + p.lessons_count, 0);
+    const displayLessonsTotal = course.lessons_count || realLessonsTotal;
+    let html = buildCourseHero(course, displayLessonsTotal);
 
     // "Bepul sinab ko'ring" — kurs yopiq bo'lsa-yu, admin belgilagan bepul
     // namuna darslar bo'lsa (Kelajakmediklari_bot'dagi kabi).
@@ -486,7 +537,7 @@ export async function openCourseDetail(courseId) {
     // Kurs 100% tugallangan bo'lsa — sertifikat yuklab olish bannerini ko'rsatamiz.
     if (course.unlocked) {
       const watchedLessons = course.paragraphs.reduce((a, p) => a + p.lessons.filter(l => l.watched).length, 0);
-      const isComplete = totalLessons > 0 && watchedLessons >= totalLessons;
+      const isComplete = realLessonsTotal > 0 && watchedLessons >= realLessonsTotal;
       if (isComplete) {
         html += `
           <div class="certificate-banner">

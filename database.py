@@ -134,6 +134,76 @@ def init_db():
             )
         """)
 
+        # "Jami darslar soni" — ba'zi kurslarda bir necha mavzu birlashib
+        # bitta "dars" deb hisoblanadi, shuning uchun haqiqiy video-darslar
+        # sonidan farq qilishi mumkin. Admin buni qo'lda kiritsa, hero'da
+        # avtomatik hisoblangan son o'rniga shu ko'rsatiladi. Bo'sh/NULL
+        # bo'lsa — avvalgidek platformadagi haqiqiy darslar soni ishlatiladi.
+        try:
+            cur.execute("ALTER TABLE courses ADD COLUMN lessons_count_override INTEGER")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # ustun allaqachon mavjud — muammo emas
+
+        # Kurs "bo'limlari" (kategoriyalari) — avval qattiq belgilangan
+        # 'nazoratli'/'mustaqil' course_type maydoni o'rniga, admin o'zi
+        # istalgan nomda bo'lim (masalan "Nazoratli", "Mustaqil", "Bepul
+        # kurs", "VIP") yaratib, har bir kursni BIR NECHTA bo'limga bir
+        # vaqtda biriktira oladi (ko'p-ko'pga bog'lanish).
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS course_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                subtitle TEXT,
+                icon TEXT DEFAULT '📁',
+                order_num INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS course_category_links (
+                course_id INTEGER NOT NULL,
+                category_id INTEGER NOT NULL,
+                PRIMARY KEY (course_id, category_id),
+                FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE,
+                FOREIGN KEY (category_id) REFERENCES course_categories (id) ON DELETE CASCADE
+            )
+        """)
+        conn.commit()
+
+        # Ko'chirish (migration): agar hali birorta bo'lim yaratilmagan bo'lsa,
+        # eski course_type ('nazoratli'/'mustaqil') asosida 2 ta default
+        # bo'lim yaratamiz va mavjud barcha kurslarni ularga avtomatik
+        # bog'laymiz — shunda hech qanday ma'lumot yo'qolmaydi va admin
+        # keyinchalik ularni o'zgartirishi/qo'shishi mumkin.
+        cur.execute("SELECT COUNT(*) as cnt FROM course_categories")
+        if cur.fetchone()["cnt"] == 0:
+            cur.execute("""
+                INSERT INTO course_categories (title, subtitle, icon, order_num, is_active)
+                VALUES ('Nazoratli', 'JURNAL · DAVOMAT · MENTOR', '📖', 1, 1)
+            """)
+            nazoratli_id = cur.lastrowid
+            cur.execute("""
+                INSERT INTO course_categories (title, subtitle, icon, order_num, is_active)
+                VALUES ('Mustaqil', 'O''Z SUR''ATINGIZDA', '🧑‍💻', 2, 1)
+            """)
+            mustaqil_id = cur.lastrowid
+            conn.commit()
+
+            cur.execute("SELECT id, course_type FROM courses")
+            for row in cur.fetchall():
+                target_id = nazoratli_id if row["course_type"] == "nazoratli" else mustaqil_id
+                try:
+                    cur.execute(
+                        "INSERT OR IGNORE INTO course_category_links (course_id, category_id) VALUES (?, ?)",
+                        (row["id"], target_id)
+                    )
+                except sqlite3.OperationalError:
+                    pass
+            conn.commit()
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS lessons (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -992,14 +1062,24 @@ def get_course(course_id: int):
         return dict(row) if row else None
 
 
+def _normalize_lessons_override(value):
+    """Bo'sh/0/None -> None (avtomatik hisoblanadi); aks holda butun son."""
+    if value in (None, "", 0, "0"):
+        return None
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
 def create_course(data: dict) -> int:
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
             INSERT INTO courses (title, subject, resource_type, description, is_free,
                 required_referrals, price, duration_days, duration_text, students_count,
-                thumbnail_emoji, order_num, is_active, course_type)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                thumbnail_emoji, order_num, is_active, course_type, lessons_count_override)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             data.get("title", ""), data.get("subject", ""), data.get("resource_type", "course"),
             data.get("description", ""), int(data.get("is_free", 1)),
@@ -1007,7 +1087,8 @@ def create_course(data: dict) -> int:
             data.get("duration_days") or None, data.get("duration_text", ""),
             int(data.get("students_count", 0)), data.get("thumbnail_emoji", "📘"),
             int(data.get("order_num", 0)), int(data.get("is_active", 1)),
-            data.get("course_type") or "mustaqil"
+            data.get("course_type") or "mustaqil",
+            _normalize_lessons_override(data.get("lessons_count_override"))
         ))
         conn.commit()
         return cur.lastrowid
@@ -1024,6 +1105,9 @@ def update_course(course_id: int, data: dict):
             if key in data:
                 fields.append(f"{key} = ?")
                 values.append(data[key] if data[key] != "" else None)
+        if "lessons_count_override" in data:
+            fields.append("lessons_count_override = ?")
+            values.append(_normalize_lessons_override(data["lessons_count_override"]))
         if fields:
             values.append(course_id)
             cur.execute(f"UPDATE courses SET {', '.join(fields)} WHERE id = ?", values)
@@ -1322,6 +1406,108 @@ def delete_pricing_tier(tier_id: int):
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("DELETE FROM course_pricing_tiers WHERE id = ?", (tier_id,))
+        conn.commit()
+
+
+# ---------- KURS BO'LIMLARI (KATEGORIYALARI) ----------
+# Admin o'zi istalgan nomda bo'lim yaratadi (masalan "Nazoratli", "Mustaqil",
+# "Bepul kurs") va har bir kursni bir nechta bo'limga bir vaqtda biriktira
+# oladi (course_category_links — ko'p-ko'pga jadval).
+
+def get_course_categories(only_active: bool = True):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = "SELECT * FROM course_categories WHERE 1=1"
+        params = []
+        if only_active:
+            query += " AND is_active = 1"
+        query += " ORDER BY order_num ASC, id ASC"
+        cur.execute(query, params)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_course_category(category_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM course_categories WHERE id = ?", (category_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def create_course_category(data: dict) -> int:
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO course_categories (title, subtitle, icon, order_num, is_active)
+            VALUES (?, ?, ?, ?, ?)
+        """, (
+            data.get("title", ""), data.get("subtitle", ""), data.get("icon") or "📁",
+            int(data.get("order_num", 0)), int(data.get("is_active", 1))
+        ))
+        conn.commit()
+        return cur.lastrowid
+
+
+def update_course_category(category_id: int, data: dict):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        fields, values = [], []
+        for key in ["title", "subtitle", "icon", "order_num", "is_active"]:
+            if key in data:
+                fields.append(f"{key} = ?")
+                values.append(data[key])
+        if fields:
+            values.append(category_id)
+            cur.execute(f"UPDATE course_categories SET {', '.join(fields)} WHERE id = ?", values)
+            conn.commit()
+
+
+def delete_course_category(category_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM course_categories WHERE id = ?", (category_id,))
+        conn.commit()
+
+
+def get_categories_for_course(course_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT cc.* FROM course_categories cc
+            JOIN course_category_links l ON l.category_id = cc.id
+            WHERE l.course_id = ?
+            ORDER BY cc.order_num ASC, cc.id ASC
+        """, (course_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_category_ids_for_courses(course_ids: list):
+    """Bir nechta kurs uchun category_id'lar map'ini (course_id -> [id,...]) qaytaradi — N+1 so'rovlardan qochish uchun."""
+    if not course_ids:
+        return {}
+    with get_connection() as conn:
+        cur = conn.cursor()
+        placeholders = ",".join("?" for _ in course_ids)
+        cur.execute(f"SELECT course_id, category_id FROM course_category_links WHERE course_id IN ({placeholders})", course_ids)
+        result = {cid: [] for cid in course_ids}
+        for row in cur.fetchall():
+            result[row["course_id"]].append(row["category_id"])
+        return result
+
+
+def set_course_categories(course_id: int, category_ids: list):
+    """Kursning bo'lim bog'lanishlarini berilgan ro'yxat bilan TO'LIQ almashtiradi."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM course_category_links WHERE course_id = ?", (course_id,))
+        for cid in category_ids or []:
+            try:
+                cur.execute(
+                    "INSERT OR IGNORE INTO course_category_links (course_id, category_id) VALUES (?, ?)",
+                    (course_id, int(cid))
+                )
+            except (ValueError, TypeError):
+                pass
         conn.commit()
 
 

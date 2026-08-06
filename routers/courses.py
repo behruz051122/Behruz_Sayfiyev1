@@ -7,15 +7,23 @@ import database as db
 router = APIRouter(prefix="/api", tags=["courses"])
 
 
+@router.get("/course-categories")
+def api_get_course_categories():
+    return {"categories": db.get_course_categories(only_active=True)}
+
+
 @router.get("/courses")
 def api_get_courses(resource_type: str = None, user=Depends(get_verified_telegram_user)):
     courses = db.get_all_courses(resource_type=resource_type)
+    category_map = db.get_category_ids_for_courses([c["id"] for c in courses])
     result = []
     for c in courses:
         access = db.compute_course_access(user["telegram_id"], c)
         c.update(access)
-        c["lessons_count"] = db.count_course_lessons(c["id"])
+        real_lessons_count = db.count_course_lessons(c["id"])
+        c["lessons_count"] = c.get("lessons_count_override") or real_lessons_count
         c["free_lessons_count"] = db.count_free_preview_lessons(c["id"])
+        c["category_ids"] = category_map.get(c["id"], [])
         result.append(c)
     return {"courses": result}
 
@@ -30,6 +38,7 @@ def api_get_course(course_id: int, user=Depends(get_verified_telegram_user)):
     access = db.compute_course_access(telegram_id, course)
     course.update(access)
     course["pricing_tiers"] = db.get_pricing_tiers(course_id)
+    course["categories"] = db.get_categories_for_course(course_id)
 
     paragraphs = db.get_paragraphs(course_id)
     watched_ids = set(db.get_watched_lesson_ids(telegram_id, course_id)) if course["unlocked"] else set()
@@ -63,6 +72,8 @@ def api_get_course(course_id: int, user=Depends(get_verified_telegram_user)):
         p["lessons"] = lessons
         p["lessons_count"] = db.count_paragraph_lessons(p["id"])
 
+    real_lessons_count = db.count_course_lessons(course_id)
+    course["lessons_count"] = course.get("lessons_count_override") or real_lessons_count
     course["paragraphs"] = paragraphs
     return course
 
