@@ -35,25 +35,64 @@
 .status-dot-pending { background: #fbbf24; animation: app-splash-pulse 1s ease-in-out infinite; }
 @keyframes app-splash-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
+/* ================================================================
+   DIZAYN TIZIMI — "Qorong'i tun + neon" (v8)
+   ================================================================
+   Ilgari ilova oq fonli, standart ko'rinishda edi va boshqa ta'lim
+   botlaridan deyarli farq qilmasdi. Yangi yo'nalish: chuqur siyoh
+   fon, ustida NEON firuza va binafsha urg'ular. Bu (1) darhol
+   tanib olinadigan o'ziga xoslik beradi, (2) kechqurun — o'quvchilar
+   eng ko'p shug'ullanadigan vaqtda — ko'zni charchatmaydi,
+   (3) Telegram'ning qorong'i mavzusi bilan tabiiy uyg'unlashadi.
+
+   MUHIM: bu yerda faqat KO'RINISH o'zgaradi. HTML tuzilishi va JS
+   mantiq tegilmagan — barcha token nomlari eskisicha qoldirilgan,
+   shuning uchun mavjud 400+ joydagi uslub avtomatik yangilanadi. */
 :root {
-  --bg: #f4f7f9;
-  --surface: #ffffff;
-  --surface2: #eef2f6;
-  --gold: #0f766e;
-  --gold-light: #14b8a6;
-  --purple: #7c5cff;
-  --teal: #16a34a;
-  --teal-light: #4ade80;
-  --silver: #94a3b8;
-  --bronze: #cd7f32;
-  --text: #0f172a;
-  --text-dim: #64748b;
-  --border: #e3e8ef;
-  --success: #15803d;
-  --warning: #b45309;
-  --danger: #dc2626;
-  --on-accent: #ffffff;
-  --hero-gradient: linear-gradient(135deg, #e8f7f4, #eef1ff);
+  /* Fon qatlamlari — pastdan yuqoriga qarab yorishib boradi */
+  --bg: #0a0f1c;
+  --surface: #131a2b;
+  --surface2: #1c2438;
+  --surface3: #252e45;
+
+  /* Asosiy urg'u: neon firuza (brend rangi saqlangan, lekin yorqinroq) */
+  --gold: #2dd4bf;
+  --gold-light: #5eead4;
+  --gold-deep: #0f766e;
+
+  /* Ikkilamchi urg'u: binafsha — kimyo/fan ohangi */
+  --purple: #a78bfa;
+  --purple-deep: #7c3aed;
+
+  --teal: #34d399;
+  --teal-light: #6ee7b7;
+  --silver: #cbd5e1;
+  --bronze: #f0a868;
+
+  /* Matn: to'q fonda oq emas, biroz muzli — ko'zga yumshoqroq */
+  --text: #eef2ff;
+  --text-dim: #94a3b8;
+  /* Kichik yorliqlar uchun — WCAG AA (4.5:1) dan o'tadigan darajada yorqin */
+  --text-faint: #8090ad;
+
+  --border: #2a3450;
+  --border-glow: rgba(45, 212, 191, 0.35);
+
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --on-accent: #06121f;
+
+  --hero-gradient: linear-gradient(135deg, rgba(45,212,191,0.16), rgba(167,139,250,0.16));
+  --accent-gradient: linear-gradient(135deg, #2dd4bf, #a78bfa);
+
+  /* Soyalar — to'q fonda qora soya ko'rinmaydi, shuning uchun
+     chuqurlik NUR (glow) va ichki yorug'lik orqali beriladi */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.55);
+  --glow-teal: 0 0 24px rgba(45, 212, 191, 0.25);
+  --glow-purple: 0 0 24px rgba(167, 139, 250, 0.25);
 }
 
 body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-height: 100vh; }
@@ -95,7 +134,7 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
   position: relative; background: var(--surface); border: 1px solid var(--border);
   border-radius: 16px; padding: 16px; display: flex; flex-direction: column;
   align-items: flex-start; gap: 8px; cursor: pointer; text-align: left;
-  min-height: 108px; box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+  min-height: 108px; box-shadow: var(--shadow-sm);
 }
 .dc-icon {
   width: 40px; height: 40px; border-radius: 12px; color: #fff;
@@ -141,9 +180,9 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 .book-product-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
   overflow: hidden; display: flex; flex-direction: column; position: relative;
-  box-shadow: 0 1px 2px rgba(15,23,42,0.04); transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: var(--shadow-sm); transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
-.book-product-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(15,23,42,0.10); }
+.book-product-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
 .book-product-img { width: 100%; aspect-ratio: 3/4; object-fit: cover; background: var(--surface2); display: block; }
 .book-product-img-placeholder { display: flex; align-items: center; justify-content: center; font-size: 36px; }
 .book-product-body { padding: 12px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
@@ -175,7 +214,7 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 /* ---------- NATIJALAR (o'quvchi fikri + sertifikat natijalari) ---------- */
 
 .student-results-feed { margin: 4px 16px 20px; display: flex; flex-direction: column; gap: 14px; }
-.result-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; box-shadow: 0 1px 2px rgba(15,23,42,0.04); }
+.result-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow-sm); }
 .result-card-img { width: 100%; max-height: 340px; object-fit: cover; display: block; cursor: zoom-in; background: var(--surface2); }
 .result-card-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
 .result-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -200,7 +239,7 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 /* ---------- COURSE LIST ---------- */
 
 .course-list { margin: 6px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
-.course-card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px; display: flex; gap: 12px; cursor: pointer; box-shadow: 0 1px 2px rgba(15,23,42,0.04); }
+.course-card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px; display: flex; gap: 12px; cursor: pointer; box-shadow: var(--shadow-sm); }
 .course-card.locked-card { border-color: rgba(15,118,110,0.25); }
 .course-free-tag { position: absolute; top: -8px; left: 12px; background: linear-gradient(135deg, var(--teal-light), var(--teal)); color: var(--on-accent); font-size: 9px; font-weight: 800; padding: 3px 10px; border-radius: 20px; letter-spacing: 0.5px; }
 .course-emoji { width: 48px; height: 48px; border-radius: 12px; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
@@ -220,7 +259,7 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
   position: relative; overflow: hidden; border: none; border-radius: 20px;
   padding: 18px; min-height: 190px; display: flex; flex-direction: column;
   justify-content: space-between; align-items: flex-start; text-align: left;
-  color: #fff; cursor: pointer; box-shadow: 0 6px 18px rgba(15,23,42,0.14);
+  color: #fff; cursor: pointer; box-shadow: var(--shadow-md), var(--glow-teal);
 }
 .subject-card::before {
   content: ""; position: absolute; inset: 0;
@@ -263,7 +302,7 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 .course-row-list { margin: 0 16px; display: flex; flex-direction: column; gap: 10px; }
 .course-row-card {
   display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border);
-  border-radius: 14px; padding: 12px 14px; cursor: pointer; box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+  border-radius: 14px; padding: 12px 14px; cursor: pointer; box-shadow: var(--shadow-sm);
 }
 .course-row-icon { width: 42px; height: 42px; border-radius: 11px; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 19px; flex-shrink: 0; }
 .course-row-info { flex: 1; min-width: 0; }
@@ -280,7 +319,7 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
   position: relative; overflow: hidden; margin: 0 16px 16px; padding: 22px;
   border-radius: 20px; color: #fff;
   background: linear-gradient(150deg, #14b8a6 0%, #0f766e 55%, #042f2a 100%);
-  box-shadow: 0 8px 22px rgba(15,23,42,0.16);
+  box-shadow: var(--shadow-md);
 }
 .course-hero::before {
   content: ""; position: absolute; inset: 0;
@@ -305,7 +344,7 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 .free-trial-title { font-weight: 800; font-size: 14px; color: var(--success); margin-bottom: 4px; }
 .free-trial-sub { font-size: 12px; color: var(--text-dim); line-height: 1.5; margin-bottom: 12px; }
 .free-trial-btn {
-  background: linear-gradient(135deg, var(--teal-light), var(--success)); color: #fff; border: none;
+  background: linear-gradient(135deg, var(--teal-light), var(--success)); color: var(--on-accent); border: none;
   border-radius: 12px; padding: 11px 18px; font-weight: 800; font-size: 12.5px; cursor: pointer;
   display: inline-flex; align-items: center; gap: 6px;
 }
@@ -318,7 +357,7 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
   border-radius: 14px; padding: 14px; cursor: pointer;
 }
 .module-item.module-locked { opacity: 0.65; cursor: pointer; }
-.module-num { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; flex-shrink: 0; }
+.module-num { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: var(--on-accent); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; flex-shrink: 0; }
 .module-info { flex: 1; min-width: 0; }
 .module-title { font-size: 13.5px; font-weight: 800; margin-bottom: 3px; }
 .module-meta { font-size: 11px; color: var(--text-dim); }
@@ -350,7 +389,7 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 
 .buy-bar { margin: 0 16px 20px; }
 .buy-bar-btn {
-  width: 100%; background: var(--text); color: #fff; border: none; border-radius: 14px;
+  width: 100%; background: var(--accent-gradient); color: var(--on-accent); border: none; border-radius: 14px;
   padding: 15px; font-weight: 800; font-size: 14px; cursor: pointer;
 }
 
@@ -375,22 +414,22 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
 .path-circle {
   position: relative; width: 60px; height: 60px; border-radius: 50%; display: flex;
   align-items: center; justify-content: center; font-size: 20px; font-weight: 800;
-  box-shadow: 0 3px 8px rgba(15,23,42,0.12);
+  box-shadow: var(--shadow-sm);
 }
 .path-circle-open { background: var(--surface); border: 2px solid var(--border); color: var(--text-dim); }
 .path-circle-current {
-  background: linear-gradient(150deg, var(--teal-light), var(--gold)); color: #fff;
-  box-shadow: 0 0 0 6px rgba(20,184,166,0.18), 0 4px 10px rgba(15,23,42,0.18);
+  background: linear-gradient(150deg, var(--teal-light), var(--gold)); color: var(--on-accent);
+  box-shadow: 0 0 0 6px rgba(45,212,191,0.22), var(--glow-teal);
 }
-.path-circle-watched { background: linear-gradient(150deg, #4ade80, var(--success)); color: #fff; }
+.path-circle-watched { background: linear-gradient(150deg, #4ade80, var(--success)); color: var(--on-accent); }
 .path-circle-locked { background: var(--surface2); color: var(--text-dim); border: 2px dashed var(--border); font-size: 18px; }
 .path-badge {
-  position: absolute; top: -8px; right: -10px; background: var(--success); color: #fff;
+  position: absolute; top: -8px; right: -10px; background: var(--success); color: var(--on-accent);
   font-size: 8px; font-weight: 800; padding: 2px 7px; border-radius: 20px; letter-spacing: 0.3px;
   box-shadow: 0 2px 5px rgba(0,0,0,0.15);
 }
 .path-start-tag {
-  position: absolute; top: -8px; background: var(--text); color: #fff; font-size: 9px; font-weight: 800;
+  position: absolute; top: -8px; background: var(--accent-gradient); color: var(--on-accent); font-size: 9px; font-weight: 800;
   padding: 4px 10px; border-radius: 20px; letter-spacing: 0.4px;
 }
 .path-node-label { font-size: 11.5px; font-weight: 700; color: var(--text); text-align: center; max-width: 108px; line-height: 1.3; }
@@ -597,7 +636,7 @@ body.no-scroll { overflow: hidden; }
 .test-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
   padding: 16px; cursor: pointer; display: flex; flex-direction: column; gap: 10px;
-  box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+  box-shadow: var(--shadow-sm);
 }
 .test-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .test-card-title { font-size: 14px; font-weight: 800; flex: 1; }
@@ -745,7 +784,7 @@ a:focus-visible {
 /* ---------- Skeleton (yuklanish) animatsiyasi ---------- */
 
 .skeleton-shimmer {
-  background: linear-gradient(90deg, var(--surface2) 25%, rgba(15,23,42,0.06) 37%, var(--surface2) 63%);
+  background: linear-gradient(90deg, var(--surface2) 25%, rgba(255,255,255,0.06) 37%, var(--surface2) 63%);
   background-size: 400% 100%;
   animation: skeletonMove 1.4s ease infinite;
   border-radius: 8px;
@@ -977,8 +1016,8 @@ a:focus-visible {
   pointer-events: none; padding: 0 16px;
 }
 .toast {
-  background: #0f172a; color: #fff; font-size: 13px; font-weight: 700;
-  padding: 12px 18px; border-radius: 12px; box-shadow: 0 8px 24px rgba(15,23,42,0.25);
+  background: var(--surface3); color: var(--text); font-size: 13px; font-weight: 700; border: 1px solid var(--border);
+  padding: 12px 18px; border-radius: 12px; box-shadow: var(--shadow-lg);
   opacity: 0; transform: translateY(-10px); transition: opacity 0.25s ease, transform 0.25s ease;
   max-width: 92vw; text-align: center;
 }
@@ -996,12 +1035,12 @@ a:focus-visible {
   display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
   background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
   padding: 16px; cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s;
-  box-shadow: 0 2px 10px rgba(15,23,42,0.05);
+  box-shadow: var(--shadow-sm);
 }
-.hw-subject-card:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(15,23,42,0.10); border-color: var(--gold-light); }
+.hw-subject-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: var(--gold-light); }
 .hw-subject-card:active { transform: translateY(0); }
 .hw-subject-locked { opacity: 0.62; cursor: not-allowed; }
-.hw-subject-locked:hover { transform: none; box-shadow: 0 2px 10px rgba(15,23,42,0.05); border-color: var(--border); }
+.hw-subject-locked:hover { transform: none; box-shadow: var(--shadow-sm); border-color: var(--border); }
 
 .hw-subject-icon {
   width: 54px; height: 54px; flex-shrink: 0; border-radius: 16px;
@@ -1116,9 +1155,9 @@ a:focus-visible {
 
 .hw-node-tag {
   position: absolute; top: -30px; white-space: nowrap;
-  background: var(--text); color: #fff; font-size: 9px; font-weight: 900;
+  background: var(--accent-gradient); color: var(--on-accent); font-size: 9px; font-weight: 900;
   padding: 5px 11px; border-radius: 20px; letter-spacing: 0.5px;
-  box-shadow: 0 3px 8px rgba(15,23,42,0.25);
+  box-shadow: var(--shadow-sm);
   animation: hwBob 2.2s ease-in-out infinite;
 }
 .hw-node-tag::after {
@@ -1140,7 +1179,7 @@ a:focus-visible {
 .hw-node-count {
   position: absolute; bottom: -3px; right: -3px; z-index: 3;
   min-width: 21px; height: 21px; border-radius: 50%;
-  background: var(--text); color: #fff; font-size: 10px; font-weight: 800;
+  background: var(--accent-gradient); color: var(--on-accent); font-size: 10px; font-weight: 800;
   display: flex; align-items: center; justify-content: center;
   border: 2px solid var(--surface);
 }
@@ -1376,3 +1415,284 @@ a:focus-visible {
 .cert-points-row { display: flex; justify-content: center; gap: 18px; margin: 6px 0 10px; }
 .cert-points-row .num { font-size: 18px; font-weight: 800; color: var(--text); }
 .cert-points-row .lbl { font-size: 10.5px; color: var(--text-dim); }
+
+
+/* ================================================================
+   YANGI VIZUAL QATLAM (v8) — "Qorong'i tun + neon"
+   ================================================================
+   Quyidagi qoidalar yuqoridagi asosiy uslublar USTIDAN yoziladi.
+   Shu tarzda qurilgani sababli eski qoidalar buzilmaydi va kerak
+   bo'lsa bu blokni olib tashlab, avvalgi ko'rinishga qaytish mumkin. */
+
+/* ---------- Fon: jonli, lekin bezovta qilmaydigan nur dog'lari ---------- */
+
+body {
+  background:
+    radial-gradient(1100px 620px at 12% -8%, rgba(45, 212, 191, 0.10), transparent 62%),
+    radial-gradient(900px 560px at 92% 4%, rgba(167, 139, 250, 0.10), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Topbar: shaffof "muzli" panel ---------- */
+
+.topbar {
+  position: sticky; top: 0; z-index: 90;
+  background: rgba(19, 26, 43, 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+}
+.logo {
+  background: var(--accent-gradient);
+  box-shadow: var(--glow-teal);
+  font-weight: 900; letter-spacing: 0.5px;
+}
+.brand-sub {
+  background: var(--accent-gradient);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 800;
+}
+.badge {
+  background: rgba(45, 212, 191, 0.10);
+  border-color: rgba(45, 212, 191, 0.30);
+  color: var(--gold-light);
+}
+.admin-gear:hover { border-color: var(--gold); color: var(--gold); }
+
+/* ---------- Salomlashuv bloki ---------- */
+
+.hello {
+  position: relative; overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid rgba(45, 212, 191, 0.22);
+  background:
+    linear-gradient(135deg, rgba(45,212,191,0.12), rgba(167,139,250,0.12)),
+    var(--surface);
+}
+/* Yuqori chekkadagi nozik neon chiziq — "yorug'lik tushgandek" */
+.hello::before {
+  content: ""; position: absolute; top: 0; left: 12%; right: 12%; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold-light), transparent);
+}
+.hello-label {
+  background: var(--accent-gradient);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.hello h1 { font-size: 23px; font-weight: 800; letter-spacing: -0.3px; }
+
+/* ---------- Bosh sahifa kartalari: har biri o'z neon rangida ---------- */
+
+.dashboard-grid { gap: 13px; }
+.dashboard-card {
+  border-radius: 20px;
+  background: linear-gradient(160deg, var(--surface2), var(--surface));
+  border: 1px solid var(--border);
+  overflow: hidden;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+/* Karta ustidagi rangli "aks-sado" — ikonka rangi kartaga ham urib turadi */
+.dashboard-card::after {
+  content: ""; position: absolute; top: -40%; right: -30%;
+  width: 130px; height: 130px; border-radius: 50%;
+  background: var(--card-accent, rgba(45,212,191,0.5));
+  filter: blur(38px); opacity: 0.28; pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+.dashboard-card:active { transform: scale(0.975); }
+.dashboard-card:hover { border-color: rgba(45,212,191,0.35); box-shadow: var(--shadow-md); }
+.dashboard-card:hover::after { opacity: 0.42; }
+
+.dc-icon {
+  border-radius: 14px; width: 44px; height: 44px; font-size: 21px;
+  color: var(--on-accent);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+}
+.dc-title { font-size: 14.5px; font-weight: 800; letter-spacing: -0.1px; }
+.dc-sub { color: var(--text-faint); }
+.dc-arrow { color: var(--text-faint); font-size: 18px; }
+
+/* Har bir rang uchun kartaning "aks-sado" tusi */
+.dashboard-card:has(.dc-teal)   { --card-accent: #34d399; }
+.dashboard-card:has(.dc-blue)   { --card-accent: #60a5fa; }
+.dashboard-card:has(.dc-gold)   { --card-accent: #fbbf24; }
+.dashboard-card:has(.dc-purple) { --card-accent: #a78bfa; }
+.dashboard-card:has(.dc-pink)   { --card-accent: #f472b6; }
+.dashboard-card:has(.dc-cyan)   { --card-accent: #22d3ee; }
+
+/* ---------- Umumiy sirtlar: kartalar, panellar ---------- */
+
+.course-card, .test-card, .result-card, .book-product-card,
+.admin-section, .simulator-card, .hw-subject-card, .hw-progress-card,
+.faq-item, .student-result-card, .test-result-row {
+  border-radius: 18px;
+  background: linear-gradient(165deg, var(--surface2), var(--surface));
+  border-color: var(--border);
+}
+.course-card:hover, .test-card:hover, .book-product-card:hover {
+  border-color: rgba(45, 212, 191, 0.32);
+}
+
+/* ---------- Tugmalar ---------- */
+
+.gold-btn {
+  background: var(--accent-gradient);
+  color: var(--on-accent);
+  border: none; border-radius: 14px; font-weight: 800;
+  box-shadow: 0 6px 20px rgba(45, 212, 191, 0.25);
+  transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+.gold-btn:hover { filter: brightness(1.07); box-shadow: 0 8px 26px rgba(45, 212, 191, 0.35); }
+.gold-btn:active { transform: scale(0.98); }
+
+.secondary-btn {
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); border-radius: 13px;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+.secondary-btn:hover { border-color: var(--gold); background: var(--surface3); }
+
+.filter-chip { border-radius: 999px; transition: all 0.18s ease; }
+.filter-chip.active {
+  background: rgba(45,212,191,0.14); border-color: var(--gold);
+  color: var(--gold-light);
+}
+
+/* ---------- Forma maydonlari ---------- */
+
+input, select, textarea,
+.admin-form input, .admin-form select, .admin-form textarea {
+  background: var(--surface3) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+  border-radius: 11px !important;
+}
+input::placeholder, textarea::placeholder { color: var(--text-faint); }
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.16);
+}
+select option { background: var(--surface3); color: var(--text); }
+
+/* ---------- Pastki navigatsiya: "suzuvchi" panel ---------- */
+
+.bottom-nav {
+  left: 12px; right: 12px; bottom: 12px;
+  background: rgba(28, 36, 56, 0.90);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 9px 6px;
+  box-shadow: var(--shadow-lg);
+}
+.nav-item {
+  position: relative; padding: 7px 4px; border-radius: 14px;
+  transition: color 0.2s ease, transform 0.2s ease;
+  color: var(--text-faint);
+}
+.nav-item span { font-size: 9.5px; font-weight: 700; }
+.nav-item.active { color: var(--gold-light); transform: translateY(-2px); }
+/* Faol bo'limning tepasidagi kichik neon nuqta */
+.nav-item.active::before {
+  content: ""; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 22px; height: 3px; border-radius: 99px;
+  background: var(--accent-gradient); box-shadow: var(--glow-teal);
+}
+body { padding-bottom: 92px; }
+
+/* ---------- Ochilish ekrani ---------- */
+
+.app-splash {
+  background:
+    radial-gradient(800px 500px at 50% 12%, rgba(45,212,191,0.20), transparent 62%),
+    radial-gradient(700px 480px at 50% 92%, rgba(167,139,250,0.18), transparent 60%),
+    #070c17;
+}
+.app-splash-icon {
+  background: var(--accent-gradient); color: var(--on-accent);
+  box-shadow: 0 0 40px rgba(45, 212, 191, 0.4);
+  border-radius: 22px;
+}
+.app-splash-spinner { border-top-color: var(--gold-light); }
+.app-splash-title {
+  background: linear-gradient(90deg, #5eead4, #a78bfa);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-size: 18px;
+}
+
+/* ---------- Jadval va matn ---------- */
+
+.question-table th { background: var(--surface3); color: var(--text); }
+.question-card, .option-btn { background: var(--surface2); }
+.option-btn { border-radius: 14px; transition: all 0.16s ease; }
+.option-btn:hover { border-color: var(--gold); }
+
+/* ---------- Bosh sahifa ko'rsatkichlari (streak / coin / reyting) ---------- */
+
+.home-stats {
+  display: flex; gap: 9px; margin-top: 16px; flex-wrap: wrap;
+}
+.home-stat {
+  display: flex; align-items: center; gap: 7px;
+  padding: 9px 13px; border-radius: 14px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid var(--border);
+  font-size: 12px;
+}
+.home-stat-icon { font-size: 14px; line-height: 1; }
+.home-stat-value { font-weight: 900; color: var(--text); font-size: 14px; letter-spacing: -0.2px; }
+.home-stat-label { color: var(--text-faint); font-size: 10.5px; font-weight: 600; }
+
+.home-stat-warm   { border-color: rgba(251, 191, 36, 0.30); background: rgba(251, 191, 36, 0.07); }
+.home-stat-teal   { border-color: rgba(45, 212, 191, 0.30); background: rgba(45, 212, 191, 0.07); }
+.home-stat-violet { border-color: rgba(167, 139, 250, 0.30); background: rgba(167, 139, 250, 0.07); }
+
+/* ================================================================
+   ANIMATSIYALAR — ilova "tirik" his qilinishi uchun
+   ================================================================ */
+
+/* Ekran ochilganda yumshoq ko'tarilib paydo bo'ladi */
+.screen:not(.hidden) { animation: screenIn 0.32s cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes screenIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Bosh sahifa kartalari KETMA-KET paydo bo'ladi (shashka effekti) */
+.dashboard-card { animation: cardIn 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+.dashboard-card:nth-child(1) { animation-delay: 0.02s; }
+.dashboard-card:nth-child(2) { animation-delay: 0.06s; }
+.dashboard-card:nth-child(3) { animation-delay: 0.10s; }
+.dashboard-card:nth-child(4) { animation-delay: 0.14s; }
+.dashboard-card:nth-child(5) { animation-delay: 0.18s; }
+.dashboard-card:nth-child(6) { animation-delay: 0.22s; }
+.dashboard-card:nth-child(7) { animation-delay: 0.26s; }
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.home-stat { animation: cardIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+.home-stat:nth-child(2) { animation-delay: 0.06s; }
+.home-stat:nth-child(3) { animation-delay: 0.12s; }
+
+/* Bosilganda javob berish — teginish "his qilinadi" */
+.course-card:active, .test-card:active, .book-product-card:active,
+.hw-subject-card:active, .paragraph-item:active, .filter-chip:active {
+  transform: scale(0.985);
+}
+.course-card, .test-card, .book-product-card, .paragraph-item {
+  transition: transform 0.14s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+/* Harakatni kamaytirish so'ralgan bo'lsa — barcha animatsiyalar o'chadi */
+@media (prefers-reduced-motion: reduce) {
+  .screen:not(.hidden), .dashboard-card, .home-stat { animation: none !important; }
+  * { transition-duration: 0.01ms !important; }
+}

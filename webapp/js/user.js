@@ -26,12 +26,39 @@ export async function loadBrand() {
   }
 }
 
+// Bosh sahifadagi ko'rsatkichlar paneli. Yangi so'rov yubormaydi —
+// /api/user ALLAQACHON qaytargan ma'lumotdan foydalanadi, shuning uchun
+// ilova sekinlashmaydi.
+function renderHomeStats(user) {
+  const box = document.getElementById("homeStatsStrip");
+  if (!box || !user) return;
+
+  const streak = user.current_streak || 0;
+  const coins = user.coins || 0;
+  const rank = user.rank && user.rank.rank ? user.rank.rank : null;
+
+  const items = [
+    { icon: "🔥", value: streak, label: streak === 1 ? "kun ketma-ket" : "kun ketma-ket", tone: "warm" },
+    { icon: "🪙", value: coins, label: "coin", tone: "teal" },
+  ];
+  if (rank) items.push({ icon: "🏆", value: `#${rank}`, label: "reytingda", tone: "violet" });
+
+  box.innerHTML = items.map(i => `
+    <div class="home-stat home-stat-${i.tone}">
+      <span class="home-stat-icon">${i.icon}</span>
+      <span class="home-stat-value">${i.value}</span>
+      <span class="home-stat-label">${i.label}</span>
+    </div>
+  `).join("");
+}
+
 export async function loadUser() {
   try {
     const res = await apiFetch(`/api/user`);
     const user = await res.json();
     document.getElementById("helloName").textContent = `${user.first_name}, salom 👋`;
     document.getElementById("coinsBadge").textContent = `🪙 ${user.coins}`;
+    renderHomeStats(user);
     return user;
   } catch (e) {
     console.error(e);
