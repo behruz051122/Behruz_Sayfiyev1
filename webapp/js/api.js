@@ -21,6 +21,45 @@ if (tg.disableVerticalSwipes) {
   try { tg.disableVerticalSwipes(); } catch (e) {}
 }
 
+// ---------- MAVZU (qorong'i / ochiq) ----------
+// Ilova Telegram'dagi tanlovga moslashadi: foydalanuvchi ochiq mavzuda
+// bo'lsa — ilova ham ochiq ko'rinishga o'tadi. Aniqlash tartibi:
+//   1) Telegram bergan colorScheme ("dark" | "light") — eng ishonchlisi
+//   2) u bo'lmasa — qurilmaning tizim sozlamasi (prefers-color-scheme)
+//   3) ikkalasi ham noma'lum bo'lsa — qorong'i (asosiy brend ko'rinishi)
+//
+// Foydalanuvchi Telegram sozlamasini ilova OCHIQ turganda o'zgartirsa,
+// "themeChanged" hodisasi orqali darhol qayta qo'llanadi.
+function applyTelegramTheme() {
+  let scheme = null;
+  try {
+    scheme = tg.colorScheme || null;
+  } catch (e) { /* eski Telegram versiyasi */ }
+
+  if (scheme !== "light" && scheme !== "dark") {
+    const prefersLight = window.matchMedia
+      && window.matchMedia("(prefers-color-scheme: light)").matches;
+    scheme = prefersLight ? "light" : "dark";
+  }
+
+  document.documentElement.setAttribute("data-theme", scheme);
+
+  // Telegram oynasining yuqori/pastki chizig'ini ham moslaymiz — ilova
+  // Telegram ichiga "quyilgandek" ko'rinadi, chekkalarda begona rang qolmaydi.
+  const shellColor = scheme === "light" ? "#f6f8fb" : "#0a0f1c";
+  try { tg.setHeaderColor && tg.setHeaderColor(shellColor); } catch (e) {}
+  try { tg.setBackgroundColor && tg.setBackgroundColor(shellColor); } catch (e) {}
+}
+
+applyTelegramTheme();
+try { tg.onEvent && tg.onEvent("themeChanged", applyTelegramTheme); } catch (e) {}
+if (window.matchMedia) {
+  try {
+    window.matchMedia("(prefers-color-scheme: light)")
+      .addEventListener("change", applyTelegramTheme);
+  } catch (e) { /* eski brauzerlar addEventListener'ni qo'llab-quvvatlamaydi */ }
+}
+
 export const tgUser = tg.initDataUnsafe?.user || { id: 0, first_name: "Mehmon" };
 export const API_BASE = window.location.origin;
 
