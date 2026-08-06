@@ -106,6 +106,18 @@ function bindStaticNav() {
   document.addEventListener("app:navigate", (e) => handleNav(e.detail.target));
 }
 
+// Ochilish splash ekranini yashiradi (fade). loadUser() muvaffaqiyatli
+// tugagach yoki (tarmoq xatosi bo'lsa ham foydalanuvchi tiqilib qolmasin
+// deb) belgilangan maksimal vaqtdan keyin, qaysi biri oldin bo'lsa — shu
+// yashirinadi.
+let splashHidden = false;
+function hideAppSplash() {
+  if (splashHidden) return;
+  splashHidden = true;
+  const splash = document.getElementById("appSplash");
+  if (splash) splash.classList.add("hide");
+}
+
 function bootstrap() {
   bindStaticNav();
   initLightbox();
@@ -115,10 +127,13 @@ function bootstrap() {
   initGamesModule();
 
   loadBrand();
-  loadUser();
+  loadUser().finally(hideAppSplash);
   checkIsAdmin();
   loadDashboardCards();
   showScreen("home");
+
+  // Fallback: tarmoq juda sekin bo'lsa ham splash abadiy osilib qolmasin.
+  setTimeout(hideAppSplash, 6000);
 }
 
 bootstrap();
