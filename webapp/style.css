@@ -1035,51 +1035,137 @@ a:focus-visible {
 .hw-progress-lbl { font-size: 11px; color: var(--text-dim); margin-top: 4px; letter-spacing: 0.3px; }
 .hw-progress-avg { text-align: right; }
 
-/* ---------- 2-bosqich: paragraf kartalari ---------- */
+/* ---------- 2-bosqich: VAZIFALAR YO'LI (o'yin uslubidagi xarita) ----------
+   Oddiy ro'yxat o'rniga ilonsimon yo'l: har bir paragraf — yo'l ustidagi
+   bekat. Joriy bekat pulslanib turadi, bosib o'tilgan yo'l yoritilgan
+   bo'ladi, har 10-paragrafda bayroqcha chiqadi. */
 
-.hw-paragraph-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
-  gap: 10px; margin: 0 16px 24px;
+.hw-path {
+  position: relative;
+  width: 288px;
+  margin: 0 auto 10px;
 }
 
-.hw-para-card {
-  position: relative; display: flex; flex-direction: column; align-items: center;
-  justify-content: center; gap: 2px; padding: 14px 8px 12px; min-height: 118px;
-  border-radius: 16px; border: 1.5px solid var(--border); background: var(--surface);
-  cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s;
-  text-align: center;
+.hw-path-svg { position: absolute; left: 0; top: 0; z-index: 0; overflow: visible; }
+.hw-path-line {
+  fill: none; stroke: var(--border); stroke-width: 12; stroke-linecap: round;
+  stroke-dasharray: 2 22;
 }
-.hw-para-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(15,23,42,0.10); }
-.hw-para-card:active { transform: translateY(0); }
-
-.hw-para-num { font-size: 26px; font-weight: 900; color: var(--text); line-height: 1; }
-.hw-para-label { font-size: 10px; color: var(--text-dim); line-height: 1.25; font-weight: 600; }
-.hw-para-state { font-size: 10px; font-weight: 700; margin-top: 5px; }
-.hw-para-score {
-  position: absolute; top: 7px; right: 7px; font-size: 10px; font-weight: 800;
-  background: var(--gold); color: var(--on-accent); padding: 2px 7px; border-radius: 99px;
-}
-.hw-para-photos {
-  position: absolute; top: 7px; right: 7px; font-size: 9.5px; font-weight: 700;
-  color: var(--text-dim);
+.hw-path-line-done {
+  fill: none; stroke: var(--gold); stroke-width: 12; stroke-linecap: round;
+  stroke-dasharray: 2 22; opacity: 0.85;
 }
 
-/* Holatlar bo'yicha ranglar */
-.hw-st-empty .hw-para-state { color: var(--text-dim); }
-.hw-st-draft { border-color: #f59e0b; background: rgba(245,158,11,0.05); }
-.hw-st-draft .hw-para-state { color: #b45309; }
-.hw-st-submitted { border-color: var(--gold-light); background: rgba(15,118,110,0.05); }
-.hw-st-submitted .hw-para-state { color: var(--gold); }
-.hw-st-graded { border-color: var(--teal, #16a34a); background: rgba(22,163,74,0.07); }
-.hw-st-graded .hw-para-state { color: #15803d; }
-.hw-st-rejected { border-color: var(--danger); background: rgba(220,38,38,0.06); }
-.hw-st-rejected .hw-para-state { color: var(--danger); }
-
-.hw-para-locked {
-  opacity: 0.5; background: var(--surface2); border-style: dashed; cursor: not-allowed;
+.hw-node-wrap {
+  position: absolute; z-index: 1; width: 96px;
+  transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; gap: 7px;
+  cursor: pointer;
 }
-.hw-para-locked:hover { transform: none; box-shadow: none; }
-.hw-para-locked .hw-para-num { color: var(--text-dim); }
+
+.hw-node {
+  position: relative; width: 68px; height: 68px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 21px; font-weight: 900;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+.hw-node-wrap:active .hw-node { transform: scale(0.93); }
+.hw-node-inner { position: relative; z-index: 2; line-height: 1; }
+
+/* Bekat holatlari — har biri o'z rangi bilan darhol tanilsin */
+.hw-node-open {
+  background: var(--surface); border: 3px solid var(--border); color: var(--text-dim);
+  box-shadow: 0 4px 0 var(--border);
+}
+.hw-node-current {
+  background: linear-gradient(150deg, #22d3ee, var(--gold));
+  color: #fff; box-shadow: 0 5px 0 rgba(13,90,85,0.55), 0 8px 20px rgba(15,118,110,0.35);
+}
+.hw-node-graded {
+  background: linear-gradient(150deg, #4ade80, #16a34a); color: #fff;
+  box-shadow: 0 5px 0 #15803d;
+}
+.hw-node-submitted {
+  background: linear-gradient(150deg, #2dd4bf, #0f766e); color: #fff;
+  box-shadow: 0 5px 0 #0b5c55;
+}
+.hw-node-draft {
+  background: linear-gradient(150deg, #fcd34d, #f59e0b); color: #fff;
+  box-shadow: 0 5px 0 #b45309; font-size: 24px;
+}
+.hw-node-rejected {
+  background: linear-gradient(150deg, #fca5a5, #dc2626); color: #fff;
+  box-shadow: 0 5px 0 #991b1b; font-size: 26px;
+}
+.hw-node-locked {
+  background: var(--surface2); border: 3px dashed var(--border);
+  color: var(--text-dim); font-size: 20px; box-shadow: none; opacity: 0.72;
+}
+
+/* Joriy bekat atrofidagi pulslanuvchi halqa — ko'z darhol shu yerga tushadi */
+.hw-node-ring {
+  position: absolute; inset: -9px; border-radius: 50%;
+  border: 3px solid var(--gold); opacity: 0.55;
+  animation: hwPulse 1.9s ease-out infinite;
+}
+@keyframes hwPulse {
+  0%   { transform: scale(0.92); opacity: 0.6; }
+  70%  { transform: scale(1.22); opacity: 0; }
+  100% { transform: scale(1.22); opacity: 0; }
+}
+
+.hw-node-tag {
+  position: absolute; top: -30px; white-space: nowrap;
+  background: var(--text); color: #fff; font-size: 9px; font-weight: 900;
+  padding: 5px 11px; border-radius: 20px; letter-spacing: 0.5px;
+  box-shadow: 0 3px 8px rgba(15,23,42,0.25);
+  animation: hwBob 2.2s ease-in-out infinite;
+}
+.hw-node-tag::after {
+  content: ""; position: absolute; bottom: -4px; left: 50%; margin-left: -4px;
+  border-left: 4px solid transparent; border-right: 4px solid transparent;
+  border-top: 5px solid var(--text);
+}
+@keyframes hwBob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+
+/* Har 10-paragrafda — "nazorat nuqtasi" bayrog'i */
+.hw-node-flag {
+  position: absolute; top: -6px; right: -8px; font-size: 17px; z-index: 3;
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,0.22));
+}
+/* Yuklanayotgan rasmlar soni */
+.hw-node-count {
+  position: absolute; bottom: -3px; right: -3px; z-index: 3;
+  min-width: 21px; height: 21px; border-radius: 50%;
+  background: var(--text); color: #fff; font-size: 10px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid var(--surface);
+}
+
+.hw-node-label {
+  font-size: 11px; font-weight: 800; color: var(--text-dim);
+  text-align: center; line-height: 1.2;
+}
+.hw-node-wrap-current .hw-node-label { color: var(--gold); }
+
+/* Izoh (legend) */
+.hw-path-legend {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 12px;
+  margin: 4px 16px 26px; font-size: 10.5px; color: var(--text-dim); font-weight: 600;
+}
+.hw-path-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.hw-path-legend .lg { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+.lg-current { background: linear-gradient(150deg, #22d3ee, var(--gold)); }
+.lg-done    { background: linear-gradient(150deg, #2dd4bf, #0f766e); }
+.lg-graded  { background: linear-gradient(150deg, #4ade80, #16a34a); }
+.lg-locked  { background: var(--surface2); border: 1.5px dashed var(--border); }
+
+@media (prefers-reduced-motion: reduce) {
+  .hw-node-ring, .hw-node-tag { animation: none; }
+}
 
 /* ---------- 3-bosqich: rasm yuklash ---------- */
 

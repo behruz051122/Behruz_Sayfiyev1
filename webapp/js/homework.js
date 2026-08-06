@@ -20,14 +20,6 @@ let currentPhotos = [];
 let currentStatus = "empty";
 let uploading = false;
 
-const STATUS_META = {
-  empty: { label: "Boshlanmagan", cls: "hw-st-empty", icon: "○" },
-  draft: { label: "Yuklanmoqda", cls: "hw-st-draft", icon: "◐" },
-  submitted: { label: "Tekshirilmoqda", cls: "hw-st-submitted", icon: "✓" },
-  graded: { label: "Baholangan", cls: "hw-st-graded", icon: "★" },
-  rejected: { label: "Qayta ishlang", cls: "hw-st-rejected", icon: "!" },
-};
-
 function esc(str) {
   const d = document.createElement("div");
   d.textContent = str == null ? "" : String(str);
@@ -157,32 +149,140 @@ function renderHomeworkParagraphs(paragraphs) {
     </div>
   `;
 
-  paragraphs.forEach(p => {
-    const meta = STATUS_META[p.status] || STATUS_META.empty;
-    const locked = !p.unlocked;
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = `hw-para-card ${locked ? "hw-para-locked" : meta.cls}`;
-    card.innerHTML = `
-      <div class="hw-para-num">${p.paragraph_number}</div>
-      <div class="hw-para-label">paragraf<br>vazifasi</div>
-      <div class="hw-para-state">
-        ${locked ? "🔒" : `${meta.icon} ${meta.label}`}
+  box.innerHTML = renderHomeworkPathHtml(paragraphs);
+  wireHomeworkPathEvents(paragraphs);
+  scrollToCurrentNode();
+}
+
+// ================================================================
+// VAZIFALAR YO'LI (o'yin uslubidagi ilonsimon xarita)
+// ================================================================
+//
+// Oddiy ikki qatorli ro'yxat o'rniga — egri-bugri YO'L. Har bir
+// paragraf yo'l ustidagi bekat; joriy bekat pulslanib turadi va
+// "SIZ SHU YERDASIZ" deb belgilanadi; har 10-paragrafda esa
+// "nazorat nuqtasi" bayrog'i chiqadi. Bu o'quvchiga o'z yo'lini
+// ko'rish va oldinga intilish hissini beradi.
+
+const PATH_W = 288;          // yo'lak kengligi (piksel, markazlashtirilgan)
+const PATH_ROW_H = 96;       // bekatlar orasidagi vertikal masofa
+const PATH_NODE = 68;        // bekat diametri
+const PATH_AMPLITUDE = 82;   // ilonsimon egilish kengligi
+const PATH_PAD_TOP = 30;
+const PATH_PAD_BOTTOM = 40;
+
+function nodeCenter(index) {
+  // Sinus to'lqini — tabiiy, "qo'lda chizilgandek" egrilik beradi
+  // (to'g'ri zigzagdan ko'ra yumshoqroq ko'rinadi).
+  const x = PATH_W / 2 + Math.sin(index * 0.85) * PATH_AMPLITUDE;
+  const y = PATH_PAD_TOP + index * PATH_ROW_H + PATH_NODE / 2;
+  return { x, y };
+}
+
+// Nuqtalar orasidan SILLIQ egri chiziq o'tkazish (kvadratik Bezier
+// bilan — har bir bekatda burchak hosil bo'lmaydi).
+function buildSmoothPath(points) {
+  if (points.length < 2) return "";
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 1; i < points.length - 1; i++) {
+    const midX = (points[i].x + points[i + 1].x) / 2;
+    const midY = (points[i].y + points[i + 1].y) / 2;
+    d += ` Q ${points[i].x} ${points[i].y} ${midX} ${midY}`;
+  }
+  const last = points[points.length - 1];
+  d += ` L ${last.x} ${last.y}`;
+  return d;
+}
+
+function nodeVisual(p, isCurrent) {
+  if (!p.unlocked) return { cls: "hw-node-locked", content: "🔒" };
+  if (p.status === "graded") {
+    return { cls: "hw-node-graded", content: p.teacher_score != null ? p.teacher_score : "★" };
+  }
+  if (p.status === "submitted") return { cls: "hw-node-submitted", content: "✓" };
+  if (p.status === "rejected") return { cls: "hw-node-rejected", content: "↻" };
+  if (p.status === "draft") return { cls: "hw-node-draft", content: "📷" };
+  return { cls: isCurrent ? "hw-node-current" : "hw-node-open", content: p.paragraph_number };
+}
+
+function renderHomeworkPathHtml(paragraphs) {
+  const points = paragraphs.map((_, i) => nodeCenter(i));
+  const totalHeight = PATH_PAD_TOP + paragraphs.length * PATH_ROW_H + PATH_PAD_BOTTOM;
+
+  // Bosib o'tilgan qism yo'lni "yoritib" boradi — qaytadan chizilgan
+  // ikkinchi chiziq faqat tugallangan bekatlargacha boradi.
+  const doneCount = paragraphs.filter(p => p.status === "submitted" || p.status === "graded").length;
+  const litPoints = points.slice(0, Math.max(doneCount, 1));
+
+  const currentIndex = paragraphs.findIndex(
+    p => p.unlocked && p.status !== "submitted" && p.status !== "graded"
+  );
+
+  const svg = `
+    <svg class="hw-path-svg" width="${PATH_W}" height="${totalHeight}" viewBox="0 0 ${PATH_W} ${totalHeight}" aria-hidden="true">
+      <path class="hw-path-line" d="${buildSmoothPath(points)}" />
+      ${litPoints.length > 1 ? `<path class="hw-path-line-done" d="${buildSmoothPath(litPoints)}" />` : ""}
+    </svg>
+  `;
+
+  const nodes = paragraphs.map((p, i) => {
+    const { x, y } = points[i];
+    const isCurrent = i === currentIndex;
+    const v = nodeVisual(p, isCurrent);
+    const isMilestone = p.paragraph_number % 10 === 0;
+
+    return `
+      <div class="hw-node-wrap${isCurrent ? " hw-node-wrap-current" : ""}"
+           style="left:${x}px; top:${y}px;"
+           data-para="${p.paragraph_number}" data-locked="${p.unlocked ? "0" : "1"}">
+        ${isCurrent ? `<div class="hw-node-tag">SIZ SHU YERDASIZ</div>` : ""}
+        <div class="hw-node ${v.cls}">
+          ${isCurrent ? `<span class="hw-node-ring"></span>` : ""}
+          <span class="hw-node-inner">${v.content}</span>
+          ${isMilestone ? `<span class="hw-node-flag">🏁</span>` : ""}
+          ${p.status === "draft" && p.photo_count > 0
+            ? `<span class="hw-node-count">${p.photo_count}</span>` : ""}
+        </div>
+        <div class="hw-node-label">${p.paragraph_number}-paragraf</div>
       </div>
-      ${p.status === "graded" && p.teacher_score != null
-        ? `<div class="hw-para-score">${p.teacher_score}/10</div>` : ""}
-      ${!locked && p.photo_count > 0 && p.status !== "graded"
-        ? `<div class="hw-para-photos">${p.photo_count} 📎</div>` : ""}
     `;
-    if (locked) {
-      card.addEventListener("click", () => {
-        const msg = `Avval ${p.paragraph_number - 1}-paragraf vazifasini to'liq yuklab, yakunlang.`;
+  }).join("");
+
+  return `
+    <div class="hw-path" style="height:${totalHeight}px;">
+      ${svg}
+      ${nodes}
+    </div>
+    <div class="hw-path-legend">
+      <span><i class="lg lg-current"></i> Navbatdagi</span>
+      <span><i class="lg lg-done"></i> Topshirilgan</span>
+      <span><i class="lg lg-graded"></i> Baholangan</span>
+      <span><i class="lg lg-locked"></i> Yopiq</span>
+    </div>
+  `;
+}
+
+function wireHomeworkPathEvents(paragraphs) {
+  document.querySelectorAll(".hw-node-wrap").forEach(el => {
+    el.addEventListener("click", () => {
+      const num = parseInt(el.getAttribute("data-para"), 10);
+      if (el.getAttribute("data-locked") === "1") {
+        const msg = `Avval ${num - 1}-paragraf vazifasini to'liq yuklab, yakunlang.`;
         tg.showAlert ? tg.showAlert(msg) : alert(msg);
-      });
-    } else {
-      card.addEventListener("click", () => openHomeworkSubmit(p.paragraph_number));
-    }
-    box.appendChild(card);
+        return;
+      }
+      openHomeworkSubmit(num);
+    });
+  });
+}
+
+// Ochilganda darhol JORIY bekatga olib boradi — o'quvchi 60 ta
+// bekatni qo'lda aylantirib o'tirmasin.
+function scrollToCurrentNode() {
+  const current = document.querySelector(".hw-node-wrap-current");
+  if (!current) return;
+  requestAnimationFrame(() => {
+    current.scrollIntoView({ behavior: "smooth", block: "center" });
   });
 }
 
