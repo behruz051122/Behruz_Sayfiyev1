@@ -369,62 +369,125 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # ustun allaqachon mavjud — muammo emas
 
-        # Migratsiya (har safar ishga tushishda ham xavfsiz — faqat yetishmayotganini to'ldiradi):
-        # 1) "Kimyo" va "Biologiya" kartalari har doim mavjud bo'lishini kafolatlaymiz.
-        # 2) Mavjud "oddiy/mavzuli" testlardagi boshqa subject qiymatlari uchun ham karta yaratamiz.
-        # 3) Kartada birorta ham guruh bo'lmasa — "Barcha testlar" degan default guruh qo'shamiz.
-        # 4) test_group_id hali belgilanmagan (NULL) testlarni subject nomi mos kelgan
-        #    kartaning birinchi guruhiga avtomatik bog'laymiz — shunda hech qanday mavjud
-        #    test talaba ko'zidan g'oyib bo'lib qolmaydi.
-        def _get_or_create_subject_card(title, order_num):
-            cur.execute("SELECT id FROM test_subject_cards WHERE title = ?", (title,))
+        # Ichki sozlamalar jadvali — "bu migratsiya allaqachon bajarilgan"
+        # kabi bir martalik belgilarni saqlash uchun.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+
+        def _flag_done(key):
+            cur.execute("SELECT value FROM app_settings WHERE key = ?", (key,))
+            return cur.fetchone() is not None
+
+        def _set_flag(key, value="1"):
+            cur.execute("INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                        (key, value))
+            conn.commit()
+
+        # Fan kartasini nom bo'yicha topish — bo'shliq va katta/kichik
+        # harf farqiga E'TIBOR BERMAYDI. Aks holda "Biologiya" va
+        # "BIOLOGIYA" (yoki oxirida bo'shliqli "Biologiya ") alohida
+        # kartalar bo'lib, ro'yxatda IKKI MARTA ko'rinib qolardi.
+        def _find_subject_card(title):
+            cur.execute("SELECT id FROM test_subject_cards WHERE LOWER(TRIM(title)) = LOWER(TRIM(?))", (title,))
             row = cur.fetchone()
-            if row:
-                return row["id"]
+            return row["id"] if row else None
+
+        def _create_subject_card(title, order_num):
             icons = ["🧪", "🧬", "📘", "🔬", "📗", "📙"]
             colors = ["teal", "orange", "purple", "cyan"]
             cur.execute("""
                 INSERT INTO test_subject_cards (title, icon, color_key, order_num, is_active)
                 VALUES (?, ?, ?, ?, 1)
-            """, (title, icons[order_num % len(icons)], colors[order_num % len(colors)], order_num))
+            """, (title.strip(), icons[order_num % len(icons)], colors[order_num % len(colors)], order_num))
             conn.commit()
             return cur.lastrowid
 
-        chemistry_id = _get_or_create_subject_card("Kimyo", 0)
-        biology_id = _get_or_create_subject_card("Biologiya", 1)
+        # ---------- BIR MARTALIK boshlang'ich to'ldirish ----------
+        # MUHIM: bu blok faqat BIRINCHI marta ishga tushganda bajariladi.
+        #
+        # Ilgari "Kimyo" va "Biologiya" kartalari HAR SAFAR server qayta
+        # ishga tushganda qayta yaratilardi. Natijada o'qituvchi keraksiz
+        # fanni o'chirsa ham, keyingi deploy'da u yana paydo bo'lardi.
+        # Endi fan kartalarini FAQAT admin qo'shadi va o'chirgani
+        # o'chirilganicha qoladi.
+        if not _flag_done("test_subject_cards_seeded"):
+            _seed_order = 0
+            for _title in ("Kimyo", "Biologiya"):
+                if _find_subject_card(_title) is None:
+                    _create_subject_card(_title, _seed_order)
+                _seed_order += 1
 
-        cur.execute("""
-            SELECT DISTINCT subject FROM tests
-            WHERE (test_kind IS NULL OR test_kind = 'practice')
-              AND (is_control_test IS NULL OR is_control_test = 0)
-              AND subject IS NOT NULL AND subject != ''
-        """)
-        existing_subjects = [row["subject"] for row in cur.fetchall()]
-        next_order = 2
-        for subj in existing_subjects:
-            if subj in ("Kimyo", "Biologiya"):
-                continue
-            _get_or_create_subject_card(subj, next_order)
-            next_order += 1
+            cur.execute("""
+                SELECT DISTINCT subject FROM tests
+                WHERE (test_kind IS NULL OR test_kind = 'practice')
+                  AND (is_control_test IS NULL OR is_control_test = 0)
+                  AND subject IS NOT NULL AND subject != ''
+            """)
+            for row in cur.fetchall():
+                subj = (row["subject"] or "").strip()
+                if not subj or _find_subject_card(subj) is not None:
+                    continue
+                _create_subject_card(subj, _seed_order)
+                _seed_order += 1
 
-        cur.execute("SELECT id FROM test_subject_cards")
-        all_card_ids = [row["id"] for row in cur.fetchall()]
-        default_group_id_by_card = {}
-        for card_id in all_card_ids:
-            cur.execute("SELECT id FROM test_groups WHERE subject_card_id = ? ORDER BY order_num ASC, id ASC LIMIT 1", (card_id,))
-            row = cur.fetchone()
-            if row:
-                default_group_id_by_card[card_id] = row["id"]
-            else:
+            # Har bir kartada kamida bitta guruh bo'lsin (mavjud testlarni
+            # bog'lash uchun kerak) — bu ham faqat bir marta.
+            cur.execute("SELECT id FROM test_subject_cards")
+            for row in cur.fetchall():
+                cur.execute("SELECT id FROM test_groups WHERE subject_card_id = ? LIMIT 1", (row["id"],))
+                if cur.fetchone() is None:
+                    cur.execute("""
+                        INSERT INTO test_groups (subject_card_id, title, subtitle, icon, order_num, is_active)
+                        VALUES (?, 'Barcha testlar', NULL, '📂', 1, 1)
+                    """, (row["id"],))
+            conn.commit()
+            _set_flag("test_subject_cards_seeded")
+
+        # ---------- Takrorlangan fan kartalarini BIRLASHTIRISH ----------
+        # Eski xatolik tufayli bir xil nomli (masalan ikkita "Biologiya")
+        # kartalar hosil bo'lgan bo'lishi mumkin. Eng eskisini (kichik id)
+        # saqlab qolamiz, qolganlarining bosqich/turkumlarini unga
+        # ko'chiramiz va dublikatni o'chiramiz — hech qanday test yo'qolmaydi.
+        if not _flag_done("test_subject_cards_deduped"):
+            cur.execute("""
+                SELECT LOWER(TRIM(title)) AS norm, MIN(id) AS keep_id, COUNT(*) AS cnt
+                FROM test_subject_cards GROUP BY norm HAVING cnt > 1
+            """)
+            for dup in cur.fetchall():
+                keep_id = dup["keep_id"]
                 cur.execute("""
-                    INSERT INTO test_groups (subject_card_id, title, subtitle, icon, order_num, is_active)
-                    VALUES (?, 'Barcha testlar', NULL, '📂', 1, 1)
-                """, (card_id,))
-                conn.commit()
-                default_group_id_by_card[card_id] = cur.lastrowid
+                    SELECT id FROM test_subject_cards
+                    WHERE LOWER(TRIM(title)) = ? AND id != ?
+                """, (dup["norm"], keep_id))
+                for extra in [r["id"] for r in cur.fetchall()]:
+                    cur.execute("UPDATE test_stages SET subject_card_id = ? WHERE subject_card_id = ?", (keep_id, extra))
+                    cur.execute("UPDATE test_groups SET subject_card_id = ? WHERE subject_card_id = ?", (keep_id, extra))
+                    cur.execute("DELETE FROM test_subject_cards WHERE id = ?", (extra,))
+                print(f"[MIGRATSIYA] Takrorlangan fan kartasi birlashtirildi: '{dup['norm']}' ({dup['cnt']} ta -> 1 ta)")
+            conn.commit()
+            _set_flag("test_subject_cards_deduped")
+
+        # Guruhsiz (test_group_id IS NULL) testlarni mos fan kartasining
+        # birinchi guruhiga bog'lash — bu XAVFSIZ va har safar ishlashi
+        # mumkin, chunki YANGI karta/guruh YARATMAYDI, faqat bo'sh
+        # bog'lanishni to'ldiradi (test talaba ko'zidan yo'qolmasligi uchun).
+        cur.execute("SELECT id FROM test_subject_cards")
+        default_group_id_by_card = {}
+        for row in cur.fetchall():
+            cur.execute("SELECT id FROM test_groups WHERE subject_card_id = ? ORDER BY order_num ASC, id ASC LIMIT 1",
+                        (row["id"],))
+            g = cur.fetchone()
+            if g:
+                default_group_id_by_card[row["id"]] = g["id"]
 
         cur.execute("SELECT id, title FROM test_subject_cards")
-        card_id_by_title = {row["title"]: row["id"] for row in cur.fetchall()}
+        card_id_by_title = {(row["title"] or "").strip().lower(): row["id"] for row in cur.fetchall()}
 
         cur.execute("""
             SELECT id, subject FROM tests
@@ -434,7 +497,8 @@ def init_db():
         """)
         ungrouped = cur.fetchall()
         for row in ungrouped:
-            card_id = card_id_by_title.get(row["subject"])
+            # Nomlarni bir xil ko'rinishga keltirib solishtiramiz (bo'shliq/registr farqi muhim emas)
+            card_id = card_id_by_title.get((row["subject"] or "").strip().lower())
             if not card_id:
                 continue
             group_id = default_group_id_by_card.get(card_id)
