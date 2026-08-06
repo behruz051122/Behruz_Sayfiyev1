@@ -984,6 +984,34 @@ a:focus-visible {
 }
 .toast-visible { opacity: 1; transform: translateY(0); }
 
+/* ---------- Nazorat testini kurs/guruhlarga bog'lash (ko'p tanlov) ---------- */
+
+.course-checkbox-list {
+  max-height: 240px; overflow-y: auto; border: 1px solid var(--border);
+  border-radius: 10px; padding: 8px; background: var(--surface);
+}
+.course-checkbox-group-title {
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase;
+  color: var(--text-dim); margin: 8px 0 4px; padding-left: 2px;
+}
+.course-checkbox-group-title:first-child { margin-top: 0; }
+.course-checkbox-item {
+  display: flex; align-items: flex-start; gap: 9px; padding: 8px 8px;
+  border-radius: 8px; cursor: pointer; font-size: 13px; line-height: 1.35;
+}
+.course-checkbox-item:hover { background: var(--surface2); }
+.course-checkbox-item input[type="checkbox"] {
+  width: 17px; height: 17px; margin-top: 1px; flex-shrink: 0; accent-color: var(--gold);
+}
+.course-checkbox-meta { color: var(--text-dim); font-size: 11px; margin-left: 4px; }
+
+/* Test ro'yxatidagi "avtomatik ochiladi" belgisi */
+.auto-access-badge {
+  display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px;
+  border-radius: 999px; background: rgba(15,118,110,0.10); color: var(--gold);
+  border: 1px solid var(--gold-light); margin-left: 4px;
+}
+
 /* ---------- Milliy sertifikat: savol turlariga oid (Y2/O1/O2) UI ---------- */
 
 .cert-type-badge {

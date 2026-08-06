@@ -516,6 +516,45 @@ def init_db():
             )
         """)
 
+        # ---------- Nazorat testini KO'P KURSGA bog'lash ----------
+        # Ilgari har bir nazorat testi faqat BITTA kursga (tests.course_id)
+        # bog'lanardi. Amalda esa bitta nazorat testi bir nechta guruhga
+        # kerak bo'ladi (masalan "Kuzgi milliy sertifikat" ham, "Biologiya
+        # pullik" guruhi ham). Buning oqibatida o'qituvchi har bir testga
+        # o'quvchilarni QO'LDA birma-bir qo'shishga majbur bo'lardi.
+        #
+        # Endi o'qituvchi test formasida bir nechta kursni belgilaydi va
+        # o'sha kurslardan BIRORTASIGA yozilgan har bir o'quvchiga test
+        # AVTOMATIK ochiladi. Qo'lda tayinlash (control_test_access) esa
+        # mustaqil, qo'shimcha yo'l sifatida saqlanib qoladi — kursga
+        # yozilmagan, faqat nazorat testiga qo'shilgan o'quvchilar uchun.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS control_test_course_links (
+                test_id INTEGER NOT NULL,
+                course_id INTEGER NOT NULL,
+                PRIMARY KEY (test_id, course_id),
+                FOREIGN KEY (test_id) REFERENCES tests (id) ON DELETE CASCADE,
+                FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+            )
+        """)
+        conn.commit()
+
+        # Eski BITTA kursli bog'lanishlarni (tests.course_id) yangi jadvalga
+        # ko'chiramiz — mavjud sozlamalar YO'QOLMASLIGI uchun. INSERT OR
+        # IGNORE tufayli qayta-qayta ishga tushsa ham dublikat hosil bo'lmaydi.
+        try:
+            cur.execute("""
+                INSERT OR IGNORE INTO control_test_course_links (test_id, course_id)
+                SELECT id, course_id FROM tests
+                WHERE is_control_test = 1 AND course_id IS NOT NULL
+            """)
+            conn.commit()
+        except sqlite3.OperationalError:
+            # tests.course_id ustuni hali qo'shilmagan bo'lsa (juda eski baza) —
+            # quyiroqdagi ALTER TABLE uni qo'shadi, migratsiya keyingi ishga
+            # tushirishda amalga oshadi.
+            pass
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS test_questions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3798,27 +3837,97 @@ def user_has_control_test_access(test_id: int, telegram_id: int) -> bool:
         return cur.fetchone() is not None
 
 
-def compute_control_test_access(telegram_id: int, test: dict):
-    """Nazorat testiga kirish huquqini hisoblaydi. Ikki mustaqil yo'l bor —
-    ULARDAN BIRI YETARLI:
-      1) Admin panelda o'quvchi shu testga BEVOSITA tayinlangan bo'lsa
-         (control_test_access jadvali) — bu asosiy, tavsiya etilgan usul.
-      2) Test bir kursga bog'langan bo'lsa (course_id) va o'quvchi shu
-         kursga kirish huquqiga ega bo'lsa (bepul/referal/pullik obuna).
-    Qaytaradi: {'unlocked': bool, 'reason': 'assigned'|'course'|'locked', 'course_title': str|None}
-    """
-    if user_has_control_test_access(test["id"], telegram_id):
-        course = get_course(test["course_id"]) if test.get("course_id") else None
-        return {"unlocked": True, "reason": "assigned", "course_title": course["title"] if course else None}
+def get_control_test_course_ids(test_id: int):
+    """Shu nazorat testi bog'langan kurslarning ID ro'yxati."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT course_id FROM control_test_course_links WHERE test_id = ?", (test_id,))
+        return [r["course_id"] for r in cur.fetchall()]
 
-    course = get_course(test["course_id"]) if test.get("course_id") else None
-    if course:
+
+def get_control_test_courses(test_id: int):
+    """Bog'langan kurslarning to'liq ma'lumoti (admin panelda ko'rsatish uchun)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT c.id, c.title, c.subject, c.price, c.is_free
+            FROM control_test_course_links l
+            JOIN courses c ON c.id = l.course_id
+            WHERE l.test_id = ?
+            ORDER BY c.subject ASC, c.title ASC
+        """, (test_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def set_control_test_courses(test_id: int, course_ids):
+    """Testga bog'langan kurslar ro'yxatini TO'LIQ almashtiradi (o'qituvchi
+    admin panelda belgilaganicha). Bo'sh ro'yxat berilsa — avtomatik ochilish
+    o'chadi va test faqat qo'lda tayinlanganlarga ko'rinadi."""
+    ids = []
+    for cid in (course_ids or []):
+        c = safe_int(cid, 0)
+        if c > 0:
+            ids.append(c)
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM control_test_course_links WHERE test_id = ?", (test_id,))
+        for cid in set(ids):
+            cur.execute(
+                "INSERT OR IGNORE INTO control_test_course_links (test_id, course_id) VALUES (?, ?)",
+                (test_id, cid)
+            )
+        # Eski BITTA kursli maydonni ham mos holda yangilab qo'yamiz, shunda
+        # eski kod/hisobotlar bilan moslik saqlanadi (birinchi tanlangan kurs).
+        cur.execute("UPDATE tests SET course_id = ? WHERE id = ?", (ids[0] if ids else None, test_id))
+        conn.commit()
+    return {"ok": True, "count": len(set(ids))}
+
+
+def compute_control_test_access(telegram_id: int, test: dict):
+    """Nazorat testiga kirish huquqini hisoblaydi. IKKI MUSTAQIL YO'L bor —
+    ulardan BIRI yetarli:
+
+      1) QO'LDA TAYINLASH (control_test_access jadvali). Kursga umuman
+         yozilmagan, faqat nazorat testiga qo'shilgan o'quvchilar uchun.
+         Bu yo'l obuna muddatidan MUSTAQIL — admin bergan ruxsat o'z-o'zidan
+         yopilib qolmaydi.
+
+      2) KURS ORQALI AVTOMATIK. Test bir yoki bir nechta kursga bog'langan
+         bo'lsa (control_test_course_links) va o'quvchi shu kurslardan
+         BIRORTASIGA kirish huquqiga ega bo'lsa (bepul / referal / amaldagi
+         pullik obuna) — test avtomatik ochiladi. Ya'ni o'qituvchi
+         o'quvchini bir marta guruhga qo'shsa, shu guruhga bog'langan
+         BARCHA nazorat testlari birdaniga ochiladi.
+         Obuna muddati tugasa — bu yo'l bilan ochilgan huquq yopiladi
+         (lekin 1-yo'l bilan berilgan ruxsat saqlanib qoladi).
+
+    Qaytaradi: {'unlocked': bool, 'reason': 'assigned'|'course'|'locked',
+                'course_title': str|None}
+    """
+    # 1-yo'l — qo'lda tayinlash (eng ustuvor)
+    if user_has_control_test_access(test["id"], telegram_id):
+        return {"unlocked": True, "reason": "assigned", "course_title": None}
+
+    # 2-yo'l — bog'langan kurslardan birortasi ochiq bo'lsa yetarli.
+    course_ids = get_control_test_course_ids(test["id"])
+    # Eski (migratsiyadan oldingi) yozuvlar bilan moslik: agar bog'lanish
+    # jadvali bo'sh, lekin eski tests.course_id to'ldirilgan bo'lsa — o'shani
+    # ishlatamiz, shunda hech bir mavjud sozlama ishlamay qolmaydi.
+    if not course_ids and test.get("course_id"):
+        course_ids = [test["course_id"]]
+
+    first_locked_title = None
+    for cid in course_ids:
+        course = get_course(cid)
+        if not course:
+            continue
         access = compute_course_access(telegram_id, course)
         if access["unlocked"]:
             return {"unlocked": True, "reason": "course", "course_title": course["title"]}
-        return {"unlocked": False, "reason": "locked", "course_title": course["title"]}
+        if first_locked_title is None:
+            first_locked_title = course["title"]
 
-    return {"unlocked": False, "reason": "locked", "course_title": None}
+    return {"unlocked": False, "reason": "locked", "course_title": first_locked_title}
 
 
 def get_control_tests_for_user(telegram_id: int):

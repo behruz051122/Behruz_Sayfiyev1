@@ -913,17 +913,26 @@ export async function loadAdminTests() {
   const box = document.getElementById("adminTestsList");
   box.innerHTML = skeletonCards(2);
   try {
-    const [testsRes, cardsRes, stagesRes, groupsRes] = await Promise.all([
+    // Kurslarni ham shu yerda yuklaymiz — nazorat testi qaysi guruhlarga
+    // bog'langanini ko'rsatish va formadagi katakchalarni chizish uchun
+    // kerak. Aks holda bu ro'yxat kurslar moduli yuklanish tartibiga
+    // bog'liq bo'lib qolardi.
+    const [testsRes, cardsRes, stagesRes, groupsRes, coursesRes] = await Promise.all([
       apiFetch(`/api/admin/tests`),
       apiFetch(`/api/admin/test-subject-cards`),
       apiFetch(`/api/admin/test-stages`),
-      apiFetch(`/api/admin/test-groups`)
+      apiFetch(`/api/admin/test-groups`),
+      apiFetch(`/api/admin/courses`)
     ]);
     const data = await testsRes.json();
     currentAdminTests = data.tests;
     currentTestSubjectCards = (await cardsRes.json()).cards;
     currentTestStages = (await stagesRes.json()).stages;
     currentTestGroups = (await groupsRes.json()).groups;
+    try {
+      const coursesData = await coursesRes.json();
+      if (coursesData && Array.isArray(coursesData.courses)) currentAdminCourses = coursesData.courses;
+    } catch (e) { /* kurslar yuklanmasa ham testlar ro'yxati ko'rinaversin */ }
     const groupById = Object.fromEntries(currentTestGroups.map(g => [g.id, g]));
     box.innerHTML = "";
     if (currentAdminTests.length === 0) box.innerHTML = emptyHtml("Hali test qo'shilmagan");
@@ -936,10 +945,19 @@ export async function loadAdminTests() {
       const groupBadge = group ? `<span class="control-badge">${group.icon || "📂"} ${group.subject_title} · ${group.stage_title} · ${group.title}</span>` : "";
       const accessBtn = t.is_control_test ? `<button data-a="access">👥 Talabalar</button>` : "";
       const resultsBtn = t.is_control_test ? `<button data-a="results">📊 Natijalar</button>` : "";
+      // Nazorat testi qaysi guruhlarga bog'langani — bir qarashda ko'rinib tursin.
+      const linkedIds = Array.isArray(t.course_ids) ? t.course_ids : (t.course_id ? [t.course_id] : []);
+      const linkedTitles = linkedIds
+        .map(cid => (currentAdminCourses.find(c => Number(c.id) === Number(cid)) || {}).title)
+        .filter(Boolean);
+      const autoBadge = (t.is_control_test && linkedTitles.length)
+        ? `<span class="auto-access-badge">⚡ Avtomatik: ${linkedTitles.join(", ")}</span>`
+        : (t.is_control_test ? `<span class="auto-access-badge">Faqat qo'lda tayinlash</span>` : "");
       row.innerHTML = `
         <div class="info">
           <div class="t">${t.title}${t.is_active ? "" : " (yashirin)"}${controlBadge}${attestationBadge}${groupBadge}</div>
           <div class="s">${t.subject} · ${DIFFICULTY_LABELS[t.difficulty] || t.difficulty} · ${t.question_count} savol · ${formatSeconds(t.time_limit_seconds)}</div>
+          ${autoBadge ? `<div class="s">${autoBadge}</div>` : ""}
         </div>
         <div class="row-actions">
           <button data-a="questions">Savollar</button>
@@ -964,15 +982,46 @@ export async function loadAdminTests() {
   }
 }
 
-function populateControlCourseSelect() {
-  const select = document.getElementById("at_course_id");
-  select.innerHTML = `<option value="">— Kursga bog'lamaslik —</option>`;
+// Nazorat testini KO'P kurs/guruhga bog'lash uchun katakchalar ro'yxati.
+// selectedIds — oldindan belgilanadigan kurs ID lari.
+function populateControlCourseCheckboxes(selectedIds) {
+  const box = document.getElementById("atCourseCheckboxList");
+  const selected = new Set((selectedIds || []).map(Number));
+  box.innerHTML = "";
+
+  if (!currentAdminCourses.length) {
+    box.innerHTML = emptyHtml("Hozircha kurs yo'q — avval 'Kurslar' bo'limidan kurs qo'shing");
+    return;
+  }
+
+  // Fan bo'yicha guruhlab ko'rsatamiz — kurslar ko'payganda topish oson bo'lsin.
+  const bySubject = {};
   currentAdminCourses.forEach(c => {
-    const opt = document.createElement("option");
-    opt.value = c.id;
-    opt.textContent = `${c.title} (${c.subject})`;
-    select.appendChild(opt);
+    const key = c.subject || "Boshqa";
+    (bySubject[key] = bySubject[key] || []).push(c);
   });
+
+  Object.keys(bySubject).sort().forEach(subject => {
+    const head = document.createElement("div");
+    head.className = "course-checkbox-group-title";
+    head.textContent = subject;
+    box.appendChild(head);
+
+    bySubject[subject].forEach(c => {
+      const label = document.createElement("label");
+      label.className = "course-checkbox-item";
+      const priceTag = c.is_free ? "bepul" : (c.price > 0 ? `${c.price.toLocaleString("uz-UZ")} so'm` : "—");
+      label.innerHTML = `
+        <input type="checkbox" class="at-course-cb" value="${c.id}" ${selected.has(Number(c.id)) ? "checked" : ""}>
+        <span><b>${c.title}</b> <span class="course-checkbox-meta">${priceTag}</span></span>
+      `;
+      box.appendChild(label);
+    });
+  });
+}
+
+function getSelectedControlCourseIds() {
+  return Array.from(document.querySelectorAll(".at-course-cb:checked")).map(cb => parseInt(cb.value, 10));
 }
 
 function populateTestGroupSelect(selectedId) {
@@ -1030,12 +1079,18 @@ function openAdminTestForm(test) {
   document.getElementById("at_is_active").value = test ? String(test.is_active) : "1";
   document.getElementById("at_test_kind").value = (test && test.test_kind) ? test.test_kind : "practice";
 
-  populateControlCourseSelect();
+  // Bog'langan kurslar: yangi ko'p-kursli ro'yxat (course_ids). Eski, bitta
+  // kursli yozuvlar uchun (course_id) — orqaga moslik saqlanadi.
+  let linkedCourseIds = [];
+  if (test) {
+    if (Array.isArray(test.course_ids) && test.course_ids.length) linkedCourseIds = test.course_ids;
+    else if (test.course_id) linkedCourseIds = [test.course_id];
+  }
+  populateControlCourseCheckboxes(linkedCourseIds);
   populateTestGroupSelect(test ? test.test_group_id : null);
   const isControl = test ? Boolean(test.is_control_test) : false;
   document.getElementById("at_is_control_test").checked = isControl;
   document.getElementById("atControlCourseWrap").classList.toggle("hidden", !isControl);
-  if (test && test.course_id) document.getElementById("at_course_id").value = String(test.course_id);
   updatePracticeGroupVisibility();
 }
 
@@ -1889,8 +1944,11 @@ export function initAdminModule() {
     const minutesVal = document.getElementById("at_time_limit_minutes").value;
     const rawTimeLimit = hoursMinutesToSeconds(hoursVal, minutesVal);
     const isControlTest = document.getElementById("at_is_control_test").checked;
-    const rawCourseId = document.getElementById("at_course_id").value;
     const rawGroupId = document.getElementById("at_test_group_id").value;
+    // Nazorat testi qaysi kurs/guruhlarga bog'langani — shu guruhlarga
+    // qo'shilgan o'quvchilarga test AVTOMATIK ochiladi (birma-bir qo'lda
+    // qo'shish shart emas).
+    const courseIds = isControlTest ? getSelectedControlCourseIds() : [];
     const data = {
       subject: document.getElementById("at_subject").value,
       title: document.getElementById("at_title").value,
@@ -1899,9 +1957,7 @@ export function initAdminModule() {
       order_num: intVal("at_order_num", 0),
       is_active: intVal("at_is_active", 0),
       is_control_test: isControlTest ? 1 : 0,
-      // Kurs ixtiyoriy — nazorat testi bo'lsa ham kursga bog'lamaslik mumkin,
-      // chunki kirish huquqi endi asosan "Talabalar" ro'yxati orqali beriladi.
-      course_id: (isControlTest && rawCourseId) ? parseInt(rawCourseId) : null,
+      course_ids: courseIds,
       test_kind: document.getElementById("at_test_kind").value,
       test_group_id: (!isControlTest && rawGroupId) ? parseInt(rawGroupId) : null
     };

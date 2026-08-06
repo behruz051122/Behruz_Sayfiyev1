@@ -968,11 +968,15 @@
             <span>🎓 Bu — nazorat testi (alohida oylik reytingga kiradi). Testni saqlagach, pastdagi "Talabalar" tugmasi orqali kimlarga ochiq ekanini belgilaysiz.</span>
           </label>
           <div id="atControlCourseWrap" class="hidden">
-            <label>Qaysi kursga bog'lansin? (ixtiyoriy — kursga yozilganlarga ham avtomatik ochiladi)
-              <select id="at_course_id">
-                <option value="">— Kursga bog'lamaslik —</option>
-              </select>
-            </label>
+            <label style="margin-bottom:4px;">Qaysi kurs/guruhlarga qo'shilganlarga AVTOMATIK ochilsin?</label>
+            <p style="font-size:11px;color:var(--text-dim);margin:0 0 8px;">
+              Bir nechtasini birdan belgilashingiz mumkin. Belgilangan guruhlardan
+              <b>birortasiga</b> qo'shilgan har bir o'quvchiga bu test o'zi ochiladi —
+              ularni birma-bir qo'lda qo'shish shart emas. Pastdagi "Talabalar" tugmasi esa
+              o'z kuchida qoladi: kursga umuman yozilmagan, faqat shu testga qo'shmoqchi
+              bo'lgan o'quvchilaringiz uchun.
+            </p>
+            <div id="atCourseCheckboxList" class="course-checkbox-list"></div>
           </div>
           <button type="submit" class="gold-btn">Testni saqlash</button>
         </form>

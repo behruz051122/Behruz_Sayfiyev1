@@ -38,6 +38,33 @@ def admin_revoke_control_access(test_id: int, telegram_id: int, admin=Depends(re
     return {"ok": True}
 
 
+# ---------- Nazorat testini KURSLARGA bog'lash (avtomatik ochilish) ----------
+
+@router.get("/control-tests/{test_id}/courses")
+def admin_list_control_test_courses(test_id: int, admin=Depends(require_admin)):
+    """Shu nazorat testi qaysi kurslarga bog'langan — ya'ni qaysi guruhga
+    qo'shilgan o'quvchilarga u AVTOMATIK ochiladi."""
+    test = db.get_test(test_id)
+    if not test:
+        raise HTTPException(status_code=404, detail="Test topilmadi")
+    return {"courses": db.get_control_test_courses(test_id),
+            "course_ids": db.get_control_test_course_ids(test_id)}
+
+
+@router.put("/control-tests/{test_id}/courses")
+def admin_set_control_test_courses(test_id: int, data: dict = Body(...), admin=Depends(require_admin)):
+    """Bog'langan kurslar ro'yxatini to'liq almashtiradi. Shu kurslardan
+    birortasiga yozilgan har bir o'quvchiga test avtomatik ochiladi —
+    o'qituvchi ularni birma-bir qo'lda qo'shishi shart emas."""
+    test = db.get_test(test_id)
+    if not test:
+        raise HTTPException(status_code=404, detail="Test topilmadi")
+    course_ids = data.get("course_ids") or []
+    if not isinstance(course_ids, list):
+        raise HTTPException(status_code=400, detail="course_ids ro'yxat bo'lishi kerak")
+    return db.set_control_test_courses(test_id, course_ids)
+
+
 @router.get("/users/search")
 def admin_search_users(q: str = "", admin=Depends(require_admin)):
     return {"users": db.search_users(q)}

@@ -14,17 +14,29 @@ def admin_list_tests(admin=Depends(require_admin)):
     tests = db.get_all_tests(only_active=False)
     for t in tests:
         t["question_count"] = db.count_test_questions(t["id"])
+        # Nazorat testlari uchun — qaysi kurslarga bog'langani (admin panelda
+        # katakchalarni oldindan belgilab ko'rsatish uchun).
+        if t.get("is_control_test"):
+            t["course_ids"] = db.get_control_test_course_ids(t["id"])
     return {"tests": tests}
 
 
 @router.post("/tests")
 def admin_create_test(data: dict = Body(...), admin=Depends(require_admin)):
-    return {"id": db.create_test(data)}
+    test_id = db.create_test(data)
+    # Nazorat testi bo'lsa — bog'langan kurslar ro'yxatini ham shu yerda
+    # saqlaymiz, shunda o'qituvchi bitta "Saqlash" bosishi bilan avtomatik
+    # ochilish qoidasi ham yoziladi.
+    if "course_ids" in data:
+        db.set_control_test_courses(test_id, data.get("course_ids") or [])
+    return {"id": test_id}
 
 
 @router.put("/tests/{test_id}")
 def admin_update_test(test_id: int, data: dict = Body(...), admin=Depends(require_admin)):
     db.update_test(test_id, data)
+    if "course_ids" in data:
+        db.set_control_test_courses(test_id, data.get("course_ids") or [])
     return {"ok": True}
 
 
