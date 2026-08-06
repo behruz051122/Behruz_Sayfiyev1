@@ -15,6 +15,23 @@ import json
 from db_pool import get_connection, init_pool
 from config import DB_PATH
 
+
+def safe_int(value, default: int = 0) -> int:
+    """Kelgan qiymatni BUTUN SONGA xavfsiz aylantiradi.
+
+    NEGA KERAK: admin panelidagi raqamli maydon bo'sh qoldirilsa, brauzer
+    JavaScript'i uni `null` sifatida yuboradi (parseInt("") -> NaN ->
+    JSON'da null). Oddiy int(None) esa TypeError beradi va butun so'rov
+    500 xatolik bilan yiqiladi — admin uchun bu "tugmani bosdim, lekin
+    hech narsa bo'lmadi" ko'rinishida namoyon bo'ladi. Shu funksiya
+    orqali bunday hollarda standart qiymat ishlatiladi."""
+    if value is None or value == "":
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
 # Bosh sahifa kartalarining STANDART (birinchi marta ishga tushganda
 # to'ldiriladigan) qiymatlari — (card_key, title, subtitle, icon, order_num).
 # card_key HECH QACHON o'zgarmaydi (frontend shu bo'yicha qaysi ekranga
@@ -2312,11 +2329,12 @@ def create_test(data: dict) -> int:
             INSERT INTO tests (subject, title, difficulty, time_limit_seconds, order_num, is_active, is_control_test, course_id, test_kind, test_group_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            data.get("subject", ""), data.get("title", ""), difficulty, int(time_limit),
-            int(data.get("order_num", 0)), int(data.get("is_active", 1)),
-            int(data.get("is_control_test", 0)), data.get("course_id") or None,
+            data.get("subject", ""), data.get("title", ""), difficulty,
+            safe_int(time_limit, DIFFICULTY_TIME_SECONDS.get(difficulty, 600)),
+            safe_int(data.get("order_num"), 0), safe_int(data.get("is_active"), 1),
+            safe_int(data.get("is_control_test"), 0), data.get("course_id") or None,
             data.get("test_kind") or "practice",
-            int(data["test_group_id"]) if data.get("test_group_id") else None
+            safe_int(data["test_group_id"]) if data.get("test_group_id") else None
         ))
         conn.commit()
         return cur.lastrowid
@@ -2326,14 +2344,21 @@ def update_test(test_id: int, data: dict):
     with get_connection() as conn:
         cur = conn.cursor()
         fields, values = [], []
+        # Raqamli ustunlar bo'sh/None kelib qolsa ham NULL yozib yubormaymiz —
+        # standart qiymatga tushiramiz (aks holda, masalan, order_num NULL
+        # bo'lib, keyin tartiblashda test ro'yxatdan "yo'qolib" qolardi).
+        numeric_defaults = {"time_limit_seconds": 600, "order_num": 0, "is_active": 1, "is_control_test": 0}
         for key in ["subject", "title", "difficulty", "time_limit_seconds", "order_num", "is_active",
                     "is_control_test", "course_id", "test_kind"]:
             if key in data:
                 fields.append(f"{key} = ?")
-                values.append(data[key] if data[key] != "" else None)
+                if key in numeric_defaults:
+                    values.append(safe_int(data[key], numeric_defaults[key]))
+                else:
+                    values.append(data[key] if data[key] != "" else None)
         if "test_group_id" in data:
             fields.append("test_group_id = ?")
-            values.append(int(data["test_group_id"]) if data["test_group_id"] else None)
+            values.append(safe_int(data["test_group_id"]) if data["test_group_id"] else None)
         if fields:
             values.append(test_id)
             cur.execute(f"UPDATE tests SET {', '.join(fields)} WHERE id = ?", values)

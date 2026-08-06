@@ -17,6 +17,46 @@ function hoursMinutesToSeconds(hoursStr, minutesStr) {
   return h * 3600 + m * 60;
 }
 
+// Maydondan BUTUN SON o'qish — maydon bo'sh qoldirilgan bo'lsa ham hech
+// qachon NaN qaytarmaydi.
+//
+// NEGA KERAK: oddiy parseInt("") — NaN beradi, JSON.stringify(NaN) esa
+// "null" ga aylanadi. Server tomonida int(None) chaqirilib, so'rov 500
+// xatolik bilan yiqilardi. Natijada admin, masalan, "Tartib raqami"
+// maydonini tozalab qo'ysa — "Testni saqlash" bosilganda hech narsa
+// saqlanmasdan, hech qanday xabar ham ko'rsatilmasdan forma yopilib
+// ketardi ("bir necha marta urinsam ishlaydi" muammosining asl sababi).
+function intVal(elementId, fallback = 0) {
+  const el = document.getElementById(elementId);
+  const n = parseInt(el ? el.value : "", 10);
+  return Number.isNaN(n) ? fallback : n;
+}
+
+// Admin formalarini saqlash uchun umumiy yordamchi: so'rov muvaffaqiyatsiz
+// bo'lsa — endi JIMGINA o'tib ketmaydi, aniq xabar ko'rsatadi va false
+// qaytaradi (chaqiruvchi forma yopilmasligi/ro'yxat yangilanmasligi uchun).
+async function saveOrAlert(path, options, errorPrefix = "Saqlab bo'lmadi") {
+  try {
+    const res = await apiFetch(path, options);
+    if (!res.ok) {
+      let detail = "";
+      try {
+        const data = await res.json();
+        detail = data && data.detail ? (typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail)) : "";
+      } catch (e) { /* javob JSON bo'lmasligi mumkin */ }
+      const msg = `${errorPrefix}: ${detail || `server ${res.status} xatolik qaytardi`}`;
+      tg.showAlert ? tg.showAlert(msg) : alert(msg);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error(e);
+    const msg = `${errorPrefix}: ${e.message || "tarmoq xatoligi"}`;
+    tg.showAlert ? tg.showAlert(msg) : alert(msg);
+    return false;
+  }
+}
+
 let currentAdminCourses = [];
 let currentAdminCourseCategories = [];
 let currentAdminTests = [];
@@ -1653,16 +1693,16 @@ export function initAdminModule() {
       subject: document.getElementById("ac_subject").value,
       resource_type: document.getElementById("ac_resource_type").value,
       description: document.getElementById("ac_description").value,
-      is_free: parseInt(document.getElementById("ac_is_free").value),
-      required_referrals: parseInt(document.getElementById("ac_required_referrals").value),
-      price: parseInt(document.getElementById("ac_price").value || 0),
+      is_free: intVal("ac_is_free", 0),
+      required_referrals: intVal("ac_required_referrals", 0),
+      price: intVal("ac_price", 0),
       duration_days: document.getElementById("ac_duration_days").value || null,
-      students_count: parseInt(document.getElementById("ac_students_count").value),
+      students_count: intVal("ac_students_count", 0),
       duration_text: document.getElementById("ac_duration_text").value,
       lessons_count_override: document.getElementById("ac_lessons_override").value || null,
       thumbnail_emoji: document.getElementById("ac_thumbnail_emoji").value,
-      order_num: parseInt(document.getElementById("ac_order_num").value),
-      is_active: parseInt(document.getElementById("ac_is_active").value),
+      order_num: intVal("ac_order_num", 0),
+      is_active: intVal("ac_is_active", 0),
       category_ids: categoryIds
     };
     if (id) await apiFetch(`/api/admin/courses/${id}`, { method: "PUT", body: JSON.stringify(data) });
@@ -1681,8 +1721,8 @@ export function initAdminModule() {
       title: document.getElementById("cc_title").value,
       subtitle: document.getElementById("cc_subtitle").value,
       icon: document.getElementById("cc_icon").value || "📁",
-      order_num: parseInt(document.getElementById("cc_order_num").value),
-      is_active: parseInt(document.getElementById("cc_is_active").value)
+      order_num: intVal("cc_order_num", 0),
+      is_active: intVal("cc_is_active", 0)
     };
     if (id) await apiFetch(`/api/admin/course-categories/${id}`, { method: "PUT", body: JSON.stringify(data) });
     else await apiFetch(`/api/admin/course-categories`, { method: "POST", body: JSON.stringify(data) });
@@ -1700,11 +1740,11 @@ export function initAdminModule() {
     const data = {
       course_id: parseInt(courseId),
       label: document.getElementById("pt_label").value,
-      price: parseInt(document.getElementById("pt_price").value || 0),
+      price: intVal("pt_price", 0),
       original_price: originalPriceRaw ? parseInt(originalPriceRaw) : null,
       duration_text: document.getElementById("pt_duration_text").value,
-      order_num: parseInt(document.getElementById("pt_order_num").value),
-      is_active: parseInt(document.getElementById("pt_is_active").value)
+      order_num: intVal("pt_order_num", 0),
+      is_active: intVal("pt_is_active", 0)
     };
     if (id) await apiFetch(`/api/admin/pricing-tiers/${id}`, { method: "PUT", body: JSON.stringify(data) });
     else await apiFetch(`/api/admin/pricing-tiers`, { method: "POST", body: JSON.stringify(data) });
@@ -1721,8 +1761,8 @@ export function initAdminModule() {
     const data = {
       course_id: parseInt(courseId),
       title: document.getElementById("ap_title").value,
-      order_num: parseInt(document.getElementById("ap_order_num").value),
-      topic_count: parseInt(document.getElementById("ap_topic_count").value || 0)
+      order_num: intVal("ap_order_num", 0),
+      topic_count: intVal("ap_topic_count", 0)
     };
     if (id) await apiFetch(`/api/admin/paragraphs/${id}`, { method: "PUT", body: JSON.stringify(data) });
     else await apiFetch(`/api/admin/paragraphs`, { method: "POST", body: JSON.stringify(data) });
@@ -1745,7 +1785,7 @@ export function initAdminModule() {
       title: document.getElementById("al_title").value,
       video_url: document.getElementById("al_video_url").value,
       description: document.getElementById("al_description").value,
-      order_num: parseInt(document.getElementById("al_order_num").value),
+      order_num: intVal("al_order_num", 0),
       is_free_preview: document.getElementById("al_is_free_preview").checked ? 1 : 0
     };
     if (id) await apiFetch(`/api/admin/lessons/${id}`, { method: "PUT", body: JSON.stringify(data) });
@@ -1763,8 +1803,8 @@ export function initAdminModule() {
   document.getElementById("enrollFormEl").addEventListener("submit", async (e) => {
     e.preventDefault();
     const data = {
-      telegram_id: parseInt(document.getElementById("en_telegram_id").value),
-      course_id: parseInt(document.getElementById("en_course_id").value),
+      telegram_id: intVal("en_telegram_id", 0),
+      course_id: intVal("en_course_id", 0),
       duration_days: document.getElementById("en_duration_days").value || null
     };
     await apiFetch(`/api/admin/enroll`, { method: "POST", body: JSON.stringify(data) });
@@ -1786,8 +1826,8 @@ export function initAdminModule() {
       title: document.getElementById("tsc_title").value,
       icon: document.getElementById("tsc_icon").value || "📘",
       color_key: document.getElementById("tsc_color_key").value,
-      order_num: parseInt(document.getElementById("tsc_order_num").value),
-      is_active: parseInt(document.getElementById("tsc_is_active").value)
+      order_num: intVal("tsc_order_num", 0),
+      is_active: intVal("tsc_is_active", 0)
     };
     if (id) await apiFetch(`/api/admin/test-subject-cards/${id}`, { method: "PUT", body: JSON.stringify(data) });
     else await apiFetch(`/api/admin/test-subject-cards`, { method: "POST", body: JSON.stringify(data) });
@@ -1802,12 +1842,12 @@ export function initAdminModule() {
     e.preventDefault();
     const id = document.getElementById("ts_id").value;
     const data = {
-      subject_card_id: parseInt(document.getElementById("ts_subject_card_id").value),
+      subject_card_id: intVal("ts_subject_card_id", 0),
       title: document.getElementById("ts_title").value,
       subtitle: document.getElementById("ts_subtitle").value,
       icon: document.getElementById("ts_icon").value || "📶",
-      order_num: parseInt(document.getElementById("ts_order_num").value),
-      is_active: parseInt(document.getElementById("ts_is_active").value)
+      order_num: intVal("ts_order_num", 0),
+      is_active: intVal("ts_is_active", 0)
     };
     if (id) await apiFetch(`/api/admin/test-stages/${id}`, { method: "PUT", body: JSON.stringify(data) });
     else await apiFetch(`/api/admin/test-stages`, { method: "POST", body: JSON.stringify(data) });
@@ -1822,12 +1862,12 @@ export function initAdminModule() {
     e.preventDefault();
     const id = document.getElementById("tg_id").value;
     const data = {
-      stage_id: parseInt(document.getElementById("tg_stage_id").value),
+      stage_id: intVal("tg_stage_id", 0),
       title: document.getElementById("tg_title").value,
       subtitle: document.getElementById("tg_subtitle").value,
       icon: document.getElementById("tg_icon").value || "📂",
-      order_num: parseInt(document.getElementById("tg_order_num").value),
-      is_active: parseInt(document.getElementById("tg_is_active").value)
+      order_num: intVal("tg_order_num", 0),
+      is_active: intVal("tg_is_active", 0)
     };
     if (id) await apiFetch(`/api/admin/test-groups/${id}`, { method: "PUT", body: JSON.stringify(data) });
     else await apiFetch(`/api/admin/test-groups`, { method: "POST", body: JSON.stringify(data) });
@@ -1856,8 +1896,8 @@ export function initAdminModule() {
       title: document.getElementById("at_title").value,
       difficulty: difficulty,
       time_limit_seconds: rawTimeLimit > 0 ? rawTimeLimit : DIFFICULTY_DEFAULT_SECONDS[difficulty],
-      order_num: parseInt(document.getElementById("at_order_num").value),
-      is_active: parseInt(document.getElementById("at_is_active").value),
+      order_num: intVal("at_order_num", 0),
+      is_active: intVal("at_is_active", 0),
       is_control_test: isControlTest ? 1 : 0,
       // Kurs ixtiyoriy — nazorat testi bo'lsa ham kursga bog'lamaslik mumkin,
       // chunki kirish huquqi endi asosan "Talabalar" ro'yxati orqali beriladi.
@@ -1865,8 +1905,25 @@ export function initAdminModule() {
       test_kind: document.getElementById("at_test_kind").value,
       test_group_id: (!isControlTest && rawGroupId) ? parseInt(rawGroupId) : null
     };
-    if (id) await apiFetch(`/api/admin/tests/${id}`, { method: "PUT", body: JSON.stringify(data) });
-    else await apiFetch(`/api/admin/tests`, { method: "POST", body: JSON.stringify(data) });
+    if (!data.subject.trim() || !data.title.trim()) {
+      const msg = "Fan va Test nomi to'ldirilishi shart.";
+      tg.showAlert ? tg.showAlert(msg) : alert(msg);
+      return;
+    }
+
+    const saveBtn = e.target.querySelector('button[type="submit"]');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = "Saqlanmoqda..."; }
+
+    const ok = id
+      ? await saveOrAlert(`/api/admin/tests/${id}`, { method: "PUT", body: JSON.stringify(data) }, "Testni yangilab bo'lmadi")
+      : await saveOrAlert(`/api/admin/tests`, { method: "POST", body: JSON.stringify(data) }, "Testni saqlab bo'lmadi");
+
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "Testni saqlash"; }
+
+    // Xatolik bo'lsa — formani YOPMAYMIZ, admin kiritgan ma'lumotlari
+    // yo'qolmasin va xato sababini ko'rib, tuzatib qayta yubora olsin.
+    if (!ok) return;
+
     document.getElementById("adminTestForm").classList.add("hidden");
     loadAdminTests();
   });
@@ -1916,14 +1973,14 @@ export function initAdminModule() {
       question_type: qtype,
       question_text: document.getElementById("aq_question_text").value,
       image_url: document.getElementById("aq_image_url").value,
-      order_num: parseInt(document.getElementById("aq_order_num").value)
+      order_num: intVal("aq_order_num", 0)
     };
     if (qtype === "Y1") {
       data.option_1 = document.getElementById("aq_option_1").value;
       data.option_2 = document.getElementById("aq_option_2").value;
       data.option_3 = document.getElementById("aq_option_3").value;
       data.option_4 = document.getElementById("aq_option_4").value;
-      data.correct_index = parseInt(document.getElementById("aq_correct_index").value);
+      data.correct_index = intVal("aq_correct_index", 1); // variantlar 1..4, shuning uchun zaxira qiymat 1
       data.difficulty_level = document.getElementById("aq_difficulty_level").value;
       data.point_value = parseFloat(document.getElementById("aq_point_value").value) || 1;
     } else if (qtype === "Y2") {
@@ -1964,8 +2021,8 @@ export function initAdminModule() {
       title: document.getElementById("dc_title").value,
       subtitle: document.getElementById("dc_subtitle").value,
       icon: document.getElementById("dc_icon").value,
-      order_num: parseInt(document.getElementById("dc_order_num").value),
-      is_active: parseInt(document.getElementById("dc_is_active").value)
+      order_num: intVal("dc_order_num", 0),
+      is_active: intVal("dc_is_active", 0)
     };
     await apiFetch(`/api/admin/dashboard-cards/${key}`, { method: "PUT", body: JSON.stringify(data) });
     document.getElementById("adminDashboardCardForm").classList.add("hidden");
@@ -1996,14 +2053,14 @@ export function initAdminModule() {
       subtitle: document.getElementById("bp_subtitle").value,
       description: document.getElementById("bp_description").value,
       category: document.getElementById("bp_category").value,
-      price: parseInt(document.getElementById("bp_price").value || 0),
+      price: intVal("bp_price", 0),
       image_url: document.getElementById("bp_image_url").value,
       badge_text: document.getElementById("bp_badge_text").value,
-      is_bundle: parseInt(document.getElementById("bp_is_bundle").value),
+      is_bundle: intVal("bp_is_bundle", 0),
       contact_username: document.getElementById("bp_contact_username").value,
-      linked_course_id: document.getElementById("bp_linked_course_id").value ? parseInt(document.getElementById("bp_linked_course_id").value) : null,
-      order_num: parseInt(document.getElementById("bp_order_num").value),
-      is_active: parseInt(document.getElementById("bp_is_active").value)
+      linked_course_id: document.getElementById("bp_linked_course_id").value ? intVal("bp_linked_course_id", 0) : null,
+      order_num: intVal("bp_order_num", 0),
+      is_active: intVal("bp_is_active", 0)
     };
     if (id) await apiFetch(`/api/admin/book-products/${id}`, { method: "PUT", body: JSON.stringify(data) });
     else await apiFetch(`/api/admin/book-products`, { method: "POST", body: JSON.stringify(data) });
@@ -2022,8 +2079,8 @@ export function initAdminModule() {
     const data = {
       question: document.getElementById("faq_question").value,
       answer: document.getElementById("faq_answer").value,
-      order_num: parseInt(document.getElementById("faq_order_num").value),
-      is_active: parseInt(document.getElementById("faq_is_active").value)
+      order_num: intVal("faq_order_num", 0),
+      is_active: intVal("faq_is_active", 0)
     };
     if (id) await apiFetch(`/api/admin/faq/${id}`, { method: "PUT", body: JSON.stringify(data) });
     else await apiFetch(`/api/admin/faq`, { method: "POST", body: JSON.stringify(data) });
@@ -2056,8 +2113,8 @@ export function initAdminModule() {
       image_url: document.getElementById("sr_image_url").value,
       result_text: document.getElementById("sr_result_text").value,
       feedback_text: document.getElementById("sr_feedback_text").value,
-      order_num: parseInt(document.getElementById("sr_order_num").value),
-      is_active: parseInt(document.getElementById("sr_is_active").value)
+      order_num: intVal("sr_order_num", 0),
+      is_active: intVal("sr_is_active", 0)
     };
     if (id) await apiFetch(`/api/admin/student-results/${id}`, { method: "PUT", body: JSON.stringify(data) });
     else await apiFetch(`/api/admin/student-results`, { method: "POST", body: JSON.stringify(data) });
@@ -2080,8 +2137,8 @@ export function initAdminModule() {
       title: document.getElementById("as_title").value,
       description: document.getElementById("as_description").value,
       time_limit_seconds: asSeconds > 0 ? asSeconds : 10800,
-      order_num: parseInt(document.getElementById("as_order_num").value),
-      is_active: parseInt(document.getElementById("as_is_active").value)
+      order_num: intVal("as_order_num", 0),
+      is_active: intVal("as_is_active", 0)
     };
     if (id) await apiFetch(`/api/admin/simulators/${id}`, { method: "PUT", body: JSON.stringify(data) });
     else await apiFetch(`/api/admin/simulators`, { method: "POST", body: JSON.stringify(data) });
@@ -2093,12 +2150,12 @@ export function initAdminModule() {
 
   document.getElementById("simSubjectFormEl").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const simulatorId = parseInt(document.getElementById("ass_simulator_id").value);
+    const simulatorId = intVal("ass_simulator_id", 0);
     const data = {
       simulator_id: simulatorId,
       subject: document.getElementById("ass_subject").value.trim(),
-      question_count: parseInt(document.getElementById("ass_question_count").value || 10),
-      order_num: parseInt(document.getElementById("ass_order_num").value)
+      question_count: intVal("ass_question_count", 10),
+      order_num: intVal("ass_order_num", 0)
     };
     await apiFetch(`/api/admin/simulator-subjects`, { method: "POST", body: JSON.stringify(data) });
     document.getElementById("ass_subject").value = "";
