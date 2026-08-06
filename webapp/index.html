@@ -1249,6 +1249,7 @@
             <button id="adminHwReviewBtn" class="secondary-btn small">📝 Tekshirish</button>
             <button id="adminHwLateBtn" class="secondary-btn small">⚠️ Kechikkanlar</button>
             <button id="adminHwRankingBtn" class="secondary-btn small">🏆 Oylik reyting</button>
+            <button id="adminHwStorageBtn" class="secondary-btn small">💾 Rasm ombori</button>
           </div>
         </div>
         <p style="font-size:11px;color:var(--text-dim);margin-bottom:10px;">
@@ -1335,6 +1336,22 @@
           <button id="adminHwRemindAllBtn" class="secondary-btn small">📨 Hammasiga ogohlantirish yuborish</button>
         </div>
         <div id="adminHwLateList" class="admin-list"></div>
+      </div>
+
+      <div id="adminHwStoragePanel" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3>💾 Rasm ombori</h3>
+          <button id="adminHwCloseStorage" class="icon-btn" aria-label="Yopish">✕</button>
+        </div>
+        <div id="adminHwStorageContent"></div>
+        <div style="margin-top:12px;">
+          <button id="adminHwCleanupBtn" class="secondary-btn small">🧹 Eski rasmlarni tozalash</button>
+          <p style="font-size:11px;color:var(--text-dim);margin-top:8px;line-height:1.5;">
+            Baholanganiga belgilangan muddatdan ko'p vaqt o'tgan rasmlar o'chiriladi.
+            <b>Ball va izohlar hech qachon o'chirilmaydi</b> — reyting buzilmaydi.
+            Bu tozalash kuniga bir marta avtomatik ham ishlaydi.
+          </p>
+        </div>
       </div>
 
       <div id="adminHwRankingPanel" class="admin-section hidden">

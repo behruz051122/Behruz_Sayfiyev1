@@ -2230,7 +2230,7 @@ export function initAdminModule() {
 let currentHwSubjects = [];
 
 function hideHwPanels() {
-  ["adminHwSubjectForm", "adminHwReviewPanel", "adminHwLatePanel", "adminHwRankingPanel"]
+  ["adminHwSubjectForm", "adminHwReviewPanel", "adminHwLatePanel", "adminHwRankingPanel", "adminHwStoragePanel"]
     .forEach(id => document.getElementById(id).classList.add("hidden"));
 }
 
@@ -2367,7 +2367,7 @@ async function openHwReview() {
           </div>
         </div>
         <div class="hw-review-photos">
-          ${s.photos.map(p => `<img src="${p.photo_url}" data-src="${p.photo_url}" alt="vazifa">`).join("")}
+          ${s.photos.map(p => `<img src="${p.view_url}" data-src="${p.view_url}" alt="vazifa" loading="lazy">`).join("")}
         </div>
         <div class="hw-grade-row">
           <input type="number" min="0" max="10" step="0.5" placeholder="Ball" class="hw-score-input">
@@ -2523,6 +2523,26 @@ export function initHomeworkAdminModule() {
     () => document.getElementById("adminHwRankingPanel").classList.add("hidden"));
   document.getElementById("adminHwLoadRankingBtn").addEventListener("click", loadHwRanking);
 
+  document.getElementById("adminHwStorageBtn").addEventListener("click", openHwStorage);
+  document.getElementById("adminHwCloseStorage").addEventListener("click",
+    () => document.getElementById("adminHwStoragePanel").classList.add("hidden"));
+  document.getElementById("adminHwCleanupBtn").addEventListener("click", async () => {
+    if (!confirm("Eski (muddati o'tgan) vazifa rasmlari o'chirilsinmi?\n\nBall va izohlarga tegilmaydi.")) return;
+    const btn = document.getElementById("adminHwCleanupBtn");
+    btn.disabled = true; btn.textContent = "Tozalanmoqda...";
+    try {
+      const res = await apiFetch(`/api/admin/homework/cleanup`, { method: "POST", body: JSON.stringify({}) });
+      const data = await res.json();
+      showToast(`🧹 ${data.deleted} ta rasm tozalandi`);
+      openHwStorage();
+    } catch (e) {
+      console.error(e);
+      const msg = "Tozalab bo'lmadi";
+      tg.showAlert ? tg.showAlert(msg) : alert(msg);
+    }
+    btn.disabled = false; btn.textContent = "🧹 Eski rasmlarni tozalash";
+  });
+
   document.getElementById("adminHwRemindAllBtn").addEventListener("click", async () => {
     if (!confirm("Barcha kechikkan o'quvchilarga ogohlantirish yuborilsinmi?")) return;
     const ok = await saveOrAlert(`/api/admin/homework/remind`, {
@@ -2654,6 +2674,35 @@ async function loadHwStudentStarts(subjectId) {
       };
       box.appendChild(row);
     });
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml();
+  }
+}
+
+
+async function openHwStorage() {
+  hideHwPanels();
+  document.getElementById("adminHwStoragePanel").classList.remove("hidden");
+  const box = document.getElementById("adminHwStorageContent");
+  box.innerHTML = loadingHtml();
+  try {
+    const res = await apiFetch(`/api/admin/homework/storage`);
+    const d = await res.json();
+    const okBadge = d.archive_enabled
+      ? `<span class="hw-start-ok">✅ Telegram arxivi yoqilgan — rasmlar serverda saqlanmaydi</span>`
+      : `<span class="hw-start-err">⚠️ Telegram arxivi sozlanmagan — rasmlar SERVERDA saqlanmoqda</span>`;
+    box.innerHTML = `
+      <p style="font-size:12px;margin-bottom:10px;">${okBadge}</p>
+      <div class="control-result-stats-row">
+        <div class="control-stat"><div class="num">${d.total}</div><div class="lbl">Jami rasm</div></div>
+        <div class="control-stat correct"><div class="num">${d.in_telegram}</div><div class="lbl">Telegramda</div></div>
+        <div class="control-stat ${d.on_server > 0 ? "wrong" : ""}"><div class="num">${d.on_server}</div><div class="lbl">Serverda</div></div>
+      </div>
+      <p style="font-size:11px;color:var(--text-dim);margin-top:10px;line-height:1.5;">
+        Baholangan rasmlar: ${d.graded_photos} ta · Saqlash muddati: ${d.retention_days} kun
+      </p>
+    `;
   } catch (e) {
     console.error(e);
     box.innerHTML = errorHtml();

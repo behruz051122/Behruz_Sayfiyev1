@@ -73,3 +73,28 @@ DB_PATH = os.environ.get("DB_PATH", "database.db")
 # Alohida sozlash shart emas — lekin xohlasangiz UPLOADS_DIR orqali
 # ustidan yozib qo'yish mumkin.
 UPLOADS_DIR = os.environ.get("UPLOADS_DIR", os.path.join(os.path.dirname(DB_PATH) or ".", "uploads"))
+
+
+# ---------- VAZIFA RASMLARINI TELEGRAMDA SAQLASH ----------
+# MUAMMO: o'quvchilar yuboradigan uy vazifasi suratlari (har biri 2-4 MB)
+# serverning doimiy xotirasini (Railway Volume) tez to'ldiradi va xarajatni
+# oshiradi. Masalan 50 o'quvchi x 120 paragraf x 3 rasm = ~36 GB.
+#
+# YECHIM: rasm serverda SAQLANMAYDI. Bot uni siz ochgan YOPIQ KANALGA
+# yuboradi, bazada esa faqat Telegram bergan qisqa "file_id" satri
+# (~80 bayt) qoladi — ya'ni 2 MB o'rniga 80 bayt, 25 000 marta kam.
+# Telegram bu fayllarni bepul va muddatsiz saqlaydi.
+#
+# SOZLASH (bir marta):
+#   1) Telegramda YOPIQ kanal oching (masalan "Vazifalar arxivi")
+#   2) Botingizni o'sha kanalga ADMIN qilib qo'shing
+#   3) Kanal ID sini oling (odatda -100 bilan boshlanadi)
+#   4) Railway -> Variables -> HOMEWORK_ARCHIVE_CHAT_ID = -100xxxxxxxxxx
+#
+# Agar sozlanmagan bo'lsa — tizim ishlashdan TO'XTAMAYDI, rasmlar
+# avvalgidek diskka saqlanadi (faqat joy egallaydi).
+HOMEWORK_ARCHIVE_CHAT_ID = os.environ.get("HOMEWORK_ARCHIVE_CHAT_ID", "").strip()
+
+# Baholangan vazifa rasmlari necha kundan keyin o'chirilsin.
+# Ball va o'qituvchi izohi HECH QACHON o'chirilmaydi — faqat rasm fayli.
+HOMEWORK_PHOTO_RETENTION_DAYS = int(os.environ.get("HOMEWORK_PHOTO_RETENTION_DAYS", "90"))

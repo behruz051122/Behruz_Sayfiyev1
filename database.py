@@ -1028,6 +1028,19 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_hw_photos_sub ON homework_photos (submission_id)")
         conn.commit()
 
+        # Rasmni TELEGRAMDA saqlash uchun ustunlar (serverni to'ldirmaslik
+        # uchun — batafsil izoh config.py da). storage: 'local' | 'telegram'.
+        for _col, _ddl in [
+            ("telegram_file_id", "ALTER TABLE homework_photos ADD COLUMN telegram_file_id TEXT"),
+            ("telegram_message_id", "ALTER TABLE homework_photos ADD COLUMN telegram_message_id INTEGER"),
+            ("storage", "ALTER TABLE homework_photos ADD COLUMN storage TEXT DEFAULT 'local'"),
+        ]:
+            try:
+                cur.execute(_ddl)
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
+
         # Fan darajasidagi standart boshlanish nuqtasi (shaxsiy yozuvi
         # bo'lmagan o'quvchilar uchun; odatda 1 bo'lib qoladi).
         try:
@@ -4433,13 +4446,34 @@ def get_homework_submission(subject_id: int, telegram_id: int, paragraph_number:
 
 
 def get_homework_photos(submission_id: int):
+    """Topshiriq rasmlari (xom holda). Ko'rish havolasi (`view_url`) router
+    qatlamida, imzo bilan qo'shiladi — chunki maxfiy kalit shu yerda emas."""
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
-            SELECT id, photo_url, order_num FROM homework_photos
+            SELECT id, photo_url, order_num, telegram_file_id, storage
+            FROM homework_photos
             WHERE submission_id = ? ORDER BY order_num ASC, id ASC
         """, (submission_id,))
-        return [dict(r) for r in cur.fetchall()]
+        rows = [dict(r) for r in cur.fetchall()]
+    for r in rows:
+        r["in_telegram"] = bool(r.get("telegram_file_id"))
+        r.pop("telegram_file_id", None)  # file_id hech qachon frontendga chiqmaydi
+    return rows
+
+
+def get_homework_photo_record(photo_id: int):
+    """Bitta rasm yozuvi + kimga tegishli ekani (kirish huquqini tekshirish uchun)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT p.*, s.telegram_id AS owner_telegram_id, s.subject_id, s.paragraph_number
+            FROM homework_photos p
+            JOIN homework_submissions s ON s.id = p.submission_id
+            WHERE p.id = ?
+        """, (photo_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
 
 
 def _homework_submissions_map(subject_id: int, telegram_id: int):
@@ -4614,15 +4648,25 @@ def is_homework_paragraph_unlocked(telegram_id: int, subject_id: int, paragraph_
     return bool(prev and prev["status"] in ("submitted", "graded"))
 
 
-def add_homework_photo(subject_id: int, telegram_id: int, paragraph_number: int, photo_url: str):
+def add_homework_photo(subject_id: int, telegram_id: int, paragraph_number: int, photo_url: str,
+                       telegram_file_id: str = None, telegram_message_id: int = None,
+                       storage: str = "local"):
+    """Rasmni topshiriqqa qo'shadi.
+
+    storage='telegram' bo'lsa — fayl serverda saqlanmaydi, faqat Telegram
+    bergan file_id yoziladi (server xotirasi tejaladi). 'local' bo'lsa —
+    eski usul: fayl diskda, photo_url orqali beriladi."""
     submission_id = _ensure_homework_submission(subject_id, telegram_id, paragraph_number)
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("SELECT COALESCE(MAX(order_num), -1) + 1 AS nxt FROM homework_photos WHERE submission_id = ?",
                     (submission_id,))
         nxt = cur.fetchone()["nxt"]
-        cur.execute("INSERT INTO homework_photos (submission_id, photo_url, order_num) VALUES (?, ?, ?)",
-                    (submission_id, photo_url, nxt))
+        cur.execute("""
+            INSERT INTO homework_photos (submission_id, photo_url, order_num,
+                                         telegram_file_id, telegram_message_id, storage)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (submission_id, photo_url, nxt, telegram_file_id, telegram_message_id, storage))
         # Qayta ishlashga qaytarilgan topshiriqqa yangi rasm qo'shilsa —
         # u yana "yuklanmoqda" holatiga qaytadi.
         cur.execute("UPDATE homework_submissions SET status = 'draft' WHERE id = ? AND status = 'rejected'",
@@ -4632,19 +4676,52 @@ def add_homework_photo(subject_id: int, telegram_id: int, paragraph_number: int,
 
 
 def delete_homework_photo(photo_id: int, telegram_id: int):
-    """Rasmni faqat EGASI o'chira oladi va faqat hali baholanmagan bo'lsa."""
+    """Rasmni faqat EGASI o'chira oladi va faqat hali baholanmagan bo'lsa.
+    Qaytaradi: {'ok': bool, 'telegram_message_id': int|None, 'photo_url': str|None}
+    — chaqiruvchi kod arxivdagi xabarni va diskdagi faylni ham tozalaydi."""
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
-            SELECT p.id FROM homework_photos p
+            SELECT p.id, p.telegram_message_id, p.photo_url FROM homework_photos p
             JOIN homework_submissions s ON s.id = p.submission_id
             WHERE p.id = ? AND s.telegram_id = ? AND s.status != 'graded'
         """, (photo_id, telegram_id))
-        if not cur.fetchone():
+        row = cur.fetchone()
+        if not row:
             return {"ok": False, "detail": "Bu rasmni o'chirib bo'lmaydi"}
+        info = dict(row)
         cur.execute("DELETE FROM homework_photos WHERE id = ?", (photo_id,))
         conn.commit()
-    return {"ok": True}
+    return {"ok": True,
+            "telegram_message_id": info.get("telegram_message_id"),
+            "photo_url": info.get("photo_url")}
+
+
+def get_expired_homework_photos(retention_days: int = 90):
+    """Baholanganiga `retention_days` kundan ko'p vaqt o'tgan topshiriqlar
+    RASMLARI. Ball va izoh tegilmaydi — faqat fayllar tozalanadi."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT p.id, p.photo_url, p.telegram_message_id, p.storage
+            FROM homework_photos p
+            JOIN homework_submissions s ON s.id = p.submission_id
+            WHERE s.status = 'graded'
+              AND s.graded_at IS NOT NULL
+              AND julianday('now') - julianday(s.graded_at) > ?
+        """, (retention_days,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def delete_homework_photo_rows(photo_ids):
+    if not photo_ids:
+        return 0
+    with get_connection() as conn:
+        cur = conn.cursor()
+        placeholders = ",".join("?" for _ in photo_ids)
+        cur.execute(f"DELETE FROM homework_photos WHERE id IN ({placeholders})", list(photo_ids))
+        conn.commit()
+        return cur.rowcount
 
 
 def submit_homework_paragraph(subject_id: int, telegram_id: int, paragraph_number: int):
@@ -4955,3 +5032,30 @@ def get_homework_students_needing_reminder(min_hours_between: int = 48):
                 continue
         result.append(s)
     return result
+
+
+def get_homework_storage_stats():
+    """Vazifa rasmlari bo'yicha statistika — admin panelda ko'rsatiladi
+    (qancha rasm Telegramda, qanchasi hali serverda)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN telegram_file_id IS NOT NULL THEN 1 ELSE 0 END) AS in_telegram,
+                SUM(CASE WHEN telegram_file_id IS NULL THEN 1 ELSE 0 END) AS on_server
+            FROM homework_photos
+        """)
+        row = dict(cur.fetchone())
+        cur.execute("""
+            SELECT COUNT(*) AS c FROM homework_photos p
+            JOIN homework_submissions s ON s.id = p.submission_id
+            WHERE s.status = 'graded' AND s.graded_at IS NOT NULL
+        """)
+        row["graded_photos"] = cur.fetchone()["c"] or 0
+    return {
+        "total": row["total"] or 0,
+        "in_telegram": row["in_telegram"] or 0,
+        "on_server": row["on_server"] or 0,
+        "graded_photos": row["graded_photos"],
+    }

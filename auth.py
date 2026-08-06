@@ -119,3 +119,37 @@ def verify_admin_session_token(token: str, secret_key: str) -> Optional[dict]:
         return None
     except jwt.InvalidTokenError:
         return None
+
+
+# ================================================================
+# IMZOLANGAN RASM HAVOLASI (vazifa suratlarini ko'rsatish uchun)
+# ================================================================
+#
+# MUAMMO: brauzerdagi <img src="..."> tegi maxsus header (X-Telegram-Init-Data)
+# yubora olmaydi, shuning uchun rasm endpointini oddiy header bilan himoya
+# qilib bo'lmaydi.
+#
+# YECHIM: rasmlar ro'yxati berilayotganda (u yerda kirish huquqi ALLAQACHON
+# tekshirilgan) har bir rasm uchun qisqa muddatli IMZO hosil qilamiz.
+# Imzo maxfiy kalit bilan yaratiladi — uni tashqaridan yasab bo'lmaydi,
+# va u belgilangan muddatdan keyin kuchini yo'qotadi.
+
+def sign_photo_token(photo_id: int, secret_key: str, ttl_seconds: int = 86400) -> tuple:
+    """(expires_at, imzo) qaytaradi."""
+    expires_at = int(time.time()) + ttl_seconds
+    payload = f"hwphoto:{photo_id}:{expires_at}".encode()
+    signature = hmac.new(secret_key.encode(), payload, hashlib.sha256).hexdigest()[:32]
+    return expires_at, signature
+
+
+def verify_photo_token(photo_id: int, expires_at: int, signature: str, secret_key: str) -> bool:
+    """Imzo haqiqiyligini va muddati o'tmaganini tekshiradi."""
+    try:
+        expires_at = int(expires_at)
+    except (TypeError, ValueError):
+        return False
+    if expires_at < int(time.time()):
+        return False
+    payload = f"hwphoto:{photo_id}:{expires_at}".encode()
+    expected = hmac.new(secret_key.encode(), payload, hashlib.sha256).hexdigest()[:32]
+    return hmac.compare_digest(expected, signature or "")

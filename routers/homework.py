@@ -11,16 +11,32 @@
 import os
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Body, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Body, UploadFile, File, Response
 
 from routers.deps import get_verified_telegram_user
 from config import UPLOADS_DIR
+from photo_urls import decorate_photo_urls
 import database as db
 
 router = APIRouter(prefix="/api/homework", tags=["homework"])
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".heic"}
 MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024  # 8 MB — telefon kamerasidagi surat uchun yetarli
+
+
+def _remove_local_upload(photo_url: str):
+    """/uploads/... yo'lidagi faylni diskdan o'chiradi (xavfsiz — papkadan
+    tashqariga chiqadigan yo'llarga ruxsat bermaydi)."""
+    if not photo_url or not photo_url.startswith("/uploads/"):
+        return
+    rel = photo_url[len("/uploads/"):]
+    target = os.path.normpath(os.path.join(UPLOADS_DIR, rel))
+    if not target.startswith(os.path.normpath(UPLOADS_DIR)):
+        return
+    try:
+        os.remove(target)
+    except OSError:
+        pass
 
 
 def _ensure_subject_access(telegram_id: int, subject_id: int) -> dict:
@@ -88,7 +104,7 @@ def api_homework_paragraph_detail(subject_id: int, paragraph_number: int,
     _ensure_paragraph_unlocked(telegram_id, subject_id, paragraph_number, subject)
 
     submission = db.get_homework_submission(subject_id, telegram_id, paragraph_number)
-    photos = db.get_homework_photos(submission["id"]) if submission else []
+    photos = decorate_photo_urls(db.get_homework_photos(submission["id"])) if submission else []
     return {
         "subject": subject,
         "paragraph_number": paragraph_number,
@@ -123,6 +139,37 @@ async def api_homework_upload_photo(subject_id: int, paragraph_number: int,
     if len(contents) > MAX_FILE_SIZE_BYTES:
         raise HTTPException(status_code=400, detail="Rasm hajmi 8 MB dan oshmasligi kerak")
 
+    db.get_or_create_user(telegram_id, user["first_name"], user.get("username"))
+
+    # ---- 1-usul (asosiy): rasmni TELEGRAM arxiv kanaliga yuborish ----
+    # Server xotirasi (Railway Volume) to'lib ketmasligi uchun fayl diskda
+    # SAQLANMAYDI — bazada faqat qisqa file_id qoladi.
+    import bot as bot_module
+    if bot_module.homework_archive_enabled():
+        caption = (
+            f"{subject.get('title', '')} · {paragraph_number}-paragraf\n"
+            f"{user.get('first_name') or ''} "
+            f"{('@' + user['username']) if user.get('username') else ''} "
+            f"(ID {telegram_id})"
+        ).strip()
+        archived = await bot_module.upload_homework_photo_to_archive(
+            contents, filename=f"p{paragraph_number}{ext or '.jpg'}", caption=caption
+        )
+        if archived:
+            db.add_homework_photo(
+                subject_id, telegram_id, paragraph_number,
+                # Ustun NOT NULL bo'lgani uchun bo'sh satr yoziladi — rasm
+                # diskda emas, Telegramda ekanini `storage`/`telegram_file_id`
+                # ko'rsatadi.
+                photo_url="",
+                telegram_file_id=archived["file_id"],
+                telegram_message_id=archived["message_id"],
+                storage="telegram",
+            )
+            return {"ok": True, "storage": "telegram"}
+
+    # ---- 2-usul (zaxira): arxiv kanal sozlanmagan yoki yuborib bo'lmadi ----
+    # Tizim to'xtamaydi — rasm avvalgidek diskka saqlanadi.
     save_dir = os.path.join(UPLOADS_DIR, "homework")
     os.makedirs(save_dir, exist_ok=True)
     filename = f"{uuid.uuid4().hex}{ext}"
@@ -130,19 +177,64 @@ async def api_homework_upload_photo(subject_id: int, paragraph_number: int,
         f.write(contents)
     url = f"/uploads/homework/{filename}"
 
-    db.get_or_create_user(telegram_id, user["first_name"], user.get("username"))
-    db.add_homework_photo(subject_id, telegram_id, paragraph_number, url)
-    return {"ok": True, "url": url}
+    db.add_homework_photo(subject_id, telegram_id, paragraph_number, url, storage="local")
+    return {"ok": True, "url": url, "storage": "local"}
+
+
+@router.get("/photo/{photo_id}")
+async def api_homework_photo(photo_id: int, e: int = 0, s: str = ""):
+    """Telegramda saqlangan vazifa rasmini ko'rsatadi.
+
+    XAVFSIZLIK: havola IMZOLANGAN bo'lishi shart (?e=muddat&s=imzo).
+    Imzo faqat rasmlar ro'yxati berilayotganda — kirish huquqi
+    tekshirilgandan keyin — hosil qilinadi va 24 soatdan keyin kuchini
+    yo'qotadi. Telegram file_id hech qachon brauzerga chiqmaydi.
+
+    (Header orqali himoya qilib bo'lmaydi, chunki <img src="..."> tegi
+    maxsus header yubormaydi.)"""
+    from config import JWT_SECRET_KEY
+    from auth import verify_photo_token
+
+    if not verify_photo_token(photo_id, e, s, JWT_SECRET_KEY):
+        raise HTTPException(status_code=403, detail="Havola yaroqsiz yoki muddati o'tgan")
+
+    record = db.get_homework_photo_record(photo_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Rasm topilmadi")
+
+    file_id = record.get("telegram_file_id")
+    if not file_id:
+        raise HTTPException(status_code=404, detail="Bu rasm Telegramda saqlanmagan")
+
+    import bot as bot_module
+    data = await bot_module.fetch_telegram_file(file_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Rasmni yuklab bo'lmadi (o'chirilgan bo'lishi mumkin)")
+
+    # Rasm o'zgarmaydi — brauzer keshiga qo'yamiz, shunda takroriy
+    # ochishlarda Telegramga qayta murojaat qilinmaydi.
+    return Response(
+        content=data,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
 
 
 @router.delete("/photos/{photo_id}")
-def api_homework_delete_photo(photo_id: int, user=Depends(get_verified_telegram_user)):
+async def api_homework_delete_photo(photo_id: int, user=Depends(get_verified_telegram_user)):
     """Noto'g'ri chiqqan rasmni o'chirish (faqat o'z rasmini va faqat
-    baholanmagan vazifadan)."""
+    baholanmagan vazifadan). Arxiv kanaldagi nusxasi va diskdagi fayl
+    ham tozalanadi — keraksiz ma'lumot qolib ketmaydi."""
     result = db.delete_homework_photo(photo_id, user["telegram_id"])
     if not result.get("ok"):
         raise HTTPException(status_code=403, detail=result.get("detail", "O'chirib bo'lmadi"))
-    return result
+
+    if result.get("telegram_message_id"):
+        import bot as bot_module
+        await bot_module.delete_archive_message(result["telegram_message_id"])
+    if result.get("photo_url"):
+        _remove_local_upload(result["photo_url"])
+    return {"ok": True}
 
 
 @router.post("/subjects/{subject_id}/paragraphs/{paragraph_number}/submit")

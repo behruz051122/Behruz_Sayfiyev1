@@ -117,6 +117,8 @@ async def startup():
     asyncio.create_task(bot_module.send_battle_result_notifications_loop())
     # Vazifani kechiktirgan o'quvchilarga avtomatik eslatma
     asyncio.create_task(bot_module.send_homework_reminders_loop())
+    # Eski vazifa rasmlarini avtomatik tozalash (server xotirasi to'lmasligi uchun)
+    asyncio.create_task(bot_module.cleanup_old_homework_photos_loop())
 
 
 @app.on_event("shutdown")

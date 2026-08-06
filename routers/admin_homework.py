@@ -10,6 +10,7 @@ import datetime
 from fastapi import APIRouter, Depends, Body, HTTPException
 
 from routers.deps import require_admin
+from photo_urls import decorate_photo_urls
 import database as db
 
 router = APIRouter(prefix="/api/admin/homework", tags=["admin-homework"])
@@ -88,7 +89,10 @@ def admin_clear_student_start(subject_id: int, telegram_id: int, admin=Depends(r
 @router.get("/pending")
 def admin_pending_submissions(subject_id: int = None, admin=Depends(require_admin)):
     """Topshirilgan, lekin hali baholanmagan vazifalar (rasmlari bilan)."""
-    return {"submissions": db.get_homework_pending_submissions(subject_id)}
+    submissions = db.get_homework_pending_submissions(subject_id)
+    for s in submissions:
+        decorate_photo_urls(s.get("photos"))
+    return {"submissions": submissions}
 
 
 @router.post("/grade")
@@ -139,6 +143,28 @@ async def admin_send_reminder(data: dict = Body(...), admin=Depends(require_admi
         except Exception:
             failed += 1
     return {"ok": True, "sent": sent, "failed": failed}
+
+
+# ---------- Rasm ombori: holat va tozalash ----------
+
+@router.get("/storage")
+def admin_storage_status(admin=Depends(require_admin)):
+    """Rasmlar qayerda saqlanayotgani va qancha joy egallagani."""
+    import bot as bot_module
+    from config import HOMEWORK_PHOTO_RETENTION_DAYS
+    stats = db.get_homework_storage_stats()
+    stats["archive_enabled"] = bot_module.homework_archive_enabled()
+    stats["retention_days"] = HOMEWORK_PHOTO_RETENTION_DAYS
+    return stats
+
+
+@router.post("/cleanup")
+async def admin_cleanup_photos(data: dict = Body(default={}), admin=Depends(require_admin)):
+    """Eski rasmlarni QO'LDA tozalash (avtomatik tozalash ham kuniga
+    bir marta o'zi ishlaydi). Ball va izohlarga tegilmaydi."""
+    import bot as bot_module
+    days = data.get("retention_days")
+    return await bot_module.cleanup_old_homework_photos(int(days) if days else None)
 
 
 # ---------- Oy yakuniy umumlashgan reyting ----------

@@ -356,7 +356,7 @@ function renderHomeworkSubmit(data) {
 
   const photosHtml = currentPhotos.map((p, i) => `
     <div class="hw-photo-item">
-      <img src="${p.photo_url}" alt="${i + 1}-rasm" data-photo-src="${p.photo_url}">
+      <img src="${p.view_url}" alt="${i + 1}-rasm" data-photo-src="${p.view_url}" loading="lazy">
       ${canEdit ? `<button type="button" class="hw-photo-del" data-del="${p.id}" aria-label="O'chirish">✕</button>` : ""}
       <span class="hw-photo-num">${i + 1}</span>
     </div>
@@ -406,14 +406,61 @@ function renderHomeworkSubmit(data) {
   if (submitBtn) submitBtn.addEventListener("click", submitHomeworkParagraph);
 }
 
+// Rasmni YUBORISHDAN OLDIN telefonda kichraytirish va siqish.
+//
+// NEGA KERAK: zamonaviy telefon surati 2-4 MB bo'ladi. Uni o'z holicha
+// yuborish (a) sekin internetda uzoq ketadi, (b) trafik sarflaydi.
+// 1600 px ga kichraytirib, JPEG sifatini 0.82 qilsak — daftar varag'idagi
+// yozuv BEMALOL o'qiladi, lekin hajm ~10 barobar kamayadi (2 MB -> ~250 KB).
+const MAX_PHOTO_SIDE = 1600;
+const PHOTO_QUALITY = 0.82;
+
+function compressImage(file) {
+  return new Promise((resolve) => {
+    // HEIC va boshqa noma'lum formatlarni brauzer chiza olmasligi mumkin —
+    // bunday holda asl faylni o'zgarishsiz yuboramiz.
+    if (!file.type || !file.type.startsWith("image/")) return resolve(file);
+
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      try {
+        let { width, height } = img;
+        const scale = Math.min(1, MAX_PHOTO_SIDE / Math.max(width, height));
+        // Rasm allaqachon kichik va yengil bo'lsa — tegmaymiz.
+        if (scale === 1 && file.size < 600 * 1024) return resolve(file);
+
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob((blob) => {
+          if (!blob || blob.size >= file.size) return resolve(file);
+          resolve(new File([blob], "vazifa.jpg", { type: "image/jpeg" }));
+        }, "image/jpeg", PHOTO_QUALITY);
+      } catch (e) {
+        resolve(file);
+      }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
 async function uploadHomeworkPhoto(file) {
   if (uploading) return;
   uploading = true;
   const status = document.getElementById("hwUploadStatus");
-  if (status) status.innerHTML = `<span class="hw-uploading">⏳ Yuklanmoqda...</span>`;
+  if (status) status.innerHTML = `<span class="hw-uploading">⏳ Tayyorlanmoqda...</span>`;
   try {
+    const compressed = await compressImage(file);
+    if (status) status.innerHTML = `<span class="hw-uploading">⏳ Yuklanmoqda...</span>`;
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", compressed);
     const res = await apiFetch(
       `/api/homework/subjects/${currentSubject.id}/paragraphs/${currentParagraph}/photo`,
       { method: "POST", body: formData }

@@ -330,3 +330,131 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+# ================================================================
+# VAZIFA RASMLARINI TELEGRAMDA SAQLASH (server xotirasini tejash)
+# ================================================================
+#
+# O'quvchilarning uy vazifasi suratlari serverda SAQLANMAYDI — bot ularni
+# yopiq arxiv kanalga yuboradi va bazada faqat qisqa "file_id" qoladi.
+# Bu Railway Volume'ni to'lib ketishdan saqlaydi (2 MB o'rniga ~80 bayt).
+
+from aiogram.types import BufferedInputFile
+
+# Telegram getFile natijasini qayta-qayta so'ramaslik uchun oddiy kesh:
+# file_id -> (file_path, olingan_vaqt). file_path uzoq muddat o'zgarmaydi.
+_tg_file_path_cache = {}
+_TG_FILE_PATH_TTL_SECONDS = 30 * 60
+
+
+def homework_archive_enabled() -> bool:
+    from config import HOMEWORK_ARCHIVE_CHAT_ID
+    return bool(HOMEWORK_ARCHIVE_CHAT_ID)
+
+
+async def upload_homework_photo_to_archive(image_bytes: bytes, filename: str, caption: str = ""):
+    """Rasmni arxiv kanalga yuboradi va (file_id, message_id) qaytaradi.
+
+    Kanal sozlanmagan yoki yuborishda xato bo'lsa — None qaytaradi;
+    chaqiruvchi kod bu holda rasmni diskka saqlaydi (tizim to'xtamaydi)."""
+    from config import HOMEWORK_ARCHIVE_CHAT_ID
+    if not HOMEWORK_ARCHIVE_CHAT_ID:
+        return None
+    try:
+        msg = await bot.send_photo(
+            chat_id=HOMEWORK_ARCHIVE_CHAT_ID,
+            photo=BufferedInputFile(image_bytes, filename=filename or "vazifa.jpg"),
+            caption=caption[:1000] if caption else None,
+        )
+        # Telegram bir nechta o'lchamni qaytaradi — eng kattasini olamiz.
+        file_id = msg.photo[-1].file_id if msg.photo else None
+        if not file_id:
+            return None
+        return {"file_id": file_id, "message_id": msg.message_id}
+    except Exception as e:
+        logging.warning(f"Vazifa rasmini arxivga yuborib bo'lmadi: {e}")
+        return None
+
+
+async def fetch_telegram_file(file_id: str):
+    """file_id bo'yicha faylning baytlarini qaytaradi (ko'rsatish uchun)."""
+    import time
+    try:
+        cached = _tg_file_path_cache.get(file_id)
+        now = time.time()
+        if cached and (now - cached[1]) < _TG_FILE_PATH_TTL_SECONDS:
+            file_path = cached[0]
+        else:
+            tg_file = await bot.get_file(file_id)
+            file_path = tg_file.file_path
+            _tg_file_path_cache[file_id] = (file_path, now)
+
+        buf = await bot.download_file(file_path)
+        return buf.read()
+    except Exception as e:
+        logging.warning(f"Telegramdan faylni olib bo'lmadi (file_id={file_id[:20]}...): {e}")
+        _tg_file_path_cache.pop(file_id, None)
+        return None
+
+
+async def delete_archive_message(message_id: int) -> bool:
+    """Arxiv kanaldagi rasm xabarini o'chiradi (eski rasmlarni tozalashda)."""
+    from config import HOMEWORK_ARCHIVE_CHAT_ID
+    if not HOMEWORK_ARCHIVE_CHAT_ID or not message_id:
+        return False
+    try:
+        await bot.delete_message(chat_id=HOMEWORK_ARCHIVE_CHAT_ID, message_id=int(message_id))
+        return True
+    except Exception as e:
+        logging.info(f"Arxiv xabarini o'chirib bo'lmadi (message_id={message_id}): {e}")
+        return False
+
+
+HOMEWORK_CLEANUP_INTERVAL_SECONDS = 24 * 3600  # kuniga bir marta
+
+
+async def cleanup_old_homework_photos(retention_days: int = None) -> dict:
+    """Baholanganiga belgilangan kundan ko'p vaqt o'tgan vazifa RASMLARINI
+    o'chiradi (diskdagi fayl + arxiv kanaldagi xabar).
+
+    MUHIM: o'qituvchi qo'ygan BALL va IZOH hech qachon o'chirilmaydi —
+    reyting va o'quvchi tarixi buzilmaydi. Faqat og'ir fayllar tozalanadi,
+    shu tufayli server xotirasi doim bo'sh turadi."""
+    import os
+    import database as db
+    from config import HOMEWORK_PHOTO_RETENTION_DAYS, UPLOADS_DIR
+
+    days = retention_days if retention_days is not None else HOMEWORK_PHOTO_RETENTION_DAYS
+    expired = db.get_expired_homework_photos(days)
+    if not expired:
+        return {"deleted": 0, "days": days}
+
+    removed_ids = []
+    for photo in expired:
+        if photo.get("telegram_message_id"):
+            await delete_archive_message(photo["telegram_message_id"])
+        url = photo.get("photo_url")
+        if url and url.startswith("/uploads/"):
+            target = os.path.normpath(os.path.join(UPLOADS_DIR, url[len("/uploads/"):]))
+            if target.startswith(os.path.normpath(UPLOADS_DIR)):
+                try:
+                    os.remove(target)
+                except OSError:
+                    pass
+        removed_ids.append(photo["id"])
+
+    db.delete_homework_photo_rows(removed_ids)
+    logging.info(f"Eski vazifa rasmlari tozalandi: {len(removed_ids)} ta "
+                 f"({days} kundan oshgan, ball va izohlar saqlanib qoldi)")
+    return {"deleted": len(removed_ids), "days": days}
+
+
+async def cleanup_old_homework_photos_loop():
+    """Kuniga bir marta eski vazifa rasmlarini avtomatik tozalaydi."""
+    while True:
+        try:
+            await cleanup_old_homework_photos()
+        except Exception as e:
+            logging.error(f"Vazifa rasmlarini tozalash siklida xato: {e}")
+        await asyncio.sleep(HOMEWORK_CLEANUP_INTERVAL_SECONDS)
