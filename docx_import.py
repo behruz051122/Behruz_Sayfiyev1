@@ -73,10 +73,7 @@ def _extract_images(paragraph, document_part):
 
 
 def _is_greenish_rgb(rgb) -> bool:
-    """RGBColor qiymati yashil ranga o'xshaydimi tekshiradi. Word'da standart
-    "Green" (00B050), "Light Green" (92D050) kabi turli xil yashil ranglar
-    ishlatilishi mumkin — aniq bitta qiymatni emas, "yashil kanal qizil va
-    ko'k kanallardan sezilarli yuqori" evristikasini qo'llaymiz."""
+    """Rang YASHIL ohangdami (00B050, 92D050 va shunga o'xshashlar)."""
     if rgb is None:
         return False
     try:
@@ -84,6 +81,35 @@ def _is_greenish_rgb(rgb) -> bool:
     except Exception:
         return False
     return g > 100 and g > r + 30 and g > b + 30
+
+
+def _is_marker_rgb(rgb) -> bool:
+    """Rang TO'G'RI JAVOBNI BELGILASH uchun ishlatilganmi.
+
+    NEGA FAQAT YASHIL EMAS: amalda o'qituvchilar bitta hujjat ichida ham
+    turli rang ishlatishadi — bir savolda yashil, boshqasida sariq. Faqat
+    yashilni tan olish 50 savollik faylning 25 tasini "javobi yo'q" deb
+    o'tkazib yuborishga olib kelgan edi.
+
+    Shuning uchun endi: qora/oq/kulrang bo'lmagan, ya'ni ATAYLAB
+    tanlangan HAR QANDAY ajratuvchi rang belgilash deb qabul qilinadi.
+    Bu yashil, sariq, pushti, ko'k — barchasini qamrab oladi."""
+    if rgb is None:
+        return False
+    try:
+        r, g, b = rgb[0], rgb[1], rgb[2]
+    except Exception:
+        return False
+    # Oq yoki juda och (deyarli oq) — bo'yoq emas
+    if r > 235 and g > 235 and b > 235:
+        return False
+    # Qora yoki juda to'q — bu odatda oddiy matn rangi
+    if r < 60 and g < 60 and b < 60:
+        return False
+    # Kulrang (kanallar deyarli teng) — bo'yoq emas
+    if max(r, g, b) - min(r, g, b) < 25:
+        return False
+    return True
 
 
 def _load_green_styles(document):
@@ -145,7 +171,7 @@ def _load_green_styles(document):
             highlight_el = rPr.find(qn("w:highlight"))
             if highlight_el is not None:
                 val = (highlight_el.get(qn("w:val")) or "").upper()
-                if "GREEN" in val:
+                if val and val not in ("NONE", "WHITE", "AUTO"):
                     is_green = True
 
         if is_green:
@@ -186,7 +212,8 @@ def _run_is_green(run, green_style_ids=None, paragraph_style_id=None) -> bool:
         pass
     try:
         hl = run.font.highlight_color
-        if hl is not None and "GREEN" in str(hl).upper():
+        if hl is not None and str(hl).upper() not in ("NONE", "WHITE", "AUTO"):
+            # Har qanday marker rangi (yashil, sariq, pushti...) — belgilash
             return True
     except Exception:
         pass
@@ -199,7 +226,7 @@ def _run_is_green(run, green_style_ids=None, paragraph_style_id=None) -> bool:
                 fill = shd.get(qn("w:fill"))
                 if fill and fill.upper() not in ("AUTO", "FFFFFF"):
                     rgb = tuple(int(fill[i:i + 2], 16) for i in (0, 2, 4))
-                    if _is_greenish_rgb(rgb):
+                    if _is_marker_rgb(rgb):
                         return True
     except Exception:
         pass
