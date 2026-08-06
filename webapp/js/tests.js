@@ -42,6 +42,18 @@ let allAttestationTests = [];
 let attestationTestsLoaded = false;
 let currentAttestationMeta = null;
 
+// ---------- Milliy sertifikat holati ----------
+let allCertificateTests = [];
+let certificateTestsLoaded = false;
+let currentCertificateMeta = null;
+
+const CERT_TYPE_LABELS = {
+  Y1: "🔘 YOPIQ TEST — bitta to'g'ri javobni tanlang",
+  Y2: "🔗 MOSLASHTIRISH — har biriga mos javobni tanlang",
+  O1: "✍️ QISQA JAVOB — matn kiriting",
+  O2: "📝 KENGAYTIRILGAN YOZMA ISH — qo'lda baholanadi",
+};
+
 let activeTestsTab = "tests";
 
 // ---------- Topshirish jarayoni (testlar VA simulyator uchun umumiy) ----------
@@ -76,6 +88,7 @@ function showTestsLanding() {
   document.getElementById("simulatorTabContent").classList.add("hidden");
   document.getElementById("controlTabContent").classList.add("hidden");
   document.getElementById("attestationTabContent").classList.add("hidden");
+  document.getElementById("certificateTabContent").classList.add("hidden");
 }
 
 function openTestsCategory(tab) {
@@ -95,10 +108,12 @@ function switchTestsTab(tab) {
   document.getElementById("tabBtnSimulator").classList.toggle("active", tab === "simulator");
   document.getElementById("tabBtnControl").classList.toggle("active", tab === "control");
   document.getElementById("tabBtnAttestation").classList.toggle("active", tab === "attestation");
+  document.getElementById("tabBtnCertificate").classList.toggle("active", tab === "certificate");
   document.getElementById("testsTabContent").classList.toggle("hidden", tab !== "tests");
   document.getElementById("simulatorTabContent").classList.toggle("hidden", tab !== "simulator");
   document.getElementById("controlTabContent").classList.toggle("hidden", tab !== "control");
   document.getElementById("attestationTabContent").classList.toggle("hidden", tab !== "attestation");
+  document.getElementById("certificateTabContent").classList.toggle("hidden", tab !== "certificate");
 
   if (tab === "tests") {
     resetPracticeFlowToSubjects();
@@ -112,6 +127,9 @@ function switchTestsTab(tab) {
   }
   if (tab === "attestation" && !attestationTestsLoaded) {
     loadAttestationTestList();
+  }
+  if (tab === "certificate" && !certificateTestsLoaded) {
+    loadCertificateTestList();
   }
 }
 
@@ -401,10 +419,13 @@ function openTestDetail(test) {
   showScreen("test-detail");
 }
 
-const START_BTN_ID_BY_MODE = { control: "startControlBtn", attestation: "startAttestationBtn", test: "startTestBtn" };
+const START_BTN_ID_BY_MODE = {
+  control: "startControlBtn", attestation: "startAttestationBtn", certificate: "startCertificateBtn", test: "startTestBtn",
+};
 const START_BTN_TEXT_BY_MODE = {
   control: "▶ Nazorat testini boshlash",
   attestation: "▶ Attestatsiyani boshlash",
+  certificate: "▶ Sertifikatni boshlash",
   test: "▶ Testni boshlash",
 };
 
@@ -438,8 +459,13 @@ async function startTest(test, mode = "test") {
       id: startData.attempt_id,
       test: fullTest,
       index: 0,
-      answers: {}, // question_id -> tanlangan variant raqami (erkin o'zgartiriladi)
+      answers: {}, // question_id -> tanlangan variant raqami / "javob berilgan" belgisi (erkin o'zgartiriladi)
       flags: new Set(), // question_id lar — Attestatsiyada "Belgilash" bosilgan savollar
+      // ---- Milliy sertifikat (Y2/O1/O2) uchun qo'shimcha holat ----
+      matchAnswers: {}, // Y2: question_id -> {chapIndex: o'ngIndex}
+      matchOrders: {}, // Y2: question_id -> o'ng ustun ko'rsatilish tartibi (aralashtirilgan)
+      textAnswers: {}, // O1: question_id -> kiritilgan matn
+      writtenDrafts: {}, // O2: question_id -> {photoUrls, textAnswer, saved}
       coinsEarned: 0,
       timeLeft: fullTest.time_limit_seconds,
       timerHandle: null,
@@ -718,6 +744,83 @@ function renderAttestationTestList() {
   });
 }
 
+// ================================================================
+// MILLIY SERTIFIKAT RO'YXATI VA TAFSILOTI
+// (Bilimni baholash agentligi rasmiy formati — 43 savol: Y1/Y2/O1/O2)
+// ================================================================
+
+async function loadCertificateTestList() {
+  const container = document.getElementById("certificateTestList");
+  container.innerHTML = skeletonCards(2);
+  try {
+    const res = await apiFetch(`/api/certificate-tests`);
+    const data = await res.json();
+    allCertificateTests = data.tests;
+    certificateTestsLoaded = true;
+    renderCertificateTestList();
+  } catch (e) {
+    console.error(e);
+    container.innerHTML = errorHtml();
+  }
+}
+
+function renderCertificateTestList() {
+  const container = document.getElementById("certificateTestList");
+  container.innerHTML = "";
+
+  if (allCertificateTests.length === 0) {
+    container.innerHTML = emptyHtml("Hozircha Milliy sertifikat testi qo'shilmagan");
+    return;
+  }
+
+  allCertificateTests.forEach(t => {
+    const card = document.createElement("div");
+    card.className = "test-card";
+    card.innerHTML = `
+      <div class="test-card-top">
+        <div class="test-card-title">${t.title}</div>
+        <span class="difficulty-badge difficulty-${t.difficulty}">${DIFFICULTY_LABELS[t.difficulty] || t.difficulty}</span>
+      </div>
+      <div class="test-card-meta">
+        <span class="course-tag">${t.subject}</span>
+        <span>❓ ${t.question_count} savol</span>
+        <span>⏱ ${formatSeconds(t.time_limit_seconds)}</span>
+      </div>
+      <div class="unlock-badge">🔓 Erkin kirish</div>
+    `;
+    card.addEventListener("click", () => openCertificateDetail(t));
+    container.appendChild(card);
+  });
+}
+
+function openCertificateDetail(test) {
+  currentCertificateMeta = test;
+  const content = document.getElementById("certificateDetailContent");
+
+  content.innerHTML = `
+    <div class="test-detail-hero">
+      <span class="difficulty-badge difficulty-${test.difficulty}">${DIFFICULTY_LABELS[test.difficulty] || test.difficulty}</span>
+      <h1>${test.title}</h1>
+      <div class="test-detail-stats">
+        <div class="test-detail-stat"><div class="num">${test.question_count}</div><div class="lbl">savol</div></div>
+        <div class="test-detail-stat"><div class="num">${formatSeconds(test.time_limit_seconds)}</div><div class="lbl">vaqt</div></div>
+      </div>
+    </div>
+    <div class="test-detail-actions">
+      <button class="gold-btn" id="startCertificateBtn">▶ Sertifikatni boshlash</button>
+    </div>
+    <p style="text-align:center;color:var(--text-dim);font-size:11px;margin-top:14px;">
+      Bu — Bilimni baholash agentligining rasmiy Milliy sertifikat imtihoni formatiga mos sinov: yopiq test,
+      moslashtirish, qisqa javob va kengaytirilgan yozma ish. Yozma ish qismini o'qituvchi qo'lda baholaydi,
+      shu sababli yakuniy natija darhol emas — baholangach ko'rinadi. Ko'rsatiladigan daraja (A+/A/B+...) —
+      taxminiy, rasmiy Rash (IRT) natijasidan farq qilishi mumkin.
+    </p>
+  `;
+  document.getElementById("startCertificateBtn").addEventListener("click", () => startTest(test, "certificate"));
+
+  showScreen("certificate-detail");
+}
+
 function openAttestationDetail(test) {
   currentAttestationMeta = test;
   const content = document.getElementById("attestationDetailContent");
@@ -744,6 +847,83 @@ function openAttestationDetail(test) {
   document.getElementById("startAttestationBtn").addEventListener("click", () => startTest(test, "attestation"));
 
   showScreen("attestation-detail");
+}
+
+// ================================================================
+// MILLIY SERTIFIKAT RO'YXATI VA TAFSILOTI
+// (Bilimni baholash agentligi rasmiy 43 savollik format — erkin kirish)
+// ================================================================
+
+async function loadCertificateTestList() {
+  const container = document.getElementById("certificateTestList");
+  container.innerHTML = skeletonCards(2);
+  try {
+    const res = await apiFetch(`/api/certificate-tests`);
+    const data = await res.json();
+    allCertificateTests = data.tests;
+    certificateTestsLoaded = true;
+    renderCertificateTestList();
+  } catch (e) {
+    console.error(e);
+    container.innerHTML = errorHtml();
+  }
+}
+
+function renderCertificateTestList() {
+  const container = document.getElementById("certificateTestList");
+  container.innerHTML = "";
+
+  if (allCertificateTests.length === 0) {
+    container.innerHTML = emptyHtml("Hozircha Milliy sertifikat testi qo'shilmagan");
+    return;
+  }
+
+  allCertificateTests.forEach(t => {
+    const card = document.createElement("div");
+    card.className = "test-card";
+    card.innerHTML = `
+      <div class="test-card-top">
+        <div class="test-card-title">${t.title}</div>
+        <span class="difficulty-badge difficulty-${t.difficulty}">${DIFFICULTY_LABELS[t.difficulty] || t.difficulty}</span>
+      </div>
+      <div class="test-card-meta">
+        <span class="course-tag">${t.subject}</span>
+        <span>❓ ${t.question_count} savol</span>
+        <span>⏱ ${formatSeconds(t.time_limit_seconds)}</span>
+      </div>
+      <div class="unlock-badge">🔓 Erkin kirish</div>
+    `;
+    card.addEventListener("click", () => openCertificateDetail(t));
+    container.appendChild(card);
+  });
+}
+
+function openCertificateDetail(test) {
+  currentCertificateMeta = test;
+  const content = document.getElementById("certificateDetailContent");
+
+  content.innerHTML = `
+    <div class="test-detail-hero">
+      <span class="difficulty-badge difficulty-${test.difficulty}">${DIFFICULTY_LABELS[test.difficulty] || test.difficulty}</span>
+      <h1>${test.title}</h1>
+      <div class="test-detail-stats">
+        <div class="test-detail-stat"><div class="num">${test.question_count}</div><div class="lbl">savol</div></div>
+        <div class="test-detail-stat"><div class="num">${formatSeconds(test.time_limit_seconds)}</div><div class="lbl">vaqt</div></div>
+      </div>
+    </div>
+    <div class="test-detail-actions">
+      <button class="gold-btn" id="startCertificateBtn">▶ Sertifikatni boshlash</button>
+    </div>
+    <p style="text-align:center;color:var(--text-dim);font-size:11px;margin-top:14px;">
+      Bu — Bilimni baholash agentligining rasmiy Milliy sertifikat imtihoni formatiga mos sinov: yopiq test,
+      moslashtirish, qisqa javob va kengaytirilgan yozma ish qismlaridan iborat. Yozma ish qismini o'qituvchi
+      qo'lda baholaydi, shuning uchun yakuniy natija DARHOL emas — baholangach ko'rinadi. Ko'rsatiladigan daraja
+      (A+/A/B+...) taxminiy — rasmiy Rash (IRT) natijasidan farq qilishi mumkin.
+    </p>
+  `;
+  document.getElementById("startCertificateBtn").addEventListener("click", () => startTest(test, "certificate"));
+
+  showScreen("certificate-detail");
 }
 
 // ================================================================
@@ -789,18 +969,14 @@ function renderCurrentQuestion() {
   const question = test.questions[index];
   const total = test.questions.length;
   const answeredCount = Object.keys(answers).length;
+  const qType = question.question_type || "Y1";
 
   document.getElementById("testProgressFill").style.width = `${(answeredCount / total) * 100}%`;
 
-  const options = [
-    ["1", question.option_1], ["2", question.option_2],
-    ["3", question.option_3], ["4", question.option_4]
-  ];
-
   const subjectSuffix = question.subject ? ` · ${question.subject}` : "";
-  const selectedIndex = answers[question.id];
 
   const isAttestation = currentAttempt.mode === "attestation";
+  const isCertificate = currentAttempt.mode === "certificate";
   const isFlagged = isAttestation && currentAttempt.flags.has(question.id);
 
   const navButtons = test.questions.map((q, i) => {
@@ -820,23 +996,20 @@ function renderCurrentQuestion() {
     </div>
   ` : "";
 
+  const certTypeBadge = isCertificate ? `<div class="cert-type-badge">${CERT_TYPE_LABELS[qType] || qType}</div>` : "";
+
   const content = document.getElementById("testTakingContent");
   content.innerHTML = `
     <div class="question-counter">${index + 1} / ${total}-SAVOL${subjectSuffix} · ${answeredCount}/${total} javob berilgan</div>
     <div class="question-nav-grid">${navButtons}</div>
+    ${certTypeBadge}
     <div class="question-card">
       <div class="question-text">${question.question_text}</div>
       ${question.image_url ? `<img class="question-image" src="${question.image_url}" alt="Savol rasmi">` : ""}
       ${renderQuestionTables(question.table_data)}
     </div>
     ${attestationActions}
-    <div class="option-list" id="optionList">
-      ${options.map(([idx, text]) => `
-        <button class="option-btn ${parseInt(idx) === selectedIndex ? "option-selected-neutral" : ""}" data-option-index="${idx}">
-          <span class="option-letter">${idx}</span><span>${text}</span>
-        </button>
-      `).join("")}
-    </div>
+    <div id="answerArea">${renderAnswerAreaHtml(question, qType)}</div>
     <div class="test-nav-actions">
       <button class="secondary-btn" id="prevQuestionBtn" ${index === 0 ? "disabled" : ""}>← Oldingi</button>
       <button class="secondary-btn" id="nextQuestionBtn" ${index === total - 1 ? "disabled" : ""}>Keyingi →</button>
@@ -849,9 +1022,7 @@ function renderCurrentQuestion() {
   const questionImg = content.querySelector(".question-image");
   if (questionImg) questionImg.addEventListener("click", () => openLightbox(questionImg.src));
 
-  document.querySelectorAll("#optionList .option-btn").forEach(btn => {
-    btn.addEventListener("click", () => selectOption(parseInt(btn.getAttribute("data-option-index"))));
-  });
+  wireAnswerAreaEvents(question, qType);
 
   content.querySelectorAll(".qnav-btn").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -928,6 +1099,319 @@ async function submitObjection(questionId) {
   }
 }
 
+// ================================================================
+// MILLIY SERTIFIKAT: savol turiga qarab javob maydoni (Y1/Y2/O1/O2)
+// ================================================================
+
+function escAttr(str) {
+  return String(str == null ? "" : str)
+    .replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function fmtPoints(n) {
+  const r = Math.round((n || 0) * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
+}
+
+// Savol javob berilganda (yoki bekor qilinganda) faqat shu savolning
+// navigatsiya tugmasi va progress-panelini yangilaydi — butun savolni
+// qayta chizmaydi, shu bilan matn kiritish maydonidagi kursor/fokus
+// yo'qolib qolmaydi (O1/O2 uchun muhim).
+function updateNavButtonAnsweredState(questionId) {
+  const { test } = currentAttempt;
+  const i = test.questions.findIndex(q => q.id === questionId);
+  if (i === -1) return;
+  const btn = document.querySelector(`.qnav-btn[data-index="${i}"]`);
+  if (btn) btn.classList.toggle("qnav-answered", currentAttempt.answers[questionId] !== undefined);
+  const total = test.questions.length;
+  const answeredCount = Object.keys(currentAttempt.answers).length;
+  const fill = document.getElementById("testProgressFill");
+  if (fill) fill.style.width = `${(answeredCount / total) * 100}%`;
+  const counter = document.querySelector(".question-counter");
+  if (counter) {
+    const idx = currentAttempt.index;
+    const q = test.questions[idx];
+    const subjectSuffix = q.subject ? ` · ${q.subject}` : "";
+    counter.textContent = `${idx + 1} / ${total}-SAVOL${subjectSuffix} · ${answeredCount}/${total} javob berilgan`;
+  }
+}
+
+function renderAnswerAreaHtml(question, qType) {
+  if (qType === "Y2") return renderY2MatchingHtml(question);
+  if (qType === "O1") return renderO1TextInputHtml(question);
+  if (qType === "O2") return renderO2WrittenAreaHtml(question);
+  return renderY1OptionsHtml(question);
+}
+
+function wireAnswerAreaEvents(question, qType) {
+  if (qType === "Y2") {
+    document.querySelectorAll(".cert-match-select").forEach(sel => {
+      sel.addEventListener("change", () => {
+        const leftIndex = parseInt(sel.getAttribute("data-left-index"));
+        const rightIndex = sel.value === "" ? null : parseInt(sel.value);
+        submitMatchAnswer(question, leftIndex, rightIndex);
+      });
+    });
+  } else if (qType === "O1") {
+    wireO1Input(question);
+  } else if (qType === "O2") {
+    wireO2Events(question);
+  } else {
+    document.querySelectorAll("#optionList .option-btn").forEach(btn => {
+      btn.addEventListener("click", () => selectOption(parseInt(btn.getAttribute("data-option-index"))));
+    });
+  }
+}
+
+// ---------- Y1: bitta to'g'ri javobli yopiq test (4 variant) ----------
+
+function renderY1OptionsHtml(question) {
+  const selectedIndex = currentAttempt.answers[question.id];
+  const options = [
+    ["1", question.option_1], ["2", question.option_2],
+    ["3", question.option_3], ["4", question.option_4]
+  ];
+  return `
+    <div class="option-list" id="optionList">
+      ${options.map(([idx, text]) => `
+        <button class="option-btn ${parseInt(idx) === selectedIndex ? "option-selected-neutral" : ""}" data-option-index="${idx}">
+          <span class="option-letter">${idx}</span><span>${text}</span>
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
+// ---------- Y2: moslashtirish (chap ustunga o'ng ustundan mos javob tanlanadi) ----------
+
+function getMatchOrder(question) {
+  if (!currentAttempt.matchOrders[question.id]) {
+    const order = (question.right || []).map((_, i) => i);
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+    currentAttempt.matchOrders[question.id] = order;
+  }
+  return currentAttempt.matchOrders[question.id];
+}
+
+function renderY2MatchingHtml(question) {
+  const order = getMatchOrder(question);
+  const savedPairs = currentAttempt.matchAnswers[question.id] || {};
+  const rows = (question.left || []).map((leftText, leftIdx) => {
+    const selectedRight = savedPairs[leftIdx];
+    const optionsHtml = order.map(rightIdx => `
+      <option value="${rightIdx}" ${selectedRight === rightIdx ? "selected" : ""}>${escAttr(question.right[rightIdx])}</option>
+    `).join("");
+    return `
+      <div class="cert-match-row">
+        <div class="cert-match-left">${leftIdx + 1}. ${leftText}</div>
+        <select class="cert-match-select ${selectedRight !== undefined ? "cert-match-filled" : ""}" data-left-index="${leftIdx}">
+          <option value="">— tanlang —</option>
+          ${optionsHtml}
+        </select>
+      </div>
+    `;
+  }).join("");
+  return `
+    <div class="cert-answer-block">
+      <div class="cert-answer-label">Har bir chap ustundagi elementga mos o'ng ustundagi javobni tanlang:</div>
+      ${rows}
+    </div>
+  `;
+}
+
+async function submitMatchAnswer(question, leftIndex, rightIndex) {
+  const pairsMap = currentAttempt.matchAnswers[question.id] || (currentAttempt.matchAnswers[question.id] = {});
+  if (rightIndex === null || Number.isNaN(rightIndex)) delete pairsMap[leftIndex];
+  else pairsMap[leftIndex] = rightIndex;
+
+  const totalLeft = (question.left || []).length;
+  const filled = Object.keys(pairsMap).length;
+  if (filled >= totalLeft && totalLeft > 0) currentAttempt.answers[question.id] = true;
+  else delete currentAttempt.answers[question.id];
+
+  renderCurrentQuestion();
+
+  const pairsArray = Object.entries(pairsMap).map(([l, r]) => [parseInt(l), r]);
+  try {
+    const res = await apiFetch(`${attemptApiBase()}/${currentAttempt.id}/answer`, {
+      method: "POST",
+      body: JSON.stringify({ question_id: question.id, match_answer: pairsArray })
+    });
+    const result = await res.json();
+    if (result.coin_awarded) {
+      currentAttempt.coinsEarned += 1;
+      refreshCoins();
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+// ---------- O1: qisqa (ochiq) javobli matn kiritish ----------
+
+function renderO1TextInputHtml(question) {
+  const savedText = currentAttempt.textAnswers[question.id] || "";
+  return `
+    <div class="cert-answer-block">
+      <div class="cert-answer-label">Javobingizni yozing:</div>
+      <input type="text" class="cert-text-input" id="o1AnswerInput" placeholder="Javob..." value="${escAttr(savedText)}">
+    </div>
+  `;
+}
+
+let _o1DebounceTimer = null;
+
+function wireO1Input(question) {
+  const input = document.getElementById("o1AnswerInput");
+  if (!input) return;
+  input.addEventListener("input", () => {
+    const text = input.value;
+    currentAttempt.textAnswers[question.id] = text;
+    if (text.trim()) currentAttempt.answers[question.id] = true;
+    else delete currentAttempt.answers[question.id];
+    updateNavButtonAnsweredState(question.id);
+    clearTimeout(_o1DebounceTimer);
+    _o1DebounceTimer = setTimeout(() => submitTextAnswer(question, text), 600);
+  });
+  input.addEventListener("blur", () => {
+    clearTimeout(_o1DebounceTimer);
+    submitTextAnswer(question, input.value);
+  });
+}
+
+async function submitTextAnswer(question, text) {
+  try {
+    const res = await apiFetch(`${attemptApiBase()}/${currentAttempt.id}/answer`, {
+      method: "POST",
+      body: JSON.stringify({ question_id: question.id, answer_text: text })
+    });
+    const result = await res.json();
+    if (result.coin_awarded) {
+      currentAttempt.coinsEarned += 1;
+      refreshCoins();
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+// ---------- O2: kengaytirilgan javobli yozma ish (matn + rasm, qo'lda baholanadi) ----------
+
+function renderO2WrittenAreaHtml(question) {
+  const draft = currentAttempt.writtenDrafts[question.id] || (currentAttempt.writtenDrafts[question.id] = { photoUrls: [], textAnswer: "", saved: false });
+  const maxScoreLabel = question.max_score ? `<div class="cert-answer-label">Maksimal ball: ${question.max_score}</div>` : "";
+  const thumbs = draft.photoUrls.map((url, i) => `
+    <div class="cert-photo-thumb-wrap">
+      <img class="cert-photo-thumb" src="${url}" data-photo-index="${i}">
+      <button type="button" class="cert-photo-remove" data-remove-index="${i}">×</button>
+    </div>
+  `).join("");
+  return `
+    <div class="cert-answer-block">
+      <div class="cert-answer-label">Yechimingizni matn va/yoki rasm (qo'lda yozilgan ish surati) sifatida yuboring:</div>
+      ${maxScoreLabel}
+      <textarea class="cert-textarea" id="o2AnswerTextarea" placeholder="Yechimingizni shu yerga yozishingiz mumkin (ixtiyoriy)...">${escAttr(draft.textAnswer)}</textarea>
+      <div class="cert-upload-row">
+        <button type="button" class="cert-upload-btn" id="o2UploadBtn">📷 Rasm biriktirish</button>
+        <input type="file" accept="image/*" id="o2FileInput" class="hidden">
+      </div>
+      <div class="cert-photo-thumbs" id="o2PhotoThumbs">${thumbs}</div>
+      <div class="cert-o2-status ${draft.saved ? "cert-o2-saved" : ""}" id="o2Status">
+        ${draft.saved ? "✅ Yuborildi — o'qituvchi tomonidan baholanadi" : "Hali yuborilmagan"}
+      </div>
+    </div>
+  `;
+}
+
+let _o2DebounceTimer = null;
+
+function wireO2Events(question) {
+  const draft = currentAttempt.writtenDrafts[question.id];
+  const textarea = document.getElementById("o2AnswerTextarea");
+  if (textarea) {
+    textarea.addEventListener("input", () => {
+      draft.textAnswer = textarea.value;
+      clearTimeout(_o2DebounceTimer);
+      _o2DebounceTimer = setTimeout(() => submitWrittenAnswer(question), 700);
+    });
+    textarea.addEventListener("blur", () => {
+      clearTimeout(_o2DebounceTimer);
+      submitWrittenAnswer(question);
+    });
+  }
+  const uploadBtn = document.getElementById("o2UploadBtn");
+  const fileInput = document.getElementById("o2FileInput");
+  if (uploadBtn && fileInput) {
+    uploadBtn.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", async () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      await uploadO2Photo(question, file);
+      fileInput.value = "";
+    });
+  }
+  document.querySelectorAll("#o2PhotoThumbs .cert-photo-thumb").forEach(img => {
+    img.addEventListener("click", () => openLightbox(img.src));
+  });
+  document.querySelectorAll("#o2PhotoThumbs .cert-photo-remove").forEach(btn => {
+    btn.addEventListener("click", () => removeO2Photo(question, parseInt(btn.getAttribute("data-remove-index"))));
+  });
+}
+
+async function uploadO2Photo(question, file) {
+  const status = document.getElementById("o2Status");
+  if (status) status.textContent = "⏳ Yuklanmoqda...";
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await apiFetch(`/api/upload-answer-image`, { method: "POST", body: formData });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Rasmni yuklab bo'lmadi");
+    }
+    const data = await res.json();
+    currentAttempt.writtenDrafts[question.id].photoUrls.push(data.url);
+    await submitWrittenAnswer(question);
+  } catch (e) {
+    console.error(e);
+    tg.showAlert ? tg.showAlert(e.message || "Rasmni yuklab bo'lmadi") : alert(e.message || "Xatolik yuz berdi");
+  }
+  renderCurrentQuestion();
+}
+
+function removeO2Photo(question, idx) {
+  const draft = currentAttempt.writtenDrafts[question.id];
+  draft.photoUrls.splice(idx, 1);
+  submitWrittenAnswer(question);
+  renderCurrentQuestion();
+}
+
+async function submitWrittenAnswer(question) {
+  const draft = currentAttempt.writtenDrafts[question.id];
+  const hasContent = draft.photoUrls.length > 0 || (draft.textAnswer && draft.textAnswer.trim());
+  try {
+    await apiFetch(`/api/attempt/${currentAttempt.id}/written-answer`, {
+      method: "POST",
+      body: JSON.stringify({ question_id: question.id, photo_urls: draft.photoUrls, text_answer: draft.textAnswer || null })
+    });
+    draft.saved = !!hasContent;
+    if (hasContent) currentAttempt.answers[question.id] = true;
+    else delete currentAttempt.answers[question.id];
+    updateNavButtonAnsweredState(question.id);
+    const status = document.getElementById("o2Status");
+    if (status) {
+      status.classList.toggle("cert-o2-saved", !!hasContent);
+      status.textContent = hasContent ? "✅ Yuborildi — o'qituvchi tomonidan baholanadi" : "Hali yuborilmagan";
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
 async function selectOption(selectedIndex) {
   const { test, index, id: attemptId } = currentAttempt;
   const question = test.questions[index];
@@ -967,6 +1451,13 @@ async function finishAttempt(timedOut) {
     console.error(e);
   }
 
+  if (mode === "certificate") {
+    await renderCertificateResult(finalResult, timedOut);
+    showScreen("test-result");
+    refreshCoins();
+    return;
+  }
+
   const total = currentAttempt.test.questions.length;
   const score = finalResult ? finalResult.score : Object.keys(currentAttempt.answers).length;
   const percent = total > 0 ? Math.round((score / total) * 100) : 0;
@@ -977,17 +1468,94 @@ async function finishAttempt(timedOut) {
   refreshCoins();
 }
 
+// ---------- Milliy sertifikat: og'irliklangan ball + (taxminiy) daraja natijasi ----------
+
+async function renderCertificateResult(finalResult, timedOut) {
+  const content = document.getElementById("testResultContent");
+
+  if (!finalResult) {
+    content.innerHTML = `
+      <div class="cert-pending-box">
+        <div class="cert-pending-icon">⚠️</div>
+        <div class="cert-pending-title">Natijani yuklab bo'lmadi</div>
+        <div class="cert-pending-sub">Internet aloqasini tekshirib, "Mening natijalarim" bo'limidan qayta urinib ko'ring.</div>
+      </div>
+      <div class="result-actions" style="margin:16px;">
+        <button class="secondary-btn" id="backToTestsBtn">${BACK_LABEL_BY_MODE.certificate}</button>
+      </div>
+    `;
+    document.getElementById("backToTestsBtn").addEventListener("click", () => {
+      activeTestsTab = "certificate";
+      navigateTo("tests");
+    });
+    return;
+  }
+
+  const reviewStatus = finalResult.review_status;
+  const rawScore = finalResult.raw_score_points || 0;
+  const maxScore = finalResult.max_score_points || 0;
+  const percent = maxScore > 0 ? Math.round((rawScore / maxScore) * 1000) / 10 : 0;
+  const level = finalResult.certificate_level;
+
+  if (reviewStatus === "pending_review") {
+    content.innerHTML = `
+      <div class="cert-pending-box">
+        <div class="cert-pending-icon">⏳</div>
+        <div class="cert-pending-title">Yozma ish tekshirilmoqda</div>
+        <div class="cert-pending-sub">Kengaytirilgan javobli (yozma) qismingizni o'qituvchi qo'lda baholaydi. Baholangach, yakuniy ball va daraja shu yerda ko'rinadi.</div>
+      </div>
+      <div class="control-result-stats-row">
+        <div class="control-stat"><div class="num">${fmtPoints(rawScore)}</div><div class="lbl">Avtomatik ball</div></div>
+        <div class="control-stat"><div class="num">${fmtPoints(maxScore)}</div><div class="lbl">Jami maksimal ball</div></div>
+      </div>
+      <div class="result-actions" style="margin:16px;">
+        <button class="secondary-btn" id="backToTestsBtn">${BACK_LABEL_BY_MODE.certificate}</button>
+      </div>
+    `;
+  } else {
+    content.innerHTML = `
+      <div class="test-result-content">
+        <div class="result-score-circle">
+          <div class="score-num">${fmtPoints(rawScore)}/${fmtPoints(maxScore)}</div>
+          <div class="score-total">${percent}%</div>
+        </div>
+        <div class="result-title">${timedOut ? "⏰ Vaqt tugadi" : (RESULT_TITLE_BY_MODE.certificate || "Yakunlandi")}</div>
+        ${level ? `<div class="cert-level-badge">${level}</div>` : `<div class="result-sub">Sertifikat darajasiga hali yetmadingiz</div>`}
+      </div>
+      <p class="cert-level-caveat">⚠️ Bu — taxminiy daraja (jamlangan og'irliklangan ball asosida). Bilimni baholash agentligining rasmiy Rash (IRT) modeli natijasidan farq qilishi mumkin.</p>
+      <div class="control-result-stats-row">
+        <div class="control-stat"><div class="num">${fmtPoints(rawScore)}</div><div class="lbl">Olingan ball</div></div>
+        <div class="control-stat"><div class="num">${fmtPoints(maxScore)}</div><div class="lbl">Maksimal ball</div></div>
+        <div class="control-stat"><div class="num">${percent}%</div><div class="lbl">Foiz</div></div>
+      </div>
+      <div class="result-actions" style="margin:16px;">
+        <button class="secondary-btn" id="retakeTestBtn">🔁 Qayta urinish</button>
+        <button class="secondary-btn" id="backToTestsBtn">${BACK_LABEL_BY_MODE.certificate}</button>
+      </div>
+    `;
+    const retakeBtn = document.getElementById("retakeTestBtn");
+    if (retakeBtn) retakeBtn.addEventListener("click", () => startTest(currentCertificateMeta, "certificate"));
+  }
+
+  document.getElementById("backToTestsBtn").addEventListener("click", () => {
+    activeTestsTab = "certificate";
+    navigateTo("tests");
+  });
+}
+
 const RESULT_TITLE_BY_MODE = {
   test: "🎉 Test yakunlandi",
   simulator: "🎯 Simulyator yakunlandi",
   control: "🎓 Nazorat testi yakunlandi",
   attestation: "📋 Attestatsiya yakunlandi",
+  certificate: "🎓 Milliy sertifikat sinovi yakunlandi",
 };
 
 const BACK_LABEL_BY_MODE = {
   simulator: "Simulyatorlar ro'yxatiga qaytish",
   control: "Nazorat testlariga qaytish",
   attestation: "Attestatsiya ro'yxatiga qaytish",
+  certificate: "Milliy sertifikat ro'yxatiga qaytish",
   test: "Testlar ro'yxatiga qaytish",
 };
 
@@ -1162,6 +1730,7 @@ export function initTestsModule() {
   document.getElementById("tabBtnSimulator").addEventListener("click", () => switchTestsTab("simulator"));
   document.getElementById("tabBtnControl").addEventListener("click", () => switchTestsTab("control"));
   document.getElementById("tabBtnAttestation").addEventListener("click", () => switchTestsTab("attestation"));
+  document.getElementById("tabBtnCertificate").addEventListener("click", () => switchTestsTab("certificate"));
 
   document.getElementById("practiceBackToSubjectsBtn").addEventListener("click", () => resetPracticeFlowToSubjects());
   document.getElementById("practiceBackToStagesBtn").addEventListener("click", () => {

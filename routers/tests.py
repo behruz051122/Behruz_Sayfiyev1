@@ -1,4 +1,6 @@
 # routers/tests.py
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Body
 
 from routers.deps import get_verified_telegram_user
@@ -88,6 +90,16 @@ def api_get_attestation_tests(subject: str = None, user=Depends(get_verified_tel
     return {"tests": tests}
 
 
+@router.get("/certificate-tests")
+def api_get_certificate_tests(subject: str = None, user=Depends(get_verified_telegram_user)):
+    # Milliy sertifikat (Bilimni baholash agentligi rasmiy spetsifikatsiyasi
+    # asosidagi 43 savollik imtihon) — Attestatsiya kabi erkin kirish.
+    tests = db.get_all_tests(subject=subject, test_kind="certificate")
+    for t in tests:
+        t["question_count"] = db.count_test_questions(t["id"])
+    return {"tests": tests}
+
+
 @router.get("/test/{test_id}")
 def api_get_test(test_id: int, user=Depends(get_verified_telegram_user)):
     test = db.get_test(test_id)
@@ -100,12 +112,28 @@ def api_get_test(test_id: int, user=Depends(get_verified_telegram_user)):
     questions = db.get_questions(test_id)
     safe_questions = []
     for q in questions:
-        safe_questions.append({
+        q_type = q.get("question_type") or "Y1"
+        safe_q = {
             "id": q["id"], "question_text": q["question_text"], "image_url": q["image_url"],
             "table_data": q.get("table_data"),
             "option_1": q["option_1"], "option_2": q["option_2"],
-            "option_3": q["option_3"], "option_4": q["option_4"], "order_num": q["order_num"]
-        })
+            "option_3": q["option_3"], "option_4": q["option_4"], "order_num": q["order_num"],
+            "question_type": q_type,
+        }
+        if q_type == "Y2":
+            # Talabaga faqat chap/o'ng ustunlarni yuboramiz — to'g'ri
+            # javob (correct_pairs) HECH QACHON frontendga chiqmaydi.
+            try:
+                match_data = json.loads(q.get("match_data") or "{}")
+            except (ValueError, TypeError):
+                match_data = {}
+            safe_q["left"] = match_data.get("left", [])
+            safe_q["right"] = match_data.get("right", [])
+        elif q_type == "O2":
+            safe_q["max_score"] = q.get("max_score")
+            safe_q["rubric_json"] = q.get("rubric_json")
+        # O1 uchun correct_answer_text hech qachon yuborilmaydi.
+        safe_questions.append(safe_q)
     test["questions"] = safe_questions
     return test
 
@@ -139,13 +167,39 @@ def _get_owned_attempt_or_403(attempt_id: int, telegram_id: int) -> dict:
 
 @router.post("/attempt/{attempt_id}/answer")
 def api_submit_answer(attempt_id: int, data: dict = Body(...), user=Depends(get_verified_telegram_user)):
+    """Y1 (selected_index), Y2 (match_answer — [[chap_idx, o'ng_idx], ...])
+    va O1 (answer_text) savol turlari uchun umumiy javob yuborish
+    endpointi. O2 (yozma ish) uchun alohida /written-answer ishlatiladi."""
     telegram_id = user["telegram_id"]
     _get_owned_attempt_or_403(attempt_id, telegram_id)
     question_id = int(data["question_id"])
-    selected_index = int(data["selected_index"])
+    selected_index = data.get("selected_index")
+    selected_index = int(selected_index) if selected_index is not None else None
+    answer_text = data.get("answer_text")
+    match_answer = data.get("match_answer")
     db.get_or_create_user(telegram_id, user["first_name"], user.get("username"))
-    result = db.submit_answer(telegram_id, attempt_id, question_id, selected_index)
+    result = db.submit_answer(telegram_id, attempt_id, question_id, selected_index, answer_text, match_answer)
     return result
+
+
+@router.post("/attempt/{attempt_id}/written-answer")
+def api_submit_written_answer(attempt_id: int, data: dict = Body(...), user=Depends(get_verified_telegram_user)):
+    """Milliy sertifikat O2 (kengaytirilgan javobli yozma ish) — talaba
+    yechimini rasm(lar) va/yoki matn sifatida yuboradi. Bu DARHOL
+    baholanmaydi, o'qituvchi tomonidan admin panelda qo'lda ball qo'yiladi."""
+    _get_owned_attempt_or_403(attempt_id, user["telegram_id"])
+    question_id = int(data["question_id"])
+    photo_urls = data.get("photo_urls") or []
+    text_answer = data.get("text_answer")
+    return db.submit_written_answer(attempt_id, question_id, photo_urls, text_answer)
+
+
+@router.get("/attempt/{attempt_id}/written-answers")
+def api_get_written_answers(attempt_id: int, user=Depends(get_verified_telegram_user)):
+    """Talaba o'zi yuborgan O2 javoblarini (va agar allaqachon baholangan
+    bo'lsa — o'qituvchi bali/izohini) qayta ko'rish uchun."""
+    _get_owned_attempt_or_403(attempt_id, user["telegram_id"])
+    return {"answers": db.get_written_answers_for_attempt(attempt_id)}
 
 
 @router.post("/attempt/{attempt_id}/finish")

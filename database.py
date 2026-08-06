@@ -679,6 +679,133 @@ def init_db():
             ON simulator_answers(attempt_id, question_id)
         """)
 
+        # ---------- MILLIY SERTIFIKAT (Bilimni baholash agentligi rasmiy
+        # spetsifikatsiyasiga muvofiq) ----------
+        # Rasmiy imtihon 43 ta topshiriqdan iborat, 4 xil turda:
+        #   Y1 — bitta to'g'ri javobli yopiq test (mavjud option_1-4/correct_index)
+        #   Y2 — moslashtirishni talab qiladigan yopiq test (chap/o'ng ustunlar)
+        #   O1 — qisqa javobli ochiq test (matn kiritiladi)
+        #   O2 — kengaytirilgan javobli "yozma ish" (talaba rasm/matn
+        #        yuklaydi, o'qituvchi band-band rubrika bo'yicha QO'LDA baholaydi)
+        # Y1(1-32)/Y2(33-35)/O1(36-40) — Rash modeli asosida, qiyinlik
+        # darajasiga qarab og'irliklangan ball (point_value) bilan;
+        # O2(41-43) — rasmiy hujjatdagi M (metodika) / A (arifmetika)
+        # bandlariga ko'ra, o'qituvchi tomonidan qo'lda ball qo'yiladi.
+        try:
+            cur.execute("ALTER TABLE test_questions ADD COLUMN question_type TEXT DEFAULT 'Y1'")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cur.execute("ALTER TABLE test_questions ADD COLUMN difficulty_level TEXT DEFAULT 'past'")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+        try:
+            # Y1/Y2/O1 uchun XOM ball (admin tahrirlay oladi). Rasmiy
+            # hujjatlarda Matematika uchun aniq ko'rsatilgan qiymat: past=1,
+            # o'rta=2.2, yuqori=3 ball (Y2 uchun 2.2 ball) — Kimyo/Biologiya
+            # hujjatlarida bu aniq ko'rsatilmagan (faqat "Rash modeli orqali
+            # baholanadi" deyilgan), shuning uchun DEFAULT sifatida shu
+            # standart formuladan foydalanamiz, admin xohlasa o'zgartiradi.
+            cur.execute("ALTER TABLE test_questions ADD COLUMN point_value REAL DEFAULT 1")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+        try:
+            # Y2 (moslashtirish): {"left": [...], "right": [...], "correct_pairs": [[0,2],...]}
+            cur.execute("ALTER TABLE test_questions ADD COLUMN match_data TEXT")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+        try:
+            # O1 (qisqa ochiq javob): kutilgan javob(lar) — bir nechta
+            # to'g'ri variant "|" bilan ajratilishi mumkin, avtomatik
+            # tekshiruv katta-kichik harf va bo'shliqqa sezgir emas.
+            cur.execute("ALTER TABLE test_questions ADD COLUMN correct_answer_text TEXT")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+        try:
+            # O2 (yozma ish): shu topshiriq uchun maksimal ball (rasmiy
+            # hujjatda masalan 41-topshiriq=30, 42=35, 43=10 kabi farqlanadi)
+            cur.execute("ALTER TABLE test_questions ADD COLUMN max_score REAL DEFAULT 25")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+        try:
+            # O2 uchun band/rubrika tuzilishi — faqat o'qituvchiga
+            # BAHOLASH VAQTIDA yo'l-yo'riq sifatida ko'rsatiladi (avtomatik
+            # hisoblanmaydi): [{"label":"1-band","m_max":15,"a_max":6}, ...]
+            cur.execute("ALTER TABLE test_questions ADD COLUMN rubric_json TEXT")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+
+        # test_answers: Y1 dan tashqari turlar uchun ham javob saqlash va
+        # OG'IRLIKLANGAN ball (points_earned) — eski oddiy is_correct=0/1
+        # (1 ballik) tizimidan farqli, chunki milliy sertifikatda har bir
+        # savol turli ball og'irligiga ega.
+        try:
+            cur.execute("ALTER TABLE test_answers ADD COLUMN answer_text TEXT")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cur.execute("ALTER TABLE test_answers ADD COLUMN points_earned REAL DEFAULT 0")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+
+        # O2 (yozma ish) — talabaning rasm/matn ko'rinishidagi javobi va
+        # o'qituvchining qo'lda qo'ygan bali shu yerda saqlanadi (oddiy
+        # test_answers'dan alohida, chunki bu darhol emas, KEYINROQ
+        # o'qituvchi tomonidan baholanadi).
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS certificate_written_answers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                attempt_id INTEGER NOT NULL,
+                question_id INTEGER NOT NULL,
+                photo_urls TEXT,
+                text_answer TEXT,
+                teacher_score REAL,
+                teacher_comment TEXT,
+                graded_by INTEGER,
+                graded_at TIMESTAMP,
+                submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (attempt_id) REFERENCES test_attempts (id) ON DELETE CASCADE,
+                FOREIGN KEY (question_id) REFERENCES test_questions (id) ON DELETE CASCADE
+            )
+        """)
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_cert_written_attempt_question
+            ON certificate_written_answers(attempt_id, question_id)
+        """)
+
+        # test_attempts: milliy sertifikat uchun og'irliklangan ball,
+        # baholash holati (O2 hali qo'lda baholanmagan bo'lsa
+        # 'pending_review') va taxminiy sertifikat darajasi.
+        try:
+            cur.execute("ALTER TABLE test_attempts ADD COLUMN raw_score_points REAL DEFAULT 0")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cur.execute("ALTER TABLE test_attempts ADD COLUMN max_score_points REAL DEFAULT 0")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cur.execute("ALTER TABLE test_attempts ADD COLUMN review_status TEXT DEFAULT 'auto'")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cur.execute("ALTER TABLE test_attempts ADD COLUMN certificate_level TEXT")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+
         # ---------- Bosh sahifa kartalari (dashboard) ----------
         # Bosh sahifadagi 6 ta katakli menyu (Kurslar, Testlar, Reyting,
         # Kitoblar, O'yinlar, Natijalar) — har birining SARLAVHASI, TEG
@@ -2563,16 +2690,46 @@ def get_question(question_id: int):
         return dict(row) if row else None
 
 
+def _default_point_value(question_type: str, difficulty_level: str) -> float:
+    """Milliy sertifikat Y1/Y2/O1 uchun DEFAULT xom ball — Matematika
+    fanidan rasmiy spetsifikatsiyada aniq ko'rsatilgan formula (past=1,
+    o'rta=2.2, yuqori=3 ball; Y2 doim 2.2 ball). Kimyo/Biologiya
+    hujjatlarida bu aniq raqamlar ochiq e'lon qilinmagan (faqat "Rash
+    modeli orqali baholanadi" deyilgan) — shuning uchun shu standart
+    qiymat DEFAULT sifatida qo'llanadi, admin xohlasa savol formasida
+    o'zgartira oladi."""
+    if question_type == "Y2":
+        return 2.2
+    mapping = {"past": 1.0, "orta": 2.2, "yuqori": 3.0}
+    return mapping.get(difficulty_level, 1.0)
+
+
 def create_question(data: dict) -> int:
+    question_type = data.get("question_type") or "Y1"
+    difficulty_level = data.get("difficulty_level") or "past"
+    point_value = data.get("point_value")
+    if point_value in (None, ""):
+        point_value = _default_point_value(question_type, difficulty_level)
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO test_questions (test_id, question_text, image_url, option_1, option_2, option_3, option_4, correct_index, order_num, table_data)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO test_questions (
+                test_id, question_text, image_url, option_1, option_2, option_3, option_4,
+                correct_index, order_num, table_data,
+                question_type, difficulty_level, point_value, match_data,
+                correct_answer_text, max_score, rubric_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             int(data["test_id"]), data.get("question_text", ""), data.get("image_url", ""),
             data.get("option_1", ""), data.get("option_2", ""), data.get("option_3", ""), data.get("option_4", ""),
-            int(data.get("correct_index", 1)), int(data.get("order_num", 0)), data.get("table_data") or None
+            # Y2/O1/O2 turlarida correct_index ishlatilmaydi — jadval ustuni
+            # NOT NULL bo'lgani uchun 0 bilan to'ldiramiz (Y1 uchun haqiqiy qiymat keladi).
+            int(data.get("correct_index", 1)) if question_type == "Y1" else 0,
+            int(data.get("order_num", 0)), data.get("table_data") or None,
+            question_type, difficulty_level, float(point_value), data.get("match_data") or None,
+            data.get("correct_answer_text") or None, float(data.get("max_score") or 25),
+            data.get("rubric_json") or None
         ))
         conn.commit()
         return cur.lastrowid
@@ -2582,7 +2739,12 @@ def update_question(question_id: int, data: dict):
     with get_connection() as conn:
         cur = conn.cursor()
         fields, values = [], []
-        for key in ["question_text", "image_url", "option_1", "option_2", "option_3", "option_4", "correct_index", "order_num", "table_data"]:
+        for key in [
+            "question_text", "image_url", "option_1", "option_2", "option_3", "option_4",
+            "correct_index", "order_num", "table_data",
+            "question_type", "difficulty_level", "point_value", "match_data",
+            "correct_answer_text", "max_score", "rubric_json"
+        ]:
             if key in data:
                 fields.append(f"{key} = ?")
                 values.append(data[key])
@@ -2612,28 +2774,64 @@ def start_attempt(telegram_id: int, test_id: int) -> int:
         return cur.lastrowid
 
 
-def submit_answer(telegram_id: int, attempt_id: int, question_id: int, selected_index: int):
+def submit_answer(telegram_id: int, attempt_id: int, question_id: int, selected_index: int = None,
+                   answer_text: str = None, match_answer=None):
     """Javobni tekshiradi va yozib qo'yadi (yoki — agar bu savolga bu urinishda
     ALLAQACHON javob berilgan bo'lsa, uni YANGILAYDI, chunki o'quvchi savollar
     orasida erkin harakatlanib, javobini istalgancha o'zgartirishi mumkin).
     Agar bu savolga birinchi marta to'g'ri javob berilgan bo'lsa 1 coin
     beradi. {'correct': bool, 'correct_index': int, 'coin_awarded': bool}
     qaytaradi. Urinishning umumiy bali (score) BU YERDA emas — yakunlash
-    (finish_attempt) vaqtida, barcha javoblar asosida qayta hisoblanadi."""
+    (finish_attempt) vaqtida, barcha javoblar asosida qayta hisoblanadi.
+
+    Milliy sertifikat savol turlari (question_type) uchun ham shu funksiya
+    ishlatiladi: Y1 — selected_index, Y2 — match_answer (moslashtirilgan
+    juftliklar ro'yxati), O1 — answer_text (qisqa javob, avtomatik,
+    katta-kichik harf/bo'shliqqa sezgir emas). O2 (yozma ish) esa alohida
+    submit_written_answer() orqali yuboriladi va o'qituvchi tomonidan
+    QO'LDA baholanadi — bu yerga kelmaydi."""
     question = get_question(question_id)
     if not question:
         return {"correct": False, "correct_index": None, "coin_awarded": False}
 
-    is_correct = int(selected_index) == int(question["correct_index"])
+    qtype = question.get("question_type") or "Y1"
+    points_possible = float(question.get("point_value") or 1)
+    stored_text = None
+
+    if qtype == "Y2":
+        correct_pairs = set()
+        try:
+            correct_pairs = {tuple(p) for p in json.loads(question.get("match_data") or "{}").get("correct_pairs", [])}
+        except (ValueError, TypeError):
+            correct_pairs = set()
+        submitted_pairs = set()
+        if match_answer is not None:
+            try:
+                raw = match_answer if isinstance(match_answer, list) else json.loads(match_answer)
+                submitted_pairs = {tuple(p) for p in raw}
+            except (ValueError, TypeError):
+                submitted_pairs = set()
+        is_correct = bool(correct_pairs) and submitted_pairs == correct_pairs
+        stored_text = json.dumps(sorted(submitted_pairs)) if submitted_pairs else None
+    elif qtype == "O1":
+        expected_alts = [e.strip().lower() for e in (question.get("correct_answer_text") or "").split("|") if e.strip()]
+        given = (answer_text or "").strip().lower()
+        is_correct = bool(given) and given in expected_alts
+        stored_text = answer_text
+    else:  # Y1 (default) — bitta to'g'ri javobli yopiq test
+        is_correct = selected_index is not None and int(selected_index) == int(question["correct_index"])
+
+    points_earned = points_possible if is_correct else 0.0
 
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO test_answers (attempt_id, question_id, selected_index, is_correct)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO test_answers (attempt_id, question_id, selected_index, is_correct, answer_text, points_earned)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(attempt_id, question_id)
-            DO UPDATE SET selected_index = excluded.selected_index, is_correct = excluded.is_correct
-        """, (attempt_id, question_id, selected_index, 1 if is_correct else 0))
+            DO UPDATE SET selected_index = excluded.selected_index, is_correct = excluded.is_correct,
+                          answer_text = excluded.answer_text, points_earned = excluded.points_earned
+        """, (attempt_id, question_id, selected_index, 1 if is_correct else 0, stored_text, points_earned))
         conn.commit()
 
     coin_awarded = False
@@ -2651,7 +2849,84 @@ def submit_answer(telegram_id: int, attempt_id: int, question_id: int, selected_
         if coin_awarded:
             add_coins(telegram_id, 1)  # 'with' bloki yopilgach chaqiriladi — pool bandlanib qolmaydi
 
-    return {"correct": is_correct, "correct_index": question["correct_index"], "coin_awarded": coin_awarded}
+    return {"correct": is_correct, "correct_index": question["correct_index"], "coin_awarded": coin_awarded,
+            "points_earned": points_earned}
+
+
+# ---------- MILLIY SERTIFIKAT: O2 (yozma ish) yuborish va qo'lda baholash ----------
+
+def submit_written_answer(attempt_id: int, question_id: int, photo_urls=None, text_answer: str = None):
+    """O2 (kengaytirilgan javobli yozma ish) uchun — talaba yechimini rasm
+    (bir nechta bo'lishi mumkin) va/yoki matn sifatida yuboradi. Bu DARHOL
+    baholanmaydi — o'qituvchi keyinroq grade_written_answer() orqali
+    band-band (M/A) ball qo'yadi."""
+    photo_urls_json = json.dumps(photo_urls) if photo_urls else None
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO certificate_written_answers (attempt_id, question_id, photo_urls, text_answer)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(attempt_id, question_id)
+            DO UPDATE SET photo_urls = excluded.photo_urls, text_answer = excluded.text_answer,
+                          submitted_at = CURRENT_TIMESTAMP,
+                          teacher_score = NULL, teacher_comment = NULL, graded_by = NULL, graded_at = NULL
+        """, (attempt_id, question_id, photo_urls_json, text_answer))
+        conn.commit()
+    return {"ok": True}
+
+
+def get_written_answer(attempt_id: int, question_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM certificate_written_answers WHERE attempt_id = ? AND question_id = ?",
+            (attempt_id, question_id)
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def get_written_answers_for_attempt(attempt_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM certificate_written_answers WHERE attempt_id = ?", (attempt_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_pending_written_answers():
+    """Admin panelda "Yozma ishlarni baholash" navbati — hali o'qituvchi
+    ball qo'ymagan (teacher_score IS NULL) barcha O2 javoblari."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT wa.*, q.question_text, q.max_score, q.rubric_json, q.order_num,
+                   t.id AS test_id, t.title AS test_title, t.subject AS subject,
+                   a.telegram_id, u.first_name, u.username
+            FROM certificate_written_answers wa
+            JOIN test_questions q ON q.id = wa.question_id
+            JOIN test_attempts a ON a.id = wa.attempt_id
+            JOIN tests t ON t.id = q.test_id
+            LEFT JOIN users u ON u.telegram_id = a.telegram_id
+            WHERE wa.teacher_score IS NULL
+            ORDER BY wa.submitted_at ASC
+        """)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def grade_written_answer(written_answer_id: int, teacher_score: float, teacher_comment: str, graded_by: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE certificate_written_answers
+            SET teacher_score = ?, teacher_comment = ?, graded_by = ?, graded_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (teacher_score, teacher_comment, graded_by, written_answer_id))
+        conn.commit()
+        cur.execute("SELECT attempt_id FROM certificate_written_answers WHERE id = ?", (written_answer_id,))
+        row = cur.fetchone()
+    if row:
+        _recompute_certificate_result(row["attempt_id"])
+    return {"ok": True}
 
 
 def set_answer_flag(attempt_id: int, question_id: int, flagged: bool):
@@ -2726,10 +3001,128 @@ def update_objection_status(objection_id: int, status: str):
         conn.commit()
 
 
+# Milliy sertifikat daraja chegaralari. A+/A/B+ — Bilimni baholash
+# agentligining rasmiy e'lonlaridan tasdiqlangan (70/65/60 foiz). B/C+/C
+# chegaralari rasmiy manbalarda ochiq e'lon qilinmagan — shu sababli bu
+# yerda TAXMINIY, teng oraliqli qiymatlar qo'llanilgan. Natija ekranida
+# talabaga bu "taxminiy daraja, rasmiy Rash natijasidan farq qilishi
+# mumkin" deb aniq ko'rsatiladi.
+CERTIFICATE_LEVEL_THRESHOLDS = [
+    (70, "A+"), (65, "A"), (60, "B+"), (55, "B"), (50, "C+"), (46, "C"),
+]
+
+
+def certificate_level_from_percent(percent):
+    for threshold, level in CERTIFICATE_LEVEL_THRESHOLDS:
+        if percent >= threshold:
+            return level
+    return None  # sertifikat darajasiga yetmagan
+
+
+def _certificate_max_score_points(test_id: int) -> float:
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT question_type, point_value, max_score FROM test_questions
+            WHERE test_id = ?
+        """, (test_id,))
+        total = 0.0
+        for row in cur.fetchall():
+            if row["question_type"] == "O2":
+                total += float(row["max_score"] or 25)
+            else:
+                total += float(row["point_value"] or 1)
+        return total
+
+
+def _certificate_review_status(attempt_id: int, test_id: int) -> str:
+    """O2 (yozma ish) savollari bo'lsa va ulardan birortasi hali o'qituvchi
+    tomonidan baholanmagan bo'lsa — 'pending_review'. Aks holda 'reviewed'
+    (O2 bor va hammasi baholangan) yoki 'auto' (bu testda O2 umuman yo'q)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM test_questions WHERE test_id = ? AND question_type = 'O2'", (test_id,))
+        o2_ids = [r["id"] for r in cur.fetchall()]
+        if not o2_ids:
+            return "auto"
+        placeholders = ",".join("?" for _ in o2_ids)
+        cur.execute(f"""
+            SELECT question_id, teacher_score FROM certificate_written_answers
+            WHERE attempt_id = ? AND question_id IN ({placeholders})
+        """, [attempt_id] + o2_ids)
+        graded_by_qid = {r["question_id"]: r["teacher_score"] for r in cur.fetchall()}
+        for qid in o2_ids:
+            if graded_by_qid.get(qid) is None:
+                return "pending_review"
+        return "reviewed"
+
+
+def _recompute_certificate_result(attempt_id: int):
+    """Milliy sertifikat urinishi uchun og'irliklangan ballarni qayta
+    hisoblaydi: Y1/Y2/O1 — test_answers.points_earned yig'indisi; O2 —
+    o'qituvchi qo'ygan teacher_score yig'indisi (hali baholanmagan bo'lsa
+    0 sifatida hisoblanadi, lekin review_status shuni aks ettiradi)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT test_id FROM test_attempts WHERE id = ?", (attempt_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        test_id = row["test_id"]
+
+        cur.execute("SELECT COALESCE(SUM(points_earned), 0) as s FROM test_answers WHERE attempt_id = ?", (attempt_id,))
+        auto_points = cur.fetchone()["s"] or 0.0
+
+        cur.execute("SELECT COALESCE(SUM(teacher_score), 0) as s FROM certificate_written_answers WHERE attempt_id = ? AND teacher_score IS NOT NULL", (attempt_id,))
+        written_points = cur.fetchone()["s"] or 0.0
+
+        raw_score = float(auto_points) + float(written_points)
+        max_score = _certificate_max_score_points(test_id)
+        review_status = _certificate_review_status(attempt_id, test_id)
+        percent = round((raw_score / max_score) * 100, 1) if max_score > 0 else 0.0
+        level = certificate_level_from_percent(percent) if review_status != "pending_review" else None
+
+        cur.execute("""
+            UPDATE test_attempts
+            SET raw_score_points = ?, max_score_points = ?, review_status = ?, certificate_level = ?
+            WHERE id = ?
+        """, (raw_score, max_score, review_status, level, attempt_id))
+        conn.commit()
+
+        cur.execute("SELECT * FROM test_attempts WHERE id = ?", (attempt_id,))
+        r = cur.fetchone()
+        return dict(r) if r else None
+
+
 def finish_attempt(attempt_id: int):
     """Urinishni yakunlaydi. Ball (score) aynan shu yerda, BARCHA saqlangan
     javoblar bo'yicha qayta hisoblanadi — chunki javoblar erkin o'zgartirilishi
-    mumkin edi, oraliqda saqlangan "score" ustuni ishonchli emas."""
+    mumkin edi, oraliqda saqlangan "score" ustuni ishonchli emas.
+
+    Milliy sertifikat testlari (test_kind='certificate') uchun oddiy
+    "nechta to'g'ri" hisoblash o'rniga OG'IRLIKLANGAN ball (har savol o'z
+    qiyinlik/rubrika bali bilan) qo'llaniladi, va agar testda O2 (yozma
+    ish) bo'lsa, natija o'qituvchi baholaguncha 'pending_review' holatida
+    turadi."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT test_id FROM test_attempts WHERE id = ?", (attempt_id,))
+        arow = cur.fetchone()
+    if not arow:
+        return None
+    test = get_test(arow["test_id"])
+
+    if test and test.get("test_kind") == "certificate":
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("UPDATE test_attempts SET finished_at = CURRENT_TIMESTAMP WHERE id = ?", (attempt_id,))
+            conn.commit()
+        result = _recompute_certificate_result(attempt_id)
+        if result:
+            record_daily_activity(result["telegram_id"])
+            check_and_award_achievements(result["telegram_id"])
+        return result
+
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) as c FROM test_answers WHERE attempt_id = ? AND is_correct = 1", (attempt_id,))

@@ -126,6 +126,28 @@ def admin_delete_question(question_id: int, admin=Depends(require_admin)):
     return {"ok": True}
 
 
+# ---------- Milliy sertifikat: yozma ish (O2) baholash navbati ----------
+
+@router.get("/certificate/pending-review")
+def admin_list_pending_written_answers(admin=Depends(require_admin)):
+    """O'qituvchi hali ball qo'ymagan barcha O2 (kengaytirilgan javobli
+    yozma ish) javoblari ro'yxati — "Yozma ishlarni baholash" paneli uchun."""
+    return {"answers": db.get_pending_written_answers()}
+
+
+@router.post("/certificate/grade")
+def admin_grade_written_answer(data: dict = Body(...), admin=Depends(require_admin)):
+    """O'qituvchi bitta O2 javobiga ball (rasmiy M/A rubrikasiga asosan) va
+    ixtiyoriy izoh qo'yadi. Ball berilgach, urinishning yakuniy og'irliklangan
+    natijasi va sertifikat darajasi avtomatik qayta hisoblanadi."""
+    written_answer_id = int(data["written_answer_id"])
+    teacher_score = float(data["teacher_score"])
+    teacher_comment = data.get("teacher_comment") or ""
+    graded_by = admin.get("telegram_id") if isinstance(admin, dict) else None
+    db.grade_written_answer(written_answer_id, teacher_score, teacher_comment, graded_by)
+    return {"ok": True}
+
+
 # ---------- E'tirozlar (Attestatsiya) ----------
 
 @router.get("/objections")

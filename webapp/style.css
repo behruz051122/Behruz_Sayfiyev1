@@ -983,3 +983,78 @@ a:focus-visible {
   max-width: 92vw; text-align: center;
 }
 .toast-visible { opacity: 1; transform: translateY(0); }
+
+/* ---------- Milliy sertifikat: savol turlariga oid (Y2/O1/O2) UI ---------- */
+
+.cert-type-badge {
+  display: inline-block; font-size: 10.5px; font-weight: 800; letter-spacing: 0.4px;
+  padding: 3px 9px; border-radius: 999px; background: var(--surface2); color: var(--text-dim);
+  border: 1px solid var(--border); margin: 0 16px 10px;
+}
+
+.cert-answer-block { margin: 0 16px 14px; }
+.cert-answer-label { font-size: 12px; font-weight: 700; color: var(--text-dim); margin-bottom: 8px; }
+
+/* Y2 — moslashtirish: chap ustun (raqamlangan), har biriga select orqali
+   o'ng variant biriktiriladi */
+.cert-match-row {
+  display: flex; align-items: center; gap: 10px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px;
+}
+.cert-match-left { flex: 1; font-size: 13px; color: var(--text); }
+.cert-match-select {
+  flex: 1; background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+  padding: 9px 10px; border-radius: 8px; font-size: 13px; font-family: inherit;
+}
+.cert-match-select.cert-match-filled { border-color: var(--gold); }
+
+/* O1 — qisqa matnli javob */
+.cert-text-input {
+  width: 100%; background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  padding: 12px; border-radius: 10px; font-size: 14px; font-family: inherit; box-sizing: border-box;
+}
+.cert-text-input:focus-visible { outline: none; border-color: var(--gold); }
+
+/* O2 — kengaytirilgan yozma javob: matn + rasm yuklash */
+.cert-textarea {
+  width: 100%; min-height: 90px; resize: vertical; background: var(--surface);
+  border: 1px solid var(--border); color: var(--text); padding: 12px; border-radius: 10px;
+  font-size: 14px; font-family: inherit; box-sizing: border-box;
+}
+.cert-textarea:focus-visible { outline: none; border-color: var(--gold); }
+.cert-upload-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.cert-upload-btn {
+  background: var(--surface2); border: 1px dashed var(--border); color: var(--text-dim);
+  border-radius: 10px; padding: 10px 14px; font-size: 12.5px; font-weight: 700; cursor: pointer;
+}
+.cert-upload-btn:hover { border-color: var(--gold-light); color: var(--text); }
+.cert-photo-thumbs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.cert-photo-thumb-wrap { position: relative; width: 64px; height: 64px; }
+.cert-photo-thumb { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; }
+.cert-photo-remove {
+  position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--danger); color: #fff; border: none; font-size: 12px; line-height: 20px;
+  text-align: center; cursor: pointer; padding: 0;
+}
+.cert-o2-status { font-size: 11.5px; color: var(--text-dim); margin-top: 8px; }
+.cert-o2-status.cert-o2-saved { color: var(--teal); font-weight: 700; }
+
+/* Sertifikat natija ekrani */
+.cert-pending-box {
+  margin: 0 16px 16px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; padding: 18px; text-align: center;
+}
+.cert-pending-box .cert-pending-icon { font-size: 30px; margin-bottom: 8px; }
+.cert-pending-box .cert-pending-title { font-size: 14px; font-weight: 800; color: var(--text); margin-bottom: 6px; }
+.cert-pending-box .cert-pending-sub { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+
+.cert-level-badge {
+  display: inline-block; font-size: 20px; font-weight: 900; padding: 8px 22px;
+  border-radius: 14px; background: var(--gold); color: var(--on-accent); margin: 10px 0 4px;
+}
+.cert-level-caveat {
+  font-size: 10.5px; color: var(--text-dim); text-align: center; margin: 0 16px 14px; line-height: 1.5;
+}
+.cert-points-row { display: flex; justify-content: center; gap: 18px; margin: 6px 0 10px; }
+.cert-points-row .num { font-size: 18px; font-weight: 800; color: var(--text); }
+.cert-points-row .lbl { font-size: 10.5px; color: var(--text-dim); }

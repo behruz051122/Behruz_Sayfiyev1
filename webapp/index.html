@@ -262,10 +262,11 @@
           <div class="dc-sub">ERKIN KIRISH</div>
           <div class="dc-arrow">›</div>
         </button>
-        <button class="dashboard-card dashboard-card-disabled" disabled>
+        <button class="dashboard-card" data-testtab="certificate">
           <div class="dc-icon dc-gold">🏅</div>
           <div class="dc-title">Milliy sertifikat</div>
-          <div class="dc-sub">TEZ ORADA</div>
+          <div class="dc-sub">43 SAVOL · RASMIY FORMAT</div>
+          <div class="dc-arrow">›</div>
         </button>
       </div>
 
@@ -275,6 +276,7 @@
         <button class="tab-btn" id="tabBtnSimulator" data-testtab="simulator">🎯 Simulyator</button>
         <button class="tab-btn" id="tabBtnControl" data-testtab="control">🎓 Nazorat</button>
         <button class="tab-btn" id="tabBtnAttestation" data-testtab="attestation">📋 Attestatsiya</button>
+        <button class="tab-btn" id="tabBtnCertificate" data-testtab="certificate">🏅 Sertifikat</button>
       </div>
 
       <div id="testsTabContent" class="hidden">
@@ -324,6 +326,11 @@
       <div id="attestationTabContent" class="hidden">
         <p class="simulator-intro">Rasmiy attestatsiya sinov testlari — barcha talabalar uchun erkin kirish. Har bir savolni "Belgilash" yoki unga "E'tiroz bildirish" imkoni bor.</p>
         <div id="attestationTestList" class="test-list"></div>
+      </div>
+
+      <div id="certificateTabContent" class="hidden">
+        <p class="simulator-intro">Bilimni baholash agentligining rasmiy Milliy sertifikat formati — 43 topshiriq (32 ta yopiq, 3 ta moslashtirish, 5 ta qisqa ochiq javob, 3 ta yozma ish), 180 daqiqa.</p>
+        <div id="certificateTestList" class="test-list"></div>
       </div>
     </section>
 
@@ -375,6 +382,15 @@
         <h2>📋 Attestatsiya</h2>
       </div>
       <div id="attestationDetailContent"></div>
+    </section>
+
+    <!-- MILLIY SERTIFIKAT HAQIDA (boshlashdan oldin) -->
+    <section id="screen-certificate-detail" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="tests" aria-label="Orqaga">←</button>
+        <h2>🏅 Milliy sertifikat</h2>
+      </div>
+      <div id="certificateDetailContent"></div>
     </section>
 
     <!-- TEST TOPSHIRISH (vaqtli) — testlar VA simulyator uchun umumiy -->
@@ -785,6 +801,7 @@
             <button id="adminManageTestSubjectsBtn" class="gold-btn small" style="background:var(--surface2);color:var(--text);">📚 Fanlar</button>
             <button id="adminManageTestStagesBtn" class="gold-btn small" style="background:var(--surface2);color:var(--text);">📶 Bosqichlar</button>
             <button id="adminManageTestGroupsBtn" class="gold-btn small" style="background:var(--surface2);color:var(--text);">🗂 Turkumlar</button>
+            <button id="adminManageCertReviewBtn" class="gold-btn small" style="background:var(--surface2);color:var(--text);">📝 Yozma ishlar</button>
             <button id="adminNewTestBtn" class="gold-btn small">+ Yangi test</button>
           </div>
         </div>
@@ -933,6 +950,7 @@
             <select id="at_test_kind">
               <option value="practice">📝 Oddiy / Mavzuli test</option>
               <option value="attestation">📋 Attestatsiya</option>
+              <option value="certificate">🎓 Milliy sertifikat</option>
             </select>
           </label>
           <p style="font-size:11px;color:var(--text-dim);margin:-6px 0 4px;">
@@ -1021,6 +1039,20 @@
         <form id="questionFormEl" class="admin-form">
           <input type="hidden" id="aq_id">
           <input type="hidden" id="aq_test_id">
+
+          <label>Savol turi
+            <select id="aq_question_type">
+              <option value="Y1">Y1 — bitta to'g'ri javobli yopiq test</option>
+              <option value="Y2">Y2 — moslashtirish (juftlash)</option>
+              <option value="O1">O1 — qisqa javobli ochiq test</option>
+              <option value="O2">O2 — kengaytirilgan javobli yozma ish (qo'lda baholanadi)</option>
+            </select>
+          </label>
+          <p style="font-size:11px;color:var(--text-dim);margin:-6px 0 4px;">
+            Milliy sertifikat rasmiy spetsifikatsiyasiga muvofiq 4 turdagi topshiriq. Oddiy/mavzuli
+            testlar uchun har doim Y1 qoldiring.
+          </p>
+
           <label>Savol matni <textarea id="aq_question_text" required></textarea></label>
 
           <label>Rasm (ixtiyoriy — grafik, jadval, formula va h.k.)
@@ -1033,21 +1065,85 @@
           </div>
           <input type="hidden" id="aq_image_url">
 
-          <label>1-variant <input id="aq_option_1" required></label>
-          <label>2-variant <input id="aq_option_2" required></label>
-          <label>3-variant <input id="aq_option_3" required></label>
-          <label>4-variant <input id="aq_option_4" required></label>
-          <label>To'g'ri javob
-            <select id="aq_correct_index">
-              <option value="1">1-variant</option>
-              <option value="2">2-variant</option>
-              <option value="3">3-variant</option>
-              <option value="4">4-variant</option>
-            </select>
-          </label>
+          <div id="aqY1Fields">
+            <label>1-variant <input id="aq_option_1"></label>
+            <label>2-variant <input id="aq_option_2"></label>
+            <label>3-variant <input id="aq_option_3"></label>
+            <label>4-variant <input id="aq_option_4"></label>
+            <label>To'g'ri javob
+              <select id="aq_correct_index">
+                <option value="1">1-variant</option>
+                <option value="2">2-variant</option>
+                <option value="3">3-variant</option>
+                <option value="4">4-variant</option>
+              </select>
+            </label>
+          </div>
+
+          <div id="aqY2Fields" class="hidden">
+            <label>Chap ustun (har bir elementni alohida qatorga yozing)
+              <textarea id="aq_match_left" rows="4" placeholder="H2O&#10;NaCl"></textarea>
+            </label>
+            <label>O'ng ustun (TO'G'RI mos keladigan tartibda — 1-qator 1-chap bilan mos keladi)
+              <textarea id="aq_match_right" rows="4" placeholder="Suv&#10;Osh tuzi"></textarea>
+            </label>
+            <p style="font-size:11px;color:var(--text-dim);margin:-6px 0 4px;">
+              Talabaga ko'rsatilganda o'ng ustun avtomatik aralashtiriladi — siz shu yerga faqat
+              TO'G'RI juftlikni ketma-ket kiritasiz.
+            </p>
+          </div>
+
+          <div id="aqO1Fields" class="hidden">
+            <label>Kutilgan javob(lar) (bir nechta to'g'ri variant bo'lsa "|" bilan ajrating)
+              <input id="aq_correct_answer_text" placeholder="Masalan: H2O|h2o">
+            </label>
+            <p style="font-size:11px;color:var(--text-dim);margin:-6px 0 4px;">
+              Talaba javobi katta-kichik harf va bo'shliqqa sezgir bo'lmagan holda avtomatik tekshiriladi.
+            </p>
+          </div>
+
+          <div id="aqO2Fields" class="hidden">
+            <label>Maksimal ball (rasmiy hujjatga ko'ra, masalan 25/30/35/10)
+              <input id="aq_max_score" type="number" step="0.1" value="25">
+            </label>
+            <label>Baholash rubrikasi (o'qituvchiga baholash vaqtida ko'rsatiladi, ixtiyoriy)
+              <textarea id="aq_rubric_json" rows="4" placeholder="1-band: yechish usuli (M) 0-15, arifmetika (A) 0-3&#10;2-band: M 0-4, A 0-3&#10;..."></textarea>
+            </label>
+            <p style="font-size:11px;color:var(--text-dim);margin:-6px 0 4px;">
+              Bu — o'qituvchi uchun eslatma matni (avtomatik hisoblanmaydi). Talaba yechimini rasm/matn
+              sifatida yuboradi, siz "Yozma ishlarni baholash" panelida shu yozuvga qarab ball qo'yasiz.
+            </p>
+          </div>
+
+          <div id="aqPointFields">
+            <label>Qiyinlik darajasi
+              <select id="aq_difficulty_level">
+                <option value="past">Past</option>
+                <option value="orta">O'rta</option>
+                <option value="yuqori">Yuqori</option>
+              </select>
+            </label>
+            <label>Xom ball (avtomatik taklif qilinadi, xohlasangiz o'zgartiring)
+              <input id="aq_point_value" type="number" step="0.1" value="1">
+            </label>
+          </div>
+
           <label>Tartib raqami <input id="aq_order_num" type="number" value="0"></label>
           <button type="submit" class="gold-btn">Savolni saqlash</button>
         </form>
+      </div>
+
+      <div id="adminCertReviewPanel" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3>📝 Milliy sertifikat — Yozma ishlarni baholash</h3>
+          <button id="adminCloseCertReview" class="icon-btn" aria-label="Yopish">✕</button>
+        </div>
+        <p style="font-size:11px;color:var(--text-dim);margin:-4px 0 10px;">
+          Talabalar yuborgan O2 (kengaytirilgan javobli yozma ish) javoblari — rasmni ko'rib, rasmiy
+          M/A rubrikasi asosida ball qo'yasiz. Ball qo'yilgach, talabaning yakuniy natijasi va
+          taxminiy sertifikat darajasi avtomatik hisoblanadi.
+        </p>
+        <div id="adminCertReviewList" class="admin-list"></div>
       </div>
 
       <div class="admin-section">

@@ -869,6 +869,7 @@ export async function loadAdminTests() {
   document.getElementById("adminTestSubjectCardsPanel").classList.add("hidden");
   document.getElementById("adminTestStagesPanel").classList.add("hidden");
   document.getElementById("adminTestGroupsPanel").classList.add("hidden");
+  document.getElementById("adminCertReviewPanel").classList.add("hidden");
   const box = document.getElementById("adminTestsList");
   box.innerHTML = skeletonCards(2);
   try {
@@ -1272,6 +1273,7 @@ async function openAdminQuestions(testId, title) {
   document.getElementById("adminTestForm").classList.add("hidden");
   document.getElementById("adminControlAccessPanel").classList.add("hidden");
   document.getElementById("adminControlResultsPanel").classList.add("hidden");
+  document.getElementById("adminCertReviewPanel").classList.add("hidden");
   document.getElementById("adminQuestionsTitle").textContent = `Savollar — ${title}`;
   document.getElementById("aq_test_id").value = testId;
   document.getElementById("aq_docx_file").value = "";
@@ -1403,8 +1405,39 @@ async function searchAndRenderStudents(testId, query) {
   }
 }
 
+// Milliy sertifikat: Y1 uchun Matematika spetsifikatsiyasidagi rasmiy
+// formula (past=1, o'rta=2.2, yuqori=3 ball) DEFAULT sifatida qo'llanadi —
+// Kimyo/Biologiya hujjatlarida bu aniq ko'rsatilmagan, admin xohlasa qo'lda
+// o'zgartiradi.
+const CERT_DEFAULT_POINTS = { past: 1, orta: 2.2, yuqori: 3 };
+
+function updateQuestionTypeVisibility() {
+  const qtype = document.getElementById("aq_question_type").value;
+  document.getElementById("aqY1Fields").classList.toggle("hidden", qtype !== "Y1");
+  document.getElementById("aqY2Fields").classList.toggle("hidden", qtype !== "Y2");
+  document.getElementById("aqO1Fields").classList.toggle("hidden", qtype !== "O1");
+  document.getElementById("aqO2Fields").classList.toggle("hidden", qtype !== "O2");
+  document.getElementById("aqPointFields").classList.toggle("hidden", qtype === "O2");
+  // Y1/Y2/O1 required qoidalari — Y1 bo'lmasa variant maydonlari majburiy emas
+  document.getElementById("aq_option_1").required = qtype === "Y1";
+  document.getElementById("aq_option_2").required = qtype === "Y1";
+  document.getElementById("aq_option_3").required = qtype === "Y1";
+  document.getElementById("aq_option_4").required = qtype === "Y1";
+}
+
+function suggestPointValue() {
+  const qtype = document.getElementById("aq_question_type").value;
+  if (qtype === "Y2") {
+    document.getElementById("aq_point_value").value = 2.2;
+    return;
+  }
+  const diff = document.getElementById("aq_difficulty_level").value;
+  document.getElementById("aq_point_value").value = CERT_DEFAULT_POINTS[diff] ?? 1;
+}
+
 function resetQuestionForm() {
   document.getElementById("aq_id").value = "";
+  document.getElementById("aq_question_type").value = "Y1";
   document.getElementById("aq_question_text").value = "";
   document.getElementById("aq_image_url").value = "";
   document.getElementById("aq_image_file").value = "";
@@ -1416,7 +1449,15 @@ function resetQuestionForm() {
   document.getElementById("aq_option_3").value = "";
   document.getElementById("aq_option_4").value = "";
   document.getElementById("aq_correct_index").value = "1";
+  document.getElementById("aq_match_left").value = "";
+  document.getElementById("aq_match_right").value = "";
+  document.getElementById("aq_correct_answer_text").value = "";
+  document.getElementById("aq_max_score").value = 25;
+  document.getElementById("aq_rubric_json").value = "";
+  document.getElementById("aq_difficulty_level").value = "past";
+  document.getElementById("aq_point_value").value = 1;
   document.getElementById("aq_order_num").value = 0;
+  updateQuestionTypeVisibility();
 }
 
 function showQuestionImagePreview(url) {
@@ -1453,6 +1494,11 @@ async function uploadQuestionImage(file) {
   }
 }
 
+const QUESTION_TYPE_LABELS = {
+  Y1: "Y1 · yopiq (bitta javob)", Y2: "Y2 · moslashtirish",
+  O1: "O1 · qisqa ochiq javob", O2: "O2 · yozma ish"
+};
+
 async function renderAdminQuestions(testId) {
   const res = await apiFetch(`/api/admin/tests/${testId}/questions`);
   const data = await res.json();
@@ -1460,10 +1506,16 @@ async function renderAdminQuestions(testId) {
   box.innerHTML = "";
   if (data.questions.length === 0) box.innerHTML = emptyHtml("Hali savol qo'shilmagan");
   data.questions.forEach((q, idx) => {
+    const qtype = q.question_type || "Y1";
+    const typeBadge = `<span class="control-badge">${QUESTION_TYPE_LABELS[qtype] || qtype}</span>`;
+    const metaText = qtype === "Y1" ? `To'g'ri javob: ${q.correct_index}-variant`
+      : qtype === "O2" ? `Maksimal ball: ${q.max_score ?? 25}`
+      : qtype === "Y2" ? "Moslashtirish topshirig'i"
+      : `Kutilgan javob: ${q.correct_answer_text || "—"}`;
     const row = document.createElement("div");
     row.className = "admin-row";
     row.innerHTML = `
-      <div class="info"><div class="t">${idx + 1}. ${q.question_text.slice(0, 60)}${q.question_text.length > 60 ? "…" : ""}</div><div class="s">To'g'ri javob: ${q.correct_index}-variant</div></div>
+      <div class="info"><div class="t">${idx + 1}. ${q.question_text.slice(0, 60)}${q.question_text.length > 60 ? "…" : ""} ${typeBadge}</div><div class="s">${metaText}${qtype !== "O2" ? " · " + (q.point_value ?? 1) + " ball" : ""}</div></div>
       <div class="row-actions">
         <button data-a="edit">Tahrirlash</button>
         <button data-a="delete" class="danger">O'chirish</button>
@@ -1471,6 +1523,7 @@ async function renderAdminQuestions(testId) {
     `;
     row.querySelector('[data-a="edit"]').onclick = () => {
       document.getElementById("aq_id").value = q.id;
+      document.getElementById("aq_question_type").value = qtype;
       document.getElementById("aq_question_text").value = q.question_text;
       document.getElementById("aq_image_file").value = "";
       document.getElementById("aqImageUploadStatus").textContent = "";
@@ -1479,8 +1532,23 @@ async function renderAdminQuestions(testId) {
       document.getElementById("aq_option_2").value = q.option_2 || "";
       document.getElementById("aq_option_3").value = q.option_3 || "";
       document.getElementById("aq_option_4").value = q.option_4 || "";
-      document.getElementById("aq_correct_index").value = String(q.correct_index);
+      document.getElementById("aq_correct_index").value = String(q.correct_index || 1);
+      let matchLeft = [], matchRight = [];
+      if (qtype === "Y2" && q.match_data) {
+        try {
+          const md = JSON.parse(q.match_data);
+          matchLeft = md.left || []; matchRight = md.right || [];
+        } catch (e) { /* eskirgan/yaroqsiz JSON — bo'sh qoldiramiz */ }
+      }
+      document.getElementById("aq_match_left").value = matchLeft.join("\n");
+      document.getElementById("aq_match_right").value = matchRight.join("\n");
+      document.getElementById("aq_correct_answer_text").value = q.correct_answer_text || "";
+      document.getElementById("aq_max_score").value = q.max_score ?? 25;
+      document.getElementById("aq_rubric_json").value = q.rubric_json || "";
+      document.getElementById("aq_difficulty_level").value = q.difficulty_level || "past";
+      document.getElementById("aq_point_value").value = q.point_value ?? 1;
       document.getElementById("aq_order_num").value = q.order_num;
+      updateQuestionTypeVisibility();
     };
     row.querySelector('[data-a="delete"]').onclick = async () => {
       if (!confirm("Bu savolni o'chirmoqchimisiz?")) return;
@@ -1490,6 +1558,72 @@ async function renderAdminQuestions(testId) {
     };
     box.appendChild(row);
   });
+}
+
+// ---------- Milliy sertifikat: yozma ish (O2) baholash navbati ----------
+
+async function openAdminCertReview() {
+  document.getElementById("adminCertReviewPanel").classList.remove("hidden");
+  document.getElementById("adminTestForm").classList.add("hidden");
+  document.getElementById("adminQuestionsPanel").classList.add("hidden");
+  await renderAdminCertReview();
+}
+
+async function renderAdminCertReview() {
+  const box = document.getElementById("adminCertReviewList");
+  box.innerHTML = skeletonCards(2);
+  try {
+    const res = await apiFetch(`/api/admin/certificate/pending-review`);
+    const data = await res.json();
+    box.innerHTML = "";
+    if (data.answers.length === 0) {
+      box.innerHTML = emptyHtml("Hozircha baholanishi kerak bo'lgan yozma ish yo'q");
+      return;
+    }
+    data.answers.forEach(a => {
+      const name = a.first_name || (a.username ? "@" + a.username : `ID ${a.telegram_id}`);
+      const photos = (() => { try { return JSON.parse(a.photo_urls || "[]"); } catch (e) { return []; } })();
+      const photosHtml = photos.map(url => `<img src="${url}" alt="Javob surati" style="max-width:140px;border-radius:8px;margin:4px 6px 0 0;cursor:pointer;" data-photo="${url}">`).join("");
+      const row = document.createElement("div");
+      row.className = "admin-row";
+      row.style.flexDirection = "column";
+      row.style.alignItems = "stretch";
+      row.innerHTML = `
+        <div class="info">
+          <div class="t">${a.test_title} · ${a.subject || ""} — ${a.question_text.slice(0, 70)}${a.question_text.length > 70 ? "…" : ""}</div>
+          <div class="s">${name} · Maks ball: ${a.max_score ?? 25}${a.rubric_json ? " · Rubrika: " + a.rubric_json.slice(0, 80) : ""}</div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;margin:6px 0;">${photosHtml || '<span class="s">Rasm yuborilmagan</span>'}</div>
+        ${a.text_answer ? `<div class="s" style="white-space:pre-wrap;margin-bottom:6px;">${a.text_answer}</div>` : ""}
+        <div class="admin-form" style="margin:0;gap:8px;flex-direction:row;flex-wrap:wrap;align-items:flex-end;">
+          <label style="flex:1;min-width:100px;">Ball <input type="number" step="0.1" min="0" max="${a.max_score ?? 25}" class="cert-score-input" value=""></label>
+          <label style="flex:2;min-width:160px;">Izoh (ixtiyoriy) <input type="text" class="cert-comment-input"></label>
+          <button type="button" class="gold-btn small cert-grade-btn">✅ Ball qo'yish</button>
+        </div>
+      `;
+      row.querySelectorAll("[data-photo]").forEach(img => {
+        img.addEventListener("click", () => window.open(img.getAttribute("data-photo"), "_blank"));
+      });
+      row.querySelector(".cert-grade-btn").onclick = async () => {
+        const scoreInput = row.querySelector(".cert-score-input");
+        const score = parseFloat(scoreInput.value);
+        if (Number.isNaN(score)) {
+          tg.showAlert ? tg.showAlert("Ball kiriting") : alert("Ball kiriting");
+          return;
+        }
+        const comment = row.querySelector(".cert-comment-input").value;
+        await apiFetch(`/api/admin/certificate/grade`, {
+          method: "POST",
+          body: JSON.stringify({ written_answer_id: a.id, teacher_score: score, teacher_comment: comment })
+        });
+        renderAdminCertReview();
+      };
+      box.appendChild(row);
+    });
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml();
+  }
 }
 
 // ---------- Modulni ishga tushirish (barcha forma va tugmalarni ulaydi) ----------
@@ -1766,27 +1900,58 @@ export function initAdminModule() {
     acaSearchDebounce = setTimeout(() => searchAndRenderStudents(testId, query), 300);
   });
 
+  document.getElementById("aq_question_type").addEventListener("change", () => {
+    updateQuestionTypeVisibility();
+    suggestPointValue();
+  });
+  document.getElementById("aq_difficulty_level").addEventListener("change", suggestPointValue);
+
   document.getElementById("questionFormEl").addEventListener("submit", async (e) => {
     e.preventDefault();
     const id = document.getElementById("aq_id").value;
     const testId = document.getElementById("aq_test_id").value;
+    const qtype = document.getElementById("aq_question_type").value;
     const data = {
       test_id: parseInt(testId),
+      question_type: qtype,
       question_text: document.getElementById("aq_question_text").value,
       image_url: document.getElementById("aq_image_url").value,
-      option_1: document.getElementById("aq_option_1").value,
-      option_2: document.getElementById("aq_option_2").value,
-      option_3: document.getElementById("aq_option_3").value,
-      option_4: document.getElementById("aq_option_4").value,
-      correct_index: parseInt(document.getElementById("aq_correct_index").value),
       order_num: parseInt(document.getElementById("aq_order_num").value)
     };
+    if (qtype === "Y1") {
+      data.option_1 = document.getElementById("aq_option_1").value;
+      data.option_2 = document.getElementById("aq_option_2").value;
+      data.option_3 = document.getElementById("aq_option_3").value;
+      data.option_4 = document.getElementById("aq_option_4").value;
+      data.correct_index = parseInt(document.getElementById("aq_correct_index").value);
+      data.difficulty_level = document.getElementById("aq_difficulty_level").value;
+      data.point_value = parseFloat(document.getElementById("aq_point_value").value) || 1;
+    } else if (qtype === "Y2") {
+      const left = document.getElementById("aq_match_left").value.split("\n").map(s => s.trim()).filter(Boolean);
+      const right = document.getElementById("aq_match_right").value.split("\n").map(s => s.trim()).filter(Boolean);
+      if (left.length !== right.length || left.length === 0) {
+        tg.showAlert ? tg.showAlert("Chap va o'ng ustunlar bir xil sondagi qatorlardan iborat bo'lishi va bo'sh bo'lmasligi kerak") : alert("Chap/o'ng ustun sonlari mos kelmayapti");
+        return;
+      }
+      data.match_data = JSON.stringify({ left, right, correct_pairs: left.map((_, i) => [i, i]) });
+      data.point_value = parseFloat(document.getElementById("aq_point_value").value) || 2.2;
+    } else if (qtype === "O1") {
+      data.correct_answer_text = document.getElementById("aq_correct_answer_text").value;
+      data.difficulty_level = document.getElementById("aq_difficulty_level").value;
+      data.point_value = parseFloat(document.getElementById("aq_point_value").value) || 1;
+    } else if (qtype === "O2") {
+      data.max_score = parseFloat(document.getElementById("aq_max_score").value) || 25;
+      data.rubric_json = document.getElementById("aq_rubric_json").value;
+    }
     if (id) await apiFetch(`/api/admin/questions/${id}`, { method: "PUT", body: JSON.stringify(data) });
     else await apiFetch(`/api/admin/questions`, { method: "POST", body: JSON.stringify(data) });
     resetQuestionForm();
     renderAdminQuestions(testId);
     loadAdminTests();
   });
+
+  document.getElementById("adminManageCertReviewBtn").addEventListener("click", () => openAdminCertReview());
+  document.getElementById("adminCloseCertReview").addEventListener("click", () => document.getElementById("adminCertReviewPanel").classList.add("hidden"));
 
   // --- Bosh sahifa kartalari ---
 
