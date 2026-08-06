@@ -24,6 +24,12 @@ export function showScreen(name) {
   document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
   const navBtns = document.querySelectorAll(".nav-item");
   if (NAV_SCREEN_INDEX[name] !== undefined) navBtns[NAV_SCREEN_INDEX[name]].classList.add("active");
+
+  // Boshqa modullar (masalan video darsni to'xtatish uchun courses.js) shu
+  // hodisani tinglab, ekran almashganda kerakli tozalashni bajarishi mumkin
+  // — bu "app:navigate" kabi, to'g'ridan-to'g'ri import qilmasdan bog'lanish
+  // uchun ishlatiladi (aylanma bog'liqlikning oldini olish).
+  document.dispatchEvent(new CustomEvent("app:screenchanged", { detail: { name } }));
 }
 
 /** Boshqa modullardan navigatsiya so'rash uchun ishlatiladi. */

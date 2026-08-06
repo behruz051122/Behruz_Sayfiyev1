@@ -657,6 +657,67 @@ export async function downloadCertificate(courseId, btnEl) {
 // Darslar "yo'lak" (ilonsimon) ko'rinishi — Kelajakmediklari_bot tahlili
 // asosida: har bir dars raqamli doira, ko'rilgan bo'lsa ✓ (yashil), bepul
 // namuna bo'lsa "BEPUL" belgisi, qulflangan bo'lsa 🔒 (bosilmaydi).
+//
+// Tugunlar CSS margin/nth-child orqali emas, ANIQ hisoblangan X/Y
+// piksel koordinatalar bilan joylashtiriladi (aks holda siljish juda
+// sezilarsiz bo'lib, oddiy tekis ro'yxatga o'xshab qolardi). Har bir
+// juft tugun orasiga aylantirilgan (rotate) chiziqcha chizib, haqiqiy
+// ilonsimon (winding) yo'lak hosil qilinadi.
+const PATH_ROW_HEIGHT = 108;   // tugunlar orasidagi vertikal masofa (px)
+const PATH_CIRCLE_SIZE = 60;   // doira diametri (px) — CSS .path-circle bilan mos
+const PATH_TOP_PADDING = 24;   // "BOSHLASH" belgisi kesilib qolmasligi uchun yuqori bo'shliq
+// Markazdan chapga/o'ngga siljish naqshi (px) — davriy to'lqin hosil qiladi.
+const PATH_OFFSET_PATTERN = [0, 58, 82, 58, 0, -58, -82, -58];
+
+function buildLessonPathHtml(paragraph) {
+  const lessons = paragraph.lessons;
+  const nextIndex = lessons.findIndex(l => !l.locked && !l.watched);
+  const totalHeight = PATH_TOP_PADDING + (lessons.length - 1) * PATH_ROW_HEIGHT + PATH_CIRCLE_SIZE + 50;
+
+  let connectorsHtml = "";
+  let nodesHtml = "";
+
+  lessons.forEach((lesson, idx) => {
+    const offset = PATH_OFFSET_PATTERN[idx % PATH_OFFSET_PATTERN.length];
+    const top = PATH_TOP_PADDING + idx * PATH_ROW_HEIGHT;
+    const centerY = top + PATH_CIRCLE_SIZE / 2;
+
+    if (idx > 0) {
+      const prevOffset = PATH_OFFSET_PATTERN[(idx - 1) % PATH_OFFSET_PATTERN.length];
+      const prevCenterY = PATH_TOP_PADDING + (idx - 1) * PATH_ROW_HEIGHT + PATH_CIRCLE_SIZE / 2;
+      const dx = offset - prevOffset;
+      const dy = centerY - prevCenterY;
+      const length = Math.sqrt(dx * dx + dy * dy);
+      const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+      connectorsHtml += `<div class="path-connector" style="left:calc(50% + ${prevOffset}px); top:${prevCenterY}px; width:${length}px; transform: rotate(${angle}deg);"></div>`;
+    }
+
+    const isNext = idx === nextIndex;
+    const circleCls = lesson.locked
+      ? "path-circle-locked"
+      : lesson.watched
+        ? "path-circle-watched"
+        : isNext
+          ? "path-circle-current"
+          : "path-circle-open";
+    const circleContent = lesson.locked ? "🔒" : lesson.watched ? "✓" : (idx + 1);
+    const freeBadge = (!currentCourse.unlocked && lesson.is_free_preview) ? `<span class="path-badge">BEPUL</span>` : "";
+
+    nodesHtml += `
+      <div class="path-node" data-lesson-id="${lesson.id}" data-locked="${lesson.locked ? "1" : "0"}" style="left:calc(50% + ${offset}px); top:${top}px;">
+        ${isNext ? `<div class="path-start-tag">BOSHLASH</div>` : ""}
+        <div class="path-circle ${circleCls}">
+          ${freeBadge}
+          <span>${circleContent}</span>
+        </div>
+        <div class="path-node-label">${lesson.title}</div>
+      </div>
+    `;
+  });
+
+  return `<div class="lesson-path" style="height:${totalHeight}px;">${connectorsHtml}${nodesHtml}</div>`;
+}
+
 export function openParagraph(paragraphId) {
   const p = currentCourse.paragraphs.find(x => x.id === paragraphId);
   if (!p) return;
@@ -681,31 +742,7 @@ export function openParagraph(paragraphId) {
   if (total === 0) {
     html += emptyHtml("Bu bo'limda hozircha video yo'q");
   } else {
-    const nextIndex = p.lessons.findIndex(l => !l.locked && !l.watched);
-    html += `<div class="lesson-path">`;
-    p.lessons.forEach((lesson, idx) => {
-      const isNext = idx === nextIndex;
-      const circleCls = lesson.locked
-        ? "path-circle-locked"
-        : lesson.watched
-          ? "path-circle-watched"
-          : isNext
-            ? "path-circle-current"
-            : "path-circle-open";
-      const circleContent = lesson.locked ? "🔒" : lesson.watched ? "✓" : (idx + 1);
-      const freeBadge = (!currentCourse.unlocked && lesson.is_free_preview) ? `<span class="path-badge">BEPUL</span>` : "";
-      html += `
-        <div class="path-node" data-lesson-id="${lesson.id}" data-locked="${lesson.locked ? "1" : "0"}">
-          ${isNext ? `<div class="path-start-tag">BOSHLASH</div>` : ""}
-          <div class="path-circle ${circleCls}">
-            ${freeBadge}
-            <span>${circleContent}</span>
-          </div>
-          <div class="path-node-label">${lesson.title}</div>
-        </div>
-      `;
-    });
-    html += `</div>`;
+    html += buildLessonPathHtml(p);
   }
   content.innerHTML = html;
 
@@ -882,3 +919,22 @@ function playLesson(lesson) {
 
   showScreen("lesson");
 }
+
+// Talaba video ko'rayotganda boshqa ekranga o'tsa (bosh sahifa, profil va
+// h.k.), video FONDA ijro etilishda davom etib qolmasligi kerak — YouTube
+// iframe/<video> DOM'dan olib tashlanmasa ham, ko'rinmas holda ovoz
+// chiqarishda davom etadi. Shuning uchun "lesson" ekranidan BOSHQA istalgan
+// ekranga o'tilganda pleyerni to'xtatamiz (iframe src'ini bo'shatib,
+// <video> uchun pause() chaqirib).
+function stopLessonVideo() {
+  const content = document.getElementById("lessonContent");
+  if (!content) return;
+  const iframe = content.querySelector("iframe");
+  if (iframe && iframe.src && iframe.src !== "about:blank") iframe.src = "about:blank";
+  const video = content.querySelector("video");
+  if (video) video.pause();
+}
+
+document.addEventListener("app:screenchanged", (e) => {
+  if (e.detail && e.detail.name !== "lesson") stopLessonVideo();
+});
