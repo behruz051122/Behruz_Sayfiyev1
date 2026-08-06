@@ -47,6 +47,8 @@ from routers import (
     bookshop,
     admin_bookshop,
     games,
+    chem_game,
+    admin_chem,
     certificates,
     faq,
     admin_faq,
@@ -149,6 +151,8 @@ app.include_router(admin_dashboard.router)
 app.include_router(bookshop.router)
 app.include_router(admin_bookshop.router)
 app.include_router(games.router)
+app.include_router(chem_game.router)
+app.include_router(admin_chem.router)
 app.include_router(certificates.router)
 app.include_router(faq.router)
 app.include_router(admin_faq.router)

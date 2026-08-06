@@ -473,6 +473,7 @@ def init_db():
             conn.commit()
             _set_flag("test_subject_cards_deduped")
 
+
         # Guruhsiz (test_group_id IS NULL) testlarni mos fan kartasining
         # birinchi guruhiga bog'lash — bu XAVFSIZ va har safar ishlashi
         # mumkin, chunki YANGI karta/guruh YARATMAYDI, faqat bo'sh
@@ -1143,6 +1144,131 @@ def init_db():
                 PRIMARY KEY (telegram_id, subject)
             )
         """)
+
+        # ================================================================
+        #  KIMYO O'YINI — "bitta baza, ko'p o'yin"
+        # ================================================================
+        # ASOSIY G'OYA: o'qituvchi SAVOL YOZMAYDI — u faqat MODDA kiritadi
+        # (formula, nomi, rangi, cho'kmasi, reaksiyasi). Barcha savol turlari
+        # — kartochka, variantli test, moslashtirish, formulani yozish va
+        # battle savollari — shu bitta bazadan AVTOMATIK generatsiya qilinadi
+        # (chem_questions.py). Shuning uchun 276 ta modda kiritilsa, o'n
+        # minglab savol variantlari o'z-o'zidan paydo bo'ladi.
+        #
+        # Ierarxiya:  Kategoriya  ->  Level  ->  Modda
+        #             (Modda nomlari)  (Kislotalar 1)  (HF, HCl, ...)
+
+        # ---------- Kategoriya (o'yin turi bo'yicha bo'lim) ----------
+        # is_ready=0 bo'lsa talabaga "TEZ ORADA" ko'rinishida xira ko'rsatiladi.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS chem_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key TEXT UNIQUE NOT NULL,
+                title TEXT NOT NULL,
+                subtitle TEXT,
+                icon TEXT DEFAULT '🧪',
+                is_ready INTEGER DEFAULT 0,
+                sort_order INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # ---------- Level (kategoriya ichidagi bosqich) ----------
+        # Har levelda odatda 12 ta modda bo'ladi va u 4 bosqichda o'rganiladi.
+        # Level yakunlansa (4 bosqich ham) keyingisi ochiladi.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS chem_levels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                sort_order INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (category_id) REFERENCES chem_categories(id)
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_chem_levels_cat
+            ON chem_levels(category_id, sort_order)
+        """)
+
+        # ---------- Modda (bazaning o'zagi) ----------
+        # Rang maydonlari ("color_pure", "color_solution", "color_precipitate")
+        # bo'sh bo'lsa — talabaga "yo'q" deb ko'rsatiladi va o'sha rang
+        # savollari generatsiya qilinmaydi. Ya'ni bazani bosqichma-bosqich
+        # to'ldirish mumkin: avval formula+nom, keyin ranglar, keyin reaksiyalar.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS chem_substances (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                level_id INTEGER NOT NULL,
+                formula TEXT NOT NULL,
+                name TEXT NOT NULL,
+                historic_name TEXT,
+                color_pure TEXT,
+                color_solution TEXT,
+                color_precipitate TEXT,
+                reactions TEXT,
+                usage_text TEXT,
+                sort_order INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (level_id) REFERENCES chem_levels(id)
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_chem_substances_level
+            ON chem_substances(level_id, sort_order)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_chem_substances_formula
+            ON chem_substances(formula)
+        """)
+
+        # ---------- Bosqich natijasi (level progressi) ----------
+        # Har bir (o'quvchi, level, bosqich) uchun ENG YAXSHI natija saqlanadi.
+        # stage: 1=O'rganish, 2=Test, 3=Moslashtirish, 4=Yozish
+        # stars: 0..3 — aniqlikka qarab (>=90% -> 3, >=70% -> 2, >=50% -> 1)
+        # O'rganish bosqichi (1) har doim 3 yulduz beradi: u sinov emas.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS chem_stage_progress (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                level_id INTEGER NOT NULL,
+                stage INTEGER NOT NULL,
+                stars INTEGER DEFAULT 0,
+                best_correct INTEGER DEFAULT 0,
+                total_questions INTEGER DEFAULT 0,
+                attempts INTEGER DEFAULT 0,
+                completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(telegram_id, level_id, stage)
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_chem_stage_progress_user
+            ON chem_stage_progress(telegram_id, level_id)
+        """)
+
+        # ---------- Kimyo o'yini: boshlang'ich kategoriyalar ----------
+        # BIR MARTA yaratiladi. Keyin o'qituvchi ularni tahrirlaydi yoki
+        # o'chiradi — qayta deploy'da tiklanib qolmaydi (fan kartalaridagi
+        # xatoning aynan takrorlanmasligi uchun shu qoida saqlanadi).
+        #
+        # is_ready=0 — talabaga "TEZ ORADA" ko'rinishida chiqadi. O'qituvchi
+        # moddalarni to'ldirib bo'lgach, uni admin panelidan yoqadi.
+        if not _flag_done("chem_categories_seeded"):
+            for _key, _title, _sub, _icon, _ready, _ord in (
+                ("modda_nomlari", "Modda nomlari", "Formula ↔ nom", "🧪", 1, 1),
+                ("moddalar_rangi", "Moddalar rangi", "Sof holda va eritmada", "🎨", 0, 2),
+                ("chokmalar", "Cho'kmalar", "Cho'kma va uning rangi", "💧", 0, 3),
+                ("reaksiyalar", "Reaksiyalar", "Reaksiya tenglamalari", "⚗️", 0, 4),
+            ):
+                cur.execute("SELECT id FROM chem_categories WHERE key = ?", (_key,))
+                if cur.fetchone() is None:
+                    cur.execute("""
+                        INSERT INTO chem_categories (key, title, subtitle, icon, is_ready, sort_order)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (_key, _title, _sub, _icon, _ready, _ord))
+            conn.commit()
+            _set_flag("chem_categories_seeded")
 
         # ---------- Sertifikatlar (kurs 100% tugallanganda) ----------
         cur.execute("""
@@ -5058,4 +5184,455 @@ def get_homework_storage_stats():
         "in_telegram": row["in_telegram"] or 0,
         "on_server": row["on_server"] or 0,
         "graded_photos": row["graded_photos"],
+    }
+
+
+# ==========================================================================
+#  KIMYO O'YINI — moddalar bazasi, levellar va progress
+# ==========================================================================
+# Bu bo'lim "bitta baza, ko'p o'yin" g'oyasini amalga oshiradi:
+# o'qituvchi faqat MODDA kiritadi, savollar chem_questions.py'da
+# shu moddalardan avtomatik yasaladi.
+
+# Bosqich (stage) raqamlari — kodning boshqa joylarida ham shu nomlar
+# ishlatiladi, "sehrli raqam" yozmaslik uchun.
+CHEM_STAGE_LEARN = 1     # O'rganish — kartochkalar
+CHEM_STAGE_TEST = 2      # Test — variantli savollar
+CHEM_STAGE_MATCH = 3     # Moslashtirish — formula <-> nom juftlash
+CHEM_STAGE_WRITE = 4     # Yozish — formulani qo'lda kiritish
+CHEM_STAGES = (CHEM_STAGE_LEARN, CHEM_STAGE_TEST, CHEM_STAGE_MATCH, CHEM_STAGE_WRITE)
+
+CHEM_STAGE_TITLES = {
+    CHEM_STAGE_LEARN: "O'rganish",
+    CHEM_STAGE_TEST: "Test",
+    CHEM_STAGE_MATCH: "Moslashtirish",
+    CHEM_STAGE_WRITE: "Yozish",
+}
+
+
+def chem_stars_for_accuracy(correct: int, total: int) -> int:
+    """Aniqlikka qarab yulduz beradi (0..3).
+
+    Chegaralar ataylab "mehribon": 50% dan past bo'lsa yulduz yo'q, lekin
+    bosqich baribir yakunlangan hisoblanadi — o'quvchi qulflanib qolmaydi,
+    faqat yulduzini keyin qayta o'ynab ko'taradi. Bu Duolingo mantiqi:
+    ilgarilash to'xtamasin, lekin mukammallik uchun sabab bo'lsin.
+    """
+    if total <= 0:
+        return 0
+    ratio = correct / total
+    if ratio >= 0.9:
+        return 3
+    if ratio >= 0.7:
+        return 2
+    if ratio >= 0.5:
+        return 1
+    return 0
+
+
+# ---------- Kategoriya ----------
+
+def get_chem_categories(only_ready: bool = False):
+    """Kategoriyalar ro'yxati. only_ready=True bo'lsa faqat tayyorlari."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        sql = "SELECT * FROM chem_categories"
+        if only_ready:
+            sql += " WHERE is_ready = 1"
+        sql += " ORDER BY sort_order, id"
+        cur.execute(sql)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_chem_category(category_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM chem_categories WHERE id = ?", (category_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def create_chem_category(key: str, title: str, subtitle: str = "",
+                         icon: str = "🧪", is_ready: int = 0, sort_order: int = 0):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO chem_categories (key, title, subtitle, icon, is_ready, sort_order)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (key, title, subtitle, icon, safe_int(is_ready), safe_int(sort_order)))
+        conn.commit()
+        return cur.lastrowid
+
+
+def update_chem_category(category_id: int, **fields):
+    allowed = ("title", "subtitle", "icon", "is_ready", "sort_order")
+    sets, vals = [], []
+    for k in allowed:
+        if k in fields:
+            sets.append(f"{k} = ?")
+            vals.append(safe_int(fields[k]) if k in ("is_ready", "sort_order") else fields[k])
+    if not sets:
+        return False
+    vals.append(category_id)
+    with get_connection() as conn:
+        conn.cursor().execute(
+            f"UPDATE chem_categories SET {', '.join(sets)} WHERE id = ?", vals)
+        conn.commit()
+    return True
+
+
+def delete_chem_category(category_id: int):
+    """Kategoriyani va uning ichidagi hamma narsani o'chiradi.
+    SQLite'da ON DELETE CASCADE yoqilmagani uchun qo'lda tozalaymiz."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM chem_levels WHERE category_id = ?", (category_id,))
+        level_ids = [r["id"] for r in cur.fetchall()]
+        for lid in level_ids:
+            cur.execute("DELETE FROM chem_substances WHERE level_id = ?", (lid,))
+            cur.execute("DELETE FROM chem_stage_progress WHERE level_id = ?", (lid,))
+        cur.execute("DELETE FROM chem_levels WHERE category_id = ?", (category_id,))
+        cur.execute("DELETE FROM chem_categories WHERE id = ?", (category_id,))
+        conn.commit()
+    return True
+
+
+# ---------- Level ----------
+
+def get_chem_levels(category_id: int, only_active: bool = True):
+    """Kategoriyaning levellari + har biridagi modda soni."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        sql = """
+            SELECT l.*, (SELECT COUNT(*) FROM chem_substances s
+                         WHERE s.level_id = l.id) AS substance_count
+            FROM chem_levels l
+            WHERE l.category_id = ?
+        """
+        if only_active:
+            sql += " AND l.is_active = 1"
+        sql += " ORDER BY l.sort_order, l.id"
+        cur.execute(sql, (category_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_chem_level(level_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT l.*, c.title AS category_title, c.key AS category_key, c.icon AS category_icon
+            FROM chem_levels l
+            JOIN chem_categories c ON c.id = l.category_id
+            WHERE l.id = ?
+        """, (level_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def create_chem_level(category_id: int, title: str, sort_order: int = 0):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO chem_levels (category_id, title, sort_order)
+            VALUES (?, ?, ?)
+        """, (category_id, title, safe_int(sort_order)))
+        conn.commit()
+        return cur.lastrowid
+
+
+def update_chem_level(level_id: int, **fields):
+    allowed = ("title", "sort_order", "is_active")
+    sets, vals = [], []
+    for k in allowed:
+        if k in fields:
+            sets.append(f"{k} = ?")
+            vals.append(safe_int(fields[k]) if k in ("sort_order", "is_active") else fields[k])
+    if not sets:
+        return False
+    vals.append(level_id)
+    with get_connection() as conn:
+        conn.cursor().execute(
+            f"UPDATE chem_levels SET {', '.join(sets)} WHERE id = ?", vals)
+        conn.commit()
+    return True
+
+
+def delete_chem_level(level_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM chem_substances WHERE level_id = ?", (level_id,))
+        cur.execute("DELETE FROM chem_stage_progress WHERE level_id = ?", (level_id,))
+        cur.execute("DELETE FROM chem_levels WHERE id = ?", (level_id,))
+        conn.commit()
+    return True
+
+
+# ---------- Modda ----------
+
+def get_chem_substances(level_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT * FROM chem_substances WHERE level_id = ?
+            ORDER BY sort_order, id
+        """, (level_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_chem_substances_by_category(category_id: int):
+    """Kategoriyadagi BARCHA moddalar — battle savollarini generatsiya
+    qilishda va chalg'ituvchi variantlarni tanlashda kerak bo'ladi."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT s.* FROM chem_substances s
+            JOIN chem_levels l ON l.id = s.level_id
+            WHERE l.category_id = ? AND l.is_active = 1
+            ORDER BY l.sort_order, s.sort_order, s.id
+        """, (category_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_chem_substance(substance_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT s.*, l.title AS level_title, l.category_id
+            FROM chem_substances s
+            JOIN chem_levels l ON l.id = s.level_id
+            WHERE s.id = ?
+        """, (substance_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+_SUBSTANCE_FIELDS = ("formula", "name", "historic_name", "color_pure",
+                     "color_solution", "color_precipitate", "reactions",
+                     "usage_text", "sort_order")
+
+
+def create_chem_substance(level_id: int, formula: str, name: str, **fields):
+    vals = {k: fields.get(k) for k in _SUBSTANCE_FIELDS}
+    vals["formula"] = formula
+    vals["name"] = name
+    vals["sort_order"] = safe_int(vals.get("sort_order"))
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"""
+            INSERT INTO chem_substances (level_id, {', '.join(_SUBSTANCE_FIELDS)})
+            VALUES (?, {', '.join(['?'] * len(_SUBSTANCE_FIELDS))})
+        """, (level_id, *[vals[k] for k in _SUBSTANCE_FIELDS]))
+        conn.commit()
+        return cur.lastrowid
+
+
+def update_chem_substance(substance_id: int, **fields):
+    sets, vals = [], []
+    for k in _SUBSTANCE_FIELDS:
+        if k in fields:
+            sets.append(f"{k} = ?")
+            vals.append(safe_int(fields[k]) if k == "sort_order" else fields[k])
+    if not sets:
+        return False
+    vals.append(substance_id)
+    with get_connection() as conn:
+        conn.cursor().execute(
+            f"UPDATE chem_substances SET {', '.join(sets)} WHERE id = ?", vals)
+        conn.commit()
+    return True
+
+
+def delete_chem_substance(substance_id: int):
+    with get_connection() as conn:
+        conn.cursor().execute("DELETE FROM chem_substances WHERE id = ?", (substance_id,))
+        conn.commit()
+    return True
+
+
+def search_chem_substances(query: str = "", limit: int = 60, offset: int = 0):
+    """Moddalar lug'ati uchun qidiruv — formula yoki nom bo'yicha.
+    Bo'sh so'rovda eng oxirgi qo'shilganlar qaytadi."""
+    q = (query or "").strip()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        if q:
+            like = f"%{q}%"
+            cur.execute("""
+                SELECT s.*, l.title AS level_title FROM chem_substances s
+                JOIN chem_levels l ON l.id = s.level_id
+                WHERE s.formula LIKE ? OR s.name LIKE ? OR s.historic_name LIKE ?
+                ORDER BY
+                    CASE WHEN s.formula = ? THEN 0
+                         WHEN s.formula LIKE ? THEN 1
+                         ELSE 2 END,
+                    s.formula
+                LIMIT ? OFFSET ?
+            """, (like, like, like, q, f"{q}%", limit, offset))
+        else:
+            cur.execute("""
+                SELECT s.*, l.title AS level_title FROM chem_substances s
+                JOIN chem_levels l ON l.id = s.level_id
+                ORDER BY s.id DESC LIMIT ? OFFSET ?
+            """, (limit, offset))
+        return [dict(r) for r in cur.fetchall()]
+
+
+# ---------- Progress (yulduzlar va ketma-ket ochilish) ----------
+
+def get_chem_progress_map(telegram_id: int, category_id: int):
+    """{level_id: {stage: {stars, best_correct, total_questions}}} ko'rinishida
+    bitta so'rov bilan butun kategoriya progressini qaytaradi."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT p.* FROM chem_stage_progress p
+            JOIN chem_levels l ON l.id = p.level_id
+            WHERE p.telegram_id = ? AND l.category_id = ?
+        """, (telegram_id, category_id))
+        out = {}
+        for r in cur.fetchall():
+            out.setdefault(r["level_id"], {})[r["stage"]] = {
+                "stars": r["stars"],
+                "best_correct": r["best_correct"],
+                "total_questions": r["total_questions"],
+                "attempts": r["attempts"],
+            }
+        return out
+
+
+def save_chem_stage_result(telegram_id: int, level_id: int, stage: int,
+                           correct: int, total: int):
+    """Bosqich natijasini saqlaydi — FAQAT YAXSHILANSA yangilanadi.
+
+    Qaytaradi: {"stars": .., "best_stars": .., "improved": bool, "attempts": ..}
+    """
+    stage = safe_int(stage)
+    correct = safe_int(correct)
+    total = safe_int(total)
+    # O'rganish bosqichi sinov emas — ko'rib chiqilsa to'liq hisoblanadi.
+    stars = 3 if stage == CHEM_STAGE_LEARN else chem_stars_for_accuracy(correct, total)
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT * FROM chem_stage_progress
+            WHERE telegram_id = ? AND level_id = ? AND stage = ?
+        """, (telegram_id, level_id, stage))
+        row = cur.fetchone()
+
+        if row is None:
+            cur.execute("""
+                INSERT INTO chem_stage_progress
+                    (telegram_id, level_id, stage, stars, best_correct,
+                     total_questions, attempts)
+                VALUES (?, ?, ?, ?, ?, ?, 1)
+            """, (telegram_id, level_id, stage, stars, correct, total))
+            conn.commit()
+            return {"stars": stars, "best_stars": stars, "improved": True, "attempts": 1}
+
+        best_stars = max(row["stars"], stars)
+        best_correct = max(row["best_correct"], correct)
+        attempts = (row["attempts"] or 0) + 1
+        cur.execute("""
+            UPDATE chem_stage_progress
+            SET stars = ?, best_correct = ?, total_questions = ?, attempts = ?,
+                completed_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (best_stars, best_correct, total, attempts, row["id"]))
+        conn.commit()
+        return {
+            "stars": stars,
+            "best_stars": best_stars,
+            "improved": stars > row["stars"],
+            "attempts": attempts,
+        }
+
+
+def build_chem_level_path(telegram_id: int, category_id: int):
+    """Talabaga ko'rsatiladigan level yo'lagi.
+
+    Qulf qoidasi: birinchi level doim ochiq; keyingisi oldingi levelning
+    BARCHA 4 bosqichi yakunlanganda ochiladi. Bu Duolingo mantiqi —
+    o'quvchi tartib bilan yuradi, lekin orqaga qaytib yulduz yig'a oladi.
+    """
+    levels = get_chem_levels(category_id)
+    progress = get_chem_progress_map(telegram_id, category_id)
+
+    path, unlocked = [], True
+    total_stars = earned_stars = 0
+    for lvl in levels:
+        stages = progress.get(lvl["id"], {})
+        done_stages = sum(1 for s in CHEM_STAGES if s in stages)
+
+        # Levelning yulduzi — UCHTA SINOV bosqichining (Test, Moslashtirish,
+        # Yozish) o'rtachasi. O'rganish bosqichi hisobga olinmaydi, chunki u
+        # sinov emas va har doim 3 yulduz beradi — aks holda u o'rtachani
+        # sun'iy ko'tarib, yulduz haqiqiy bilimni ko'rsatmay qolardi.
+        # Yarmi (masalan 2.5) YUQORIGA yaxlitlanadi — o'quvchi foydasiga.
+        assessed = [stages[s]["stars"] for s in
+                    (CHEM_STAGE_TEST, CHEM_STAGE_MATCH, CHEM_STAGE_WRITE) if s in stages]
+        level_max_stars = 3
+        level_stars = int(sum(assessed) / len(assessed) + 0.5) if assessed else 0
+        level_stars = min(3, level_stars)
+
+        total_stars += level_max_stars
+        earned_stars += level_stars
+
+        path.append({
+            "id": lvl["id"],
+            "title": lvl["title"],
+            "substance_count": lvl["substance_count"],
+            "unlocked": unlocked,
+            "completed": done_stages == len(CHEM_STAGES),
+            "stages_done": done_stages,
+            "stars": level_stars,
+        })
+        # Keyingi levelning holati SHU levelning yakunlanishiga bog'liq.
+        unlocked = done_stages == len(CHEM_STAGES)
+
+    return {
+        "levels": path,
+        "total_stars": total_stars,
+        "earned_stars": earned_stars,
+        "level_count": len(path),
+        "substance_count": sum(l["substance_count"] for l in path),
+    }
+
+
+def get_chem_level_detail(telegram_id: int, level_id: int):
+    """Level ichidagi 4 bosqich holati (BAJARILDI / HOZIR / qulf)."""
+    level = get_chem_level(level_id)
+    if not level:
+        return None
+    substances = get_chem_substances(level_id)
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT * FROM chem_stage_progress
+            WHERE telegram_id = ? AND level_id = ?
+        """, (telegram_id, level_id))
+        done = {r["stage"]: dict(r) for r in cur.fetchall()}
+
+    stages, next_stage = [], None
+    for s in CHEM_STAGES:
+        is_done = s in done
+        # Bosqich ochiq bo'ladi, agar u birinchi bo'lsa yoki oldingisi bajarilgan bo'lsa.
+        prev_done = (s == CHEM_STAGE_LEARN) or ((s - 1) in done)
+        if not is_done and prev_done and next_stage is None:
+            next_stage = s
+        stages.append({
+            "stage": s,
+            "title": CHEM_STAGE_TITLES[s],
+            "done": is_done,
+            "unlocked": prev_done,
+            "stars": done.get(s, {}).get("stars", 0),
+        })
+
+    return {
+        "level": level,
+        "substances": substances,
+        "stages": stages,
+        "next_stage": next_stage,
+        "all_done": next_stage is None,
     }
