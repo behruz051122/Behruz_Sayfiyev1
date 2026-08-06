@@ -2253,7 +2253,7 @@ function renderAdminHomeworkSubjects() {
   const box = document.getElementById("adminHwSubjectsList");
   box.innerHTML = "";
   if (!currentHwSubjects.length) {
-    box.innerHTML = emptyHtml("Hali bo'lim qo'shilmagan — '+ Bo'lim' tugmasini bosing");
+    box.innerHTML = emptyHtml("Hali fan qo'shilmagan — '+ Fan qo'shish' tugmasini bosing");
     return;
   }
   currentHwSubjects.forEach(s => {
@@ -2278,7 +2278,7 @@ function renderAdminHomeworkSubjects() {
     `;
     row.querySelector('[data-a="edit"]').onclick = () => openHwSubjectForm(s);
     row.querySelector('[data-a="delete"]').onclick = async () => {
-      if (!confirm(`"${s.title}" bo'limini o'chirasizmi? Barcha topshirilgan vazifalar ham o'chadi.`)) return;
+      if (!confirm(`"${s.title}" fanini o'chirasizmi? Barcha topshirilgan vazifalar ham o'chadi.`)) return;
       await apiFetch(`/api/admin/homework/subjects/${s.id}`, { method: "DELETE" });
       loadAdminHomeworkSubjects();
     };
@@ -2319,7 +2319,7 @@ function populateHwCourseCheckboxes(selectedIds) {
 function openHwSubjectForm(subject) {
   hideHwPanels();
   document.getElementById("adminHwSubjectForm").classList.remove("hidden");
-  document.getElementById("adminHwSubjectFormTitle").textContent = subject ? "Bo'limni tahrirlash" : "Yangi bo'lim";
+  document.getElementById("adminHwSubjectFormTitle").textContent = subject ? "Fanni tahrirlash" : "Yangi fan";
   document.getElementById("hws_id").value = subject ? subject.id : "";
   document.getElementById("hws_title").value = subject ? subject.title : "";
   document.getElementById("hws_subtitle").value = subject ? (subject.subtitle || "") : "";
@@ -2528,7 +2528,7 @@ export function initHomeworkAdminModule() {
     const id = document.getElementById("hws_id").value;
     const title = document.getElementById("hws_title").value.trim();
     if (!title) {
-      const msg = "Bo'lim nomini yozing.";
+      const msg = "Fan nomini yozing.";
       tg.showAlert ? tg.showAlert(msg) : alert(msg);
       return;
     }
@@ -2547,7 +2547,7 @@ export function initHomeworkAdminModule() {
     const ok = id
       ? await saveOrAlert(`/api/admin/homework/subjects/${id}`, { method: "PUT", body: JSON.stringify(data) }, "Saqlab bo'lmadi")
       : await saveOrAlert(`/api/admin/homework/subjects`, { method: "POST", body: JSON.stringify(data) }, "Saqlab bo'lmadi");
-    if (btn) { btn.disabled = false; btn.textContent = "Bo'limni saqlash"; }
+    if (btn) { btn.disabled = false; btn.textContent = "Fanni saqlash"; }
     if (!ok) return;
     document.getElementById("adminHwSubjectForm").classList.add("hidden");
     loadAdminHomeworkSubjects();
