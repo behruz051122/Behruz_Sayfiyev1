@@ -1,6 +1,7 @@
 // js/admin.js
 import { apiFetch, tg } from "./api.js";
-import { errorHtml, emptyHtml, DIFFICULTY_LABELS, formatSeconds, skeletonCards } from "./components.js";
+import { errorHtml, emptyHtml, DIFFICULTY_LABELS, formatSeconds, skeletonCards,
+         loadingHtml, openLightbox, showToast } from "./components.js";
 
 const DIFFICULTY_DEFAULT_SECONDS = { oson: 300, orta: 600, qiyin: 900 };
 
@@ -2219,5 +2220,336 @@ export function initAdminModule() {
     document.getElementById("ass_order_num").value = 0;
     renderAdminSimSubjects(simulatorId);
     loadAdminSimulators();
+  });
+}
+
+// ================================================================
+// VAZIFA TOPSHIRISH (admin boshqaruvi)
+// ================================================================
+
+let currentHwSubjects = [];
+
+function hideHwPanels() {
+  ["adminHwSubjectForm", "adminHwReviewPanel", "adminHwLatePanel", "adminHwRankingPanel"]
+    .forEach(id => document.getElementById(id).classList.add("hidden"));
+}
+
+export async function loadAdminHomeworkSubjects() {
+  const box = document.getElementById("adminHwSubjectsList");
+  if (!box) return;
+  box.innerHTML = skeletonCards(1);
+  try {
+    const res = await apiFetch(`/api/admin/homework/subjects`);
+    const data = await res.json();
+    currentHwSubjects = data.subjects || [];
+    renderAdminHomeworkSubjects();
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml();
+  }
+}
+
+function renderAdminHomeworkSubjects() {
+  const box = document.getElementById("adminHwSubjectsList");
+  box.innerHTML = "";
+  if (!currentHwSubjects.length) {
+    box.innerHTML = emptyHtml("Hali bo'lim qo'shilmagan — '+ Bo'lim' tugmasini bosing");
+    return;
+  }
+  currentHwSubjects.forEach(s => {
+    const titles = (s.course_ids || [])
+      .map(cid => (currentAdminCourses.find(c => Number(c.id) === Number(cid)) || {}).title)
+      .filter(Boolean);
+    const groupsLine = titles.length
+      ? `<span class="auto-access-badge">⚡ ${titles.join(", ")}</span>`
+      : `<span class="auto-access-badge">Hammaga ochiq</span>`;
+    const row = document.createElement("div");
+    row.className = "admin-row";
+    row.innerHTML = `
+      <div class="info">
+        <div class="t">${s.icon || "🧪"} ${s.title}${s.is_active ? "" : " (yashirin)"}</div>
+        <div class="s">${s.paragraph_count} ta paragraf · ${s.deadline_days} kun muddat</div>
+        <div class="s">${groupsLine}</div>
+      </div>
+      <div class="row-actions">
+        <button data-a="edit">Tahrirlash</button>
+        <button data-a="delete" class="danger">O'chirish</button>
+      </div>
+    `;
+    row.querySelector('[data-a="edit"]').onclick = () => openHwSubjectForm(s);
+    row.querySelector('[data-a="delete"]').onclick = async () => {
+      if (!confirm(`"${s.title}" bo'limini o'chirasizmi? Barcha topshirilgan vazifalar ham o'chadi.`)) return;
+      await apiFetch(`/api/admin/homework/subjects/${s.id}`, { method: "DELETE" });
+      loadAdminHomeworkSubjects();
+    };
+    box.appendChild(row);
+  });
+}
+
+function populateHwCourseCheckboxes(selectedIds) {
+  const box = document.getElementById("hwsCourseCheckboxList");
+  const selected = new Set((selectedIds || []).map(Number));
+  box.innerHTML = "";
+  if (!currentAdminCourses.length) {
+    box.innerHTML = emptyHtml("Kurs yo'q — bo'lim hammaga ochiq bo'ladi");
+    return;
+  }
+  const bySubject = {};
+  currentAdminCourses.forEach(c => {
+    const key = c.subject || "Boshqa";
+    (bySubject[key] = bySubject[key] || []).push(c);
+  });
+  Object.keys(bySubject).sort().forEach(subject => {
+    const head = document.createElement("div");
+    head.className = "course-checkbox-group-title";
+    head.textContent = subject;
+    box.appendChild(head);
+    bySubject[subject].forEach(c => {
+      const label = document.createElement("label");
+      label.className = "course-checkbox-item";
+      label.innerHTML = `
+        <input type="checkbox" class="hws-course-cb" value="${c.id}" ${selected.has(Number(c.id)) ? "checked" : ""}>
+        <span><b>${c.title}</b></span>
+      `;
+      box.appendChild(label);
+    });
+  });
+}
+
+function openHwSubjectForm(subject) {
+  hideHwPanels();
+  document.getElementById("adminHwSubjectForm").classList.remove("hidden");
+  document.getElementById("adminHwSubjectFormTitle").textContent = subject ? "Bo'limni tahrirlash" : "Yangi bo'lim";
+  document.getElementById("hws_id").value = subject ? subject.id : "";
+  document.getElementById("hws_title").value = subject ? subject.title : "";
+  document.getElementById("hws_subtitle").value = subject ? (subject.subtitle || "") : "";
+  document.getElementById("hws_icon").value = subject ? (subject.icon || "🧪") : "🧪";
+  document.getElementById("hws_paragraph_count").value = subject ? subject.paragraph_count : 0;
+  document.getElementById("hws_deadline_days").value = subject ? subject.deadline_days : 7;
+  document.getElementById("hws_order_num").value = subject ? subject.order_num : 0;
+  document.getElementById("hws_is_active").value = subject ? String(subject.is_active) : "1";
+  populateHwCourseCheckboxes(subject ? subject.course_ids : []);
+}
+
+// ---------- Baholash navbati ----------
+
+async function openHwReview() {
+  hideHwPanels();
+  document.getElementById("adminHwReviewPanel").classList.remove("hidden");
+  const box = document.getElementById("adminHwReviewList");
+  box.innerHTML = loadingHtml();
+  try {
+    const res = await apiFetch(`/api/admin/homework/pending`);
+    const data = await res.json();
+    const items = data.submissions || [];
+    box.innerHTML = "";
+    if (!items.length) {
+      box.innerHTML = emptyHtml("Tekshirilishi kerak bo'lgan vazifa yo'q 🎉");
+      return;
+    }
+    items.forEach(s => {
+      const card = document.createElement("div");
+      card.className = "hw-review-card";
+      const uname = s.username ? `@${s.username}` : `ID ${s.telegram_id}`;
+      card.innerHTML = `
+        <div class="hw-review-head">
+          <div>
+            <div class="hw-review-student">${s.first_name || "Foydalanuvchi"} <span style="font-weight:600;color:var(--text-dim);font-size:12px;">${uname}</span></div>
+            <div class="hw-review-meta">${s.subject_icon || "🧪"} ${s.subject_title} · ${s.paragraph_number}-paragraf · ${s.photos.length} ta rasm</div>
+          </div>
+        </div>
+        <div class="hw-review-photos">
+          ${s.photos.map(p => `<img src="${p.photo_url}" data-src="${p.photo_url}" alt="vazifa">`).join("")}
+        </div>
+        <div class="hw-grade-row">
+          <input type="number" min="0" max="10" step="0.5" placeholder="Ball" class="hw-score-input">
+          <input type="text" placeholder="Izoh (ixtiyoriy)" class="hw-comment-input">
+          <button class="gold-btn small" data-a="grade">✅ Ball qo'yish</button>
+          <button class="secondary-btn small" data-a="reject">↩️ Qaytarish</button>
+        </div>
+      `;
+      card.querySelectorAll("[data-src]").forEach(img => {
+        img.addEventListener("click", () => openLightbox(img.getAttribute("data-src")));
+      });
+      const scoreInput = card.querySelector(".hw-score-input");
+      const commentInput = card.querySelector(".hw-comment-input");
+      card.querySelector('[data-a="grade"]').onclick = async () => {
+        const score = parseFloat(scoreInput.value);
+        if (Number.isNaN(score) || score < 0 || score > 10) {
+          const msg = "0 dan 10 gacha ball kiriting.";
+          tg.showAlert ? tg.showAlert(msg) : alert(msg);
+          return;
+        }
+        const ok = await saveOrAlert(`/api/admin/homework/grade`, {
+          method: "POST",
+          body: JSON.stringify({ submission_id: s.id, teacher_score: score, teacher_comment: commentInput.value }),
+        }, "Ball qo'yib bo'lmadi");
+        if (ok) openHwReview();
+      };
+      card.querySelector('[data-a="reject"]').onclick = async () => {
+        if (!commentInput.value.trim()) {
+          const msg = "Qaytarish sababini izoh maydoniga yozing.";
+          tg.showAlert ? tg.showAlert(msg) : alert(msg);
+          return;
+        }
+        const ok = await saveOrAlert(`/api/admin/homework/grade`, {
+          method: "POST",
+          body: JSON.stringify({ submission_id: s.id, reject: true, teacher_comment: commentInput.value }),
+        }, "Qaytarib bo'lmadi");
+        if (ok) openHwReview();
+      };
+      box.appendChild(card);
+    });
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml();
+  }
+}
+
+// ---------- Kechikkanlar ----------
+
+async function openHwLate() {
+  hideHwPanels();
+  document.getElementById("adminHwLatePanel").classList.remove("hidden");
+  const box = document.getElementById("adminHwLateList");
+  box.innerHTML = loadingHtml();
+  try {
+    const res = await apiFetch(`/api/admin/homework/late`);
+    const data = await res.json();
+    const items = data.students || [];
+    box.innerHTML = "";
+    if (!items.length) {
+      box.innerHTML = emptyHtml("Kechikkan o'quvchi yo'q 🎉");
+      return;
+    }
+    items.forEach(s => {
+      const row = document.createElement("div");
+      row.className = "admin-row";
+      const uname = s.username ? `@${s.username}` : `ID ${s.telegram_id}`;
+      row.innerHTML = `
+        <div class="info">
+          <div class="t">${s.first_name} <span style="font-weight:600;color:var(--text-dim);font-size:12px;">${uname}</span></div>
+          <div class="s">${s.subject_title} · ${s.waiting_paragraph}-paragraf kutilmoqda · ${s.days_idle} kundan beri harakat yo'q</div>
+        </div>
+        <div class="row-actions">
+          <button data-a="remind">📨 Ogohlantirish</button>
+        </div>
+      `;
+      row.querySelector('[data-a="remind"]').onclick = async () => {
+        const ok = await saveOrAlert(`/api/admin/homework/remind`, {
+          method: "POST", body: JSON.stringify({ students: [s] }),
+        }, "Yuborib bo'lmadi");
+        if (ok) showToast("📨 Ogohlantirish yuborildi");
+      };
+      box.appendChild(row);
+    });
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml();
+  }
+}
+
+// ---------- Oylik umumlashgan reyting ----------
+
+async function loadHwRanking() {
+  const box = document.getElementById("adminHwRankingContent");
+  box.innerHTML = loadingHtml();
+  const year = intVal("hwRankYear", new Date().getFullYear());
+  const month = intVal("hwRankMonth", new Date().getMonth() + 1);
+  try {
+    const res = await apiFetch(`/api/admin/homework/ranking?year=${year}&month=${month}`);
+    const data = await res.json();
+    const rows = data.ranking || [];
+    if (!rows.length) {
+      box.innerHTML = emptyHtml("Bu oyda hali natija yo'q");
+      return;
+    }
+    const medal = i => (i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "");
+    box.innerHTML = `
+      <table class="hw-rank-table">
+        <thead>
+          <tr>
+            <th>#</th><th>O'quvchi</th>
+            <th class="num">Test</th><th class="num">Vazifa</th><th class="num">Umumiy</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((r, i) => `
+            <tr class="${i < 3 ? "hw-rank-row-top" : ""}">
+              <td><span class="hw-rank-medal">${medal(i) || r.rank}</span></td>
+              <td>${r.first_name}${r.username ? ` <span style="color:var(--text-dim);font-size:11px;">@${r.username}</span>` : ""}</td>
+              <td class="num">${r.test_percent}%</td>
+              <td class="num">${r.homework_percent}%<br><span style="font-size:10px;color:var(--text-dim);">${r.homework_graded} ta</span></td>
+              <td class="num hw-rank-total">${r.total_score}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml();
+  }
+}
+
+export function initHomeworkAdminModule() {
+  document.getElementById("adminHwNewSubjectBtn").addEventListener("click", () => openHwSubjectForm(null));
+  document.getElementById("adminHwCloseSubjectForm").addEventListener("click",
+    () => document.getElementById("adminHwSubjectForm").classList.add("hidden"));
+  document.getElementById("adminHwReviewBtn").addEventListener("click", openHwReview);
+  document.getElementById("adminHwCloseReview").addEventListener("click",
+    () => document.getElementById("adminHwReviewPanel").classList.add("hidden"));
+  document.getElementById("adminHwLateBtn").addEventListener("click", openHwLate);
+  document.getElementById("adminHwCloseLate").addEventListener("click",
+    () => document.getElementById("adminHwLatePanel").classList.add("hidden"));
+
+  document.getElementById("adminHwRankingBtn").addEventListener("click", () => {
+    hideHwPanels();
+    document.getElementById("adminHwRankingPanel").classList.remove("hidden");
+    const now = new Date();
+    document.getElementById("hwRankYear").value = now.getFullYear();
+    document.getElementById("hwRankMonth").value = now.getMonth() + 1;
+    loadHwRanking();
+  });
+  document.getElementById("adminHwCloseRanking").addEventListener("click",
+    () => document.getElementById("adminHwRankingPanel").classList.add("hidden"));
+  document.getElementById("adminHwLoadRankingBtn").addEventListener("click", loadHwRanking);
+
+  document.getElementById("adminHwRemindAllBtn").addEventListener("click", async () => {
+    if (!confirm("Barcha kechikkan o'quvchilarga ogohlantirish yuborilsinmi?")) return;
+    const ok = await saveOrAlert(`/api/admin/homework/remind`, {
+      method: "POST", body: JSON.stringify({}),
+    }, "Yuborib bo'lmadi");
+    if (ok) { showToast("📨 Ogohlantirishlar yuborildi"); openHwLate(); }
+  });
+
+  document.getElementById("hwSubjectFormEl").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const id = document.getElementById("hws_id").value;
+    const title = document.getElementById("hws_title").value.trim();
+    if (!title) {
+      const msg = "Bo'lim nomini yozing.";
+      tg.showAlert ? tg.showAlert(msg) : alert(msg);
+      return;
+    }
+    const data = {
+      title,
+      subtitle: document.getElementById("hws_subtitle").value,
+      icon: document.getElementById("hws_icon").value || "🧪",
+      paragraph_count: intVal("hws_paragraph_count", 0),
+      deadline_days: intVal("hws_deadline_days", 7),
+      order_num: intVal("hws_order_num", 0),
+      is_active: intVal("hws_is_active", 1),
+      course_ids: Array.from(document.querySelectorAll(".hws-course-cb:checked")).map(cb => parseInt(cb.value, 10)),
+    };
+    const btn = e.target.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = "Saqlanmoqda..."; }
+    const ok = id
+      ? await saveOrAlert(`/api/admin/homework/subjects/${id}`, { method: "PUT", body: JSON.stringify(data) }, "Saqlab bo'lmadi")
+      : await saveOrAlert(`/api/admin/homework/subjects`, { method: "POST", body: JSON.stringify(data) }, "Saqlab bo'lmadi");
+    if (btn) { btn.disabled = false; btn.textContent = "Bo'limni saqlash"; }
+    if (!ok) return;
+    document.getElementById("adminHwSubjectForm").classList.add("hidden");
+    loadAdminHomeworkSubjects();
   });
 }

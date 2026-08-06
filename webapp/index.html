@@ -449,6 +449,41 @@
       <div id="studentResultsList" class="student-results-feed"></div>
     </section>
 
+    <!-- ============ VAZIFA TOPSHIRISH ============ -->
+
+    <!-- 1-bosqich: fan (bo'lim) tanlash -->
+    <section id="screen-homework" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="home" aria-label="Orqaga">←</button>
+        <h2>📸 Vazifa topshirish</h2>
+      </div>
+      <p class="simulator-intro">
+        Ishlangan masalalar yechimini rasmga tushirib yuklang. Vazifalar tartib bilan bajariladi —
+        har bir paragrafni yakunlaganingizdan so'ng keyingisi ochiladi.
+      </p>
+      <div id="homeworkSubjectList" class="hw-subject-list"></div>
+    </section>
+
+    <!-- 2-bosqich: paragraflar ro'yxati -->
+    <section id="screen-homework-paragraphs" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="homework" aria-label="Orqaga">←</button>
+        <h2 id="homeworkParagraphsTitle">Vazifalar</h2>
+      </div>
+      <div id="homeworkProgressBox"></div>
+      <div id="homeworkParagraphList" class="hw-paragraph-grid"></div>
+    </section>
+
+    <!-- 3-bosqich: bitta paragraf — rasm yuklash -->
+    <section id="screen-homework-submit" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" id="homeworkBackToParagraphs" aria-label="Orqaga">←</button>
+        <h2 id="homeworkSubmitTitle">Vazifa</h2>
+      </div>
+      <div id="homeworkSubmitContent"></div>
+      <input type="file" id="homeworkFileInput" accept="image/*" capture="environment" class="hidden">
+    </section>
+
     <!-- PROFIL -->
     <section id="screen-profile" class="screen hidden">
       <div class="screen-header">
@@ -1202,6 +1237,103 @@
           <label>Tartib raqami <input id="ass_order_num" type="number" value="0"></label>
           <button type="submit" class="gold-btn">Fanni qo'shish</button>
         </form>
+      </div>
+
+      <!-- ============ VAZIFA TOPSHIRISH (admin) ============ -->
+
+      <div class="admin-section">
+        <div class="admin-section-head">
+          <h3>📸 Vazifa topshirish</h3>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button id="adminHwNewSubjectBtn" class="gold-btn small">+ Bo'lim</button>
+            <button id="adminHwReviewBtn" class="secondary-btn small">📝 Tekshirish</button>
+            <button id="adminHwLateBtn" class="secondary-btn small">⚠️ Kechikkanlar</button>
+            <button id="adminHwRankingBtn" class="secondary-btn small">🏆 Oylik reyting</button>
+          </div>
+        </div>
+        <p style="font-size:11px;color:var(--text-dim);margin-bottom:10px;">
+          O'quvchilar ishlangan masalalar yechimini rasmga tushirib yuklaydigan bo'lim.
+          Har bir bo'limda nechta paragraf bo'lishini raqam bilan belgilaysiz — mini-appda
+          shuncha raqamlangan "N-paragraf vazifasi" kartasi avtomatik hosil bo'ladi va
+          ular ketma-ket ochiladi.
+        </p>
+        <div id="adminHwSubjectsList" class="admin-list"></div>
+      </div>
+
+      <div id="adminHwSubjectForm" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3 id="adminHwSubjectFormTitle">Yangi bo'lim</h3>
+          <button id="adminHwCloseSubjectForm" class="icon-btn" aria-label="Yopish">✕</button>
+        </div>
+        <form id="hwSubjectFormEl" class="admin-form">
+          <input type="hidden" id="hws_id">
+          <label>Bo'lim nomi <input id="hws_title" required placeholder="Masalan: Kimyo"></label>
+          <label>Qo'shimcha matn (ixtiyoriy) <input id="hws_subtitle" placeholder="Masalan: Pullik guruh uchun"></label>
+          <label>Belgi (emoji) <input id="hws_icon" placeholder="🧪" maxlength="4"></label>
+          <label>Nechta paragraf? (mini-appda shuncha vazifa bo'limi hosil bo'ladi)
+            <input id="hws_paragraph_count" type="number" min="0" max="500" value="0">
+          </label>
+          <label>Necha kun ichida topshirilsin? (kechikkanlar ro'yxati shu bo'yicha hisoblanadi)
+            <input id="hws_deadline_days" type="number" min="1" max="90" value="7">
+          </label>
+          <label>Tartib raqami <input id="hws_order_num" type="number" value="0"></label>
+          <label>Faolmi?
+            <select id="hws_is_active">
+              <option value="1">Ha</option>
+              <option value="0">Yo'q (yashirilgan)</option>
+            </select>
+          </label>
+          <label style="margin-bottom:4px;">Qaysi kurs/guruhdagilarga ochiq bo'lsin?</label>
+          <p style="font-size:11px;color:var(--text-dim);margin:0 0 8px;">
+            Belgilangan guruhlardan <b>birortasiga</b> qo'shilgan o'quvchi bu bo'limni ko'radi.
+            Hech biri belgilanmasa — bo'lim hammaga ochiq bo'ladi.
+          </p>
+          <div id="hwsCourseCheckboxList" class="course-checkbox-list"></div>
+          <button type="submit" class="gold-btn">Bo'limni saqlash</button>
+        </form>
+      </div>
+
+      <div id="adminHwReviewPanel" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3>📝 Tekshirilishi kerak bo'lgan vazifalar</h3>
+          <button id="adminHwCloseReview" class="icon-btn" aria-label="Yopish">✕</button>
+        </div>
+        <p style="font-size:11px;color:var(--text-dim);margin-bottom:10px;">
+          Rasmni bosib kattalashtirib ko'ring, so'ng 0–10 oralig'ida ball qo'ying.
+          Ish sifatsiz bo'lsa — "Qaytarish" tugmasi orqali qayta ishlashga yuboring
+          (o'quvchi uchun keyingi paragraf yopiladi).
+        </p>
+        <div id="adminHwReviewList"></div>
+      </div>
+
+      <div id="adminHwLatePanel" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3>⚠️ Vazifani kechiktirganlar</h3>
+          <button id="adminHwCloseLate" class="icon-btn" aria-label="Yopish">✕</button>
+        </div>
+        <div style="margin-bottom:10px;">
+          <button id="adminHwRemindAllBtn" class="secondary-btn small">📨 Hammasiga ogohlantirish yuborish</button>
+        </div>
+        <div id="adminHwLateList" class="admin-list"></div>
+      </div>
+
+      <div id="adminHwRankingPanel" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3>🏆 Oy yakuniy reyting</h3>
+          <button id="adminHwCloseRanking" class="icon-btn" aria-label="Yopish">✕</button>
+        </div>
+        <p style="font-size:11px;color:var(--text-dim);margin-bottom:10px;">
+          Umumiy ball = <b>50% nazorat testi</b> + <b>50% vazifa</b>. Chegirma beriladigan
+          o'quvchilarni shu jadval bo'yicha aniqlaysiz.
+        </p>
+        <div class="admin-form" style="margin-top:0;">
+          <div style="display:flex;gap:8px;">
+            <label style="flex:1;">Yil <input id="hwRankYear" type="number" min="2024" max="2100"></label>
+            <label style="flex:1;">Oy <input id="hwRankMonth" type="number" min="1" max="12"></label>
+          </div>
+          <button id="adminHwLoadRankingBtn" class="secondary-btn small">Hisoblash</button>
+        </div>
+        <div id="adminHwRankingContent"></div>
       </div>
 
       <div class="version-tag">Behruz Sayfiyev · nashr v7.0 (DTM simulyatori)</div>

@@ -12,12 +12,13 @@ import * as Tests from "./tests.js";
 import { loadReferral } from "./referral.js";
 import { loadLeaderboard, initLeaderboardModule } from "./leaderboard.js";
 import { loadProfile } from "./profile.js";
-import { loadAdminCourses, loadAdminTests, loadAdminAnalytics, loadAdminSimulators, loadAdminDashboardCards, loadAdminBookProducts, loadAdminFaq, loadAdminStudentResults, loadAdminObjections, initAdminModule } from "./admin.js";
+import { loadAdminCourses, loadAdminTests, loadAdminAnalytics, loadAdminSimulators, loadAdminDashboardCards, loadAdminBookProducts, loadAdminFaq, loadAdminStudentResults, loadAdminObjections, loadAdminHomeworkSubjects, initAdminModule, initHomeworkAdminModule } from "./admin.js";
 import { loadDashboardCards } from "./home.js";
 import { loadBookShop } from "./bookshop.js";
 import { loadGameSubjects, initGamesModule } from "./games.js";
 import { loadFaq } from "./faq.js";
 import { loadStudentResults } from "./studentResults.js";
+import { loadHomeworkSubjects, initHomeworkModule } from "./homework.js";
 
 function handleNav(target) {
   if (target === "home") {
@@ -74,6 +75,7 @@ function handleNav(target) {
     loadAdminFaq();
     loadAdminStudentResults();
     loadAdminObjections();
+    loadAdminHomeworkSubjects();
     showScreen("admin");
   } else if (target === "games") {
     loadGameSubjects();
@@ -93,6 +95,8 @@ function handleNav(target) {
   } else if (target === "student-results") {
     loadStudentResults();
     showScreen("student-results");
+  } else if (target === "homework") {
+    loadHomeworkSubjects();
   }
 }
 
@@ -124,6 +128,8 @@ function bootstrap() {
   initLeaderboardModule();
   initAdminModule();
   initGamesModule();
+  initHomeworkModule();
+  initHomeworkAdminModule();
 
   loadBrand();
   loadUser().finally(hideAppSplash);

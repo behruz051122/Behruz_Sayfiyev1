@@ -43,6 +43,7 @@ DASHBOARD_CARD_DEFAULTS = [
     ("books", "📗 Kitoblar", "DO'KON · PROMOKODLAR", "📖", 4),
     ("games", "🎮 O'yinlar", "TEZ ORADA", "🕹️", 5),
     ("results", "🏆 Natijalar", "SERTIFIKAT NATIJALARI · FIKRLAR", "📈", 6),
+    ("homework", "📸 Vazifa topshirish", "ISHLANGAN MASALALAR RASMI", "✍️", 7),
 ]
 
 
@@ -858,6 +859,94 @@ def init_db():
             pass
         try:
             cur.execute("ALTER TABLE test_attempts ADD COLUMN certificate_level TEXT")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+
+        # ================================================================
+        # VAZIFA TOPSHIRISH (uy vazifasi rasmlarini yuklash)
+        # ================================================================
+        # O'qituvchi pullik kursidagi o'quvchilardan ishlangan masalalar
+        # yechimini RASMGA tushirib yuborishni talab qiladi. Bu bo'lim
+        # o'sha jarayonni tartibga soladi:
+        #   - fan (Kimyo, Biologiya, ...) — admin qo'shadi/tahrirlaydi
+        #   - har bir fanda paragraflar soni admin tomonidan raqam bilan
+        #     belgilanadi, mini-appda shuncha "N-paragraf vazifasi"
+        #     bo'limi AVTOMATIK hosil bo'ladi
+        #   - paragraflar KETMA-KET ochiladi: o'quvchi N-paragrafni
+        #     "to'liq yukladim" deb yakunlamaguncha (N+1) ochilmaydi
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS homework_subjects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                subtitle TEXT,
+                icon TEXT DEFAULT '🧪',
+                color_key TEXT DEFAULT 'teal',
+                paragraph_count INTEGER DEFAULT 0,
+                deadline_days INTEGER DEFAULT 7,
+                order_num INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Fan qaysi kurs(lar)ga bog'langan — o'quvchi shu kurslardan
+        # BIRORTASIGA yozilgan bo'lsa, fan unga ochiq bo'ladi. Nazorat
+        # testlaridagi bilan bir xil, isbotlangan yondashuv.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS homework_subject_courses (
+                subject_id INTEGER NOT NULL,
+                course_id INTEGER NOT NULL,
+                PRIMARY KEY (subject_id, course_id),
+                FOREIGN KEY (subject_id) REFERENCES homework_subjects (id) ON DELETE CASCADE,
+                FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+            )
+        """)
+
+        # Bitta o'quvchining bitta paragraf bo'yicha topshirig'i.
+        # status: 'draft'     — rasm yuklayapti, hali yakunlamagan
+        #         'submitted' — "Vazifalar to'liq yuklandi" bosilgan
+        #         'graded'    — o'qituvchi ball qo'ygan
+        #         'rejected'  — o'qituvchi qayta ishlashga qaytargan
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS homework_submissions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                subject_id INTEGER NOT NULL,
+                telegram_id INTEGER NOT NULL,
+                paragraph_number INTEGER NOT NULL,
+                status TEXT DEFAULT 'draft',
+                teacher_score REAL,
+                teacher_comment TEXT,
+                graded_by INTEGER,
+                graded_at TIMESTAMP,
+                submitted_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(subject_id, telegram_id, paragraph_number),
+                FOREIGN KEY (subject_id) REFERENCES homework_subjects (id) ON DELETE CASCADE
+            )
+        """)
+
+        # Bir topshiriqqa bir nechta rasm — mavzu murakkabligiga qarab
+        # o'quvchi "+" tugmasi orqali xohlagancha qo'sha oladi.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS homework_photos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                submission_id INTEGER NOT NULL,
+                photo_url TEXT NOT NULL,
+                order_num INTEGER DEFAULT 0,
+                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (submission_id) REFERENCES homework_submissions (id) ON DELETE CASCADE
+            )
+        """)
+
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_hw_sub_user ON homework_submissions (telegram_id, subject_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_hw_photos_sub ON homework_photos (submission_id)")
+        conn.commit()
+
+        # Kechikkanlarga ogohlantirish YUBORILGANINI belgilash — bir xil
+        # eslatma qayta-qayta yuborilmasligi uchun.
+        try:
+            cur.execute("ALTER TABLE homework_submissions ADD COLUMN reminder_sent_at TIMESTAMP")
             conn.commit()
         except sqlite3.OperationalError:
             pass
@@ -4126,3 +4215,549 @@ def get_my_control_test_rank(telegram_id: int, year: int, month: int):
                 "total_participants": len(leaderboard),
             }
     return None
+
+
+# ================================================================
+# VAZIFA TOPSHIRISH (uy vazifasi rasmlari)
+# ================================================================
+
+HOMEWORK_MAX_SCORE = 10.0  # bitta topshiriq uchun maksimal ball (o'qituvchi 0..10 qo'yadi)
+
+
+# ---------- Fanlar (admin boshqaradi) ----------
+
+def get_homework_subjects(only_active: bool = True):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = "SELECT * FROM homework_subjects"
+        if only_active:
+            query += " WHERE is_active = 1"
+        query += " ORDER BY order_num ASC, id ASC"
+        cur.execute(query)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_homework_subject(subject_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM homework_subjects WHERE id = ?", (subject_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def create_homework_subject(data: dict) -> int:
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO homework_subjects (title, subtitle, icon, color_key, paragraph_count,
+                                           deadline_days, order_num, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            data.get("title", ""), data.get("subtitle") or "", data.get("icon") or "🧪",
+            data.get("color_key") or "teal", safe_int(data.get("paragraph_count"), 0),
+            safe_int(data.get("deadline_days"), 7), safe_int(data.get("order_num"), 0),
+            safe_int(data.get("is_active"), 1),
+        ))
+        conn.commit()
+        subject_id = cur.lastrowid
+    if "course_ids" in data:
+        set_homework_subject_courses(subject_id, data.get("course_ids") or [])
+    return subject_id
+
+
+def update_homework_subject(subject_id: int, data: dict):
+    numeric = {"paragraph_count": 0, "deadline_days": 7, "order_num": 0, "is_active": 1}
+    with get_connection() as conn:
+        cur = conn.cursor()
+        fields, values = [], []
+        for key in ["title", "subtitle", "icon", "color_key", "paragraph_count",
+                    "deadline_days", "order_num", "is_active"]:
+            if key in data:
+                fields.append(f"{key} = ?")
+                values.append(safe_int(data[key], numeric[key]) if key in numeric else data[key])
+        if fields:
+            values.append(subject_id)
+            cur.execute(f"UPDATE homework_subjects SET {', '.join(fields)} WHERE id = ?", values)
+            conn.commit()
+    if "course_ids" in data:
+        set_homework_subject_courses(subject_id, data.get("course_ids") or [])
+
+
+def delete_homework_subject(subject_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM homework_subjects WHERE id = ?", (subject_id,))
+        conn.commit()
+
+
+def get_homework_subject_course_ids(subject_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT course_id FROM homework_subject_courses WHERE subject_id = ?", (subject_id,))
+        return [r["course_id"] for r in cur.fetchall()]
+
+
+def set_homework_subject_courses(subject_id: int, course_ids):
+    ids = {safe_int(c, 0) for c in (course_ids or []) if safe_int(c, 0) > 0}
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM homework_subject_courses WHERE subject_id = ?", (subject_id,))
+        for cid in ids:
+            cur.execute(
+                "INSERT OR IGNORE INTO homework_subject_courses (subject_id, course_id) VALUES (?, ?)",
+                (subject_id, cid)
+            )
+        conn.commit()
+    return {"ok": True, "count": len(ids)}
+
+
+def user_can_access_homework_subject(telegram_id: int, subject_id: int) -> bool:
+    """O'quvchi shu fanga kira oladimi — bog'langan kurslardan BIRORTASIGA
+    yozilgan bo'lsa yetarli. Hech qanday kurs bog'lanmagan bo'lsa, fan
+    hammaga ochiq deb qaraladi (masalan bepul/ochiq guruh uchun)."""
+    course_ids = get_homework_subject_course_ids(subject_id)
+    if not course_ids:
+        return True
+    for cid in course_ids:
+        course = get_course(cid)
+        if course and compute_course_access(telegram_id, course)["unlocked"]:
+            return True
+    return False
+
+
+# ---------- Topshiriqlar: ketma-ket ochilish va holat ----------
+
+def get_homework_submission(subject_id: int, telegram_id: int, paragraph_number: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT * FROM homework_submissions
+            WHERE subject_id = ? AND telegram_id = ? AND paragraph_number = ?
+        """, (subject_id, telegram_id, paragraph_number))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def get_homework_photos(submission_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, photo_url, order_num FROM homework_photos
+            WHERE submission_id = ? ORDER BY order_num ASC, id ASC
+        """, (submission_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def _homework_submissions_map(subject_id: int, telegram_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT * FROM homework_submissions
+            WHERE subject_id = ? AND telegram_id = ?
+        """, (subject_id, telegram_id))
+        return {r["paragraph_number"]: dict(r) for r in cur.fetchall()}
+
+
+def compute_homework_paragraphs(telegram_id: int, subject_id: int):
+    """Fandagi barcha paragraflar ro'yxatini, har birining HOLATI va
+    QULF holati bilan qaytaradi.
+
+    KETMA-KET OCHILISH QOIDASI: 1-paragraf doim ochiq. N-paragraf esa
+    faqat (N-1) o'quvchi tomonidan "Vazifalar to'liq yuklandi" deb
+    YAKUNLANGAN bo'lsa ochiladi. Ya'ni o'quvchi 2-ni tashlamay turib
+    3-ga o'tolmaydi — vazifalar tartib bilan bajarib boriladi.
+
+    O'qituvchi qayta ishlashga qaytargan (rejected) topshiriq
+    YAKUNLANGAN hisoblanmaydi — keyingisi yopiladi va o'quvchi avval
+    o'shani tuzatishi kerak."""
+    subject = get_homework_subject(subject_id)
+    if not subject:
+        return []
+    total = safe_int(subject.get("paragraph_count"), 0)
+    subs = _homework_submissions_map(subject_id, telegram_id)
+
+    result = []
+    prev_done = True  # 1-paragraf uchun
+    for n in range(1, total + 1):
+        sub = subs.get(n)
+        status = sub["status"] if sub else "empty"
+        is_done = status in ("submitted", "graded")
+        photo_count = len(get_homework_photos(sub["id"])) if sub else 0
+        result.append({
+            "paragraph_number": n,
+            "status": status,
+            "unlocked": prev_done,
+            "photo_count": photo_count,
+            "teacher_score": sub.get("teacher_score") if sub else None,
+            "teacher_comment": sub.get("teacher_comment") if sub else None,
+            "submitted_at": sub.get("submitted_at") if sub else None,
+        })
+        prev_done = is_done
+    return result
+
+
+def _ensure_homework_submission(subject_id: int, telegram_id: int, paragraph_number: int) -> int:
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT OR IGNORE INTO homework_submissions (subject_id, telegram_id, paragraph_number, status)
+            VALUES (?, ?, ?, 'draft')
+        """, (subject_id, telegram_id, paragraph_number))
+        conn.commit()
+        cur.execute("""
+            SELECT id FROM homework_submissions
+            WHERE subject_id = ? AND telegram_id = ? AND paragraph_number = ?
+        """, (subject_id, telegram_id, paragraph_number))
+        return cur.fetchone()["id"]
+
+
+def is_homework_paragraph_unlocked(telegram_id: int, subject_id: int, paragraph_number: int) -> bool:
+    """Serverda ham qulfni tekshiramiz — frontend chetlab o'tilsa ham
+    o'quvchi tartibni buzib, oldinga o'tib ketolmaydi."""
+    if paragraph_number <= 1:
+        return True
+    prev = get_homework_submission(subject_id, telegram_id, paragraph_number - 1)
+    return bool(prev and prev["status"] in ("submitted", "graded"))
+
+
+def add_homework_photo(subject_id: int, telegram_id: int, paragraph_number: int, photo_url: str):
+    submission_id = _ensure_homework_submission(subject_id, telegram_id, paragraph_number)
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT COALESCE(MAX(order_num), -1) + 1 AS nxt FROM homework_photos WHERE submission_id = ?",
+                    (submission_id,))
+        nxt = cur.fetchone()["nxt"]
+        cur.execute("INSERT INTO homework_photos (submission_id, photo_url, order_num) VALUES (?, ?, ?)",
+                    (submission_id, photo_url, nxt))
+        # Qayta ishlashga qaytarilgan topshiriqqa yangi rasm qo'shilsa —
+        # u yana "yuklanmoqda" holatiga qaytadi.
+        cur.execute("UPDATE homework_submissions SET status = 'draft' WHERE id = ? AND status = 'rejected'",
+                    (submission_id,))
+        conn.commit()
+    return {"ok": True, "submission_id": submission_id}
+
+
+def delete_homework_photo(photo_id: int, telegram_id: int):
+    """Rasmni faqat EGASI o'chira oladi va faqat hali baholanmagan bo'lsa."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT p.id FROM homework_photos p
+            JOIN homework_submissions s ON s.id = p.submission_id
+            WHERE p.id = ? AND s.telegram_id = ? AND s.status != 'graded'
+        """, (photo_id, telegram_id))
+        if not cur.fetchone():
+            return {"ok": False, "detail": "Bu rasmni o'chirib bo'lmaydi"}
+        cur.execute("DELETE FROM homework_photos WHERE id = ?", (photo_id,))
+        conn.commit()
+    return {"ok": True}
+
+
+def submit_homework_paragraph(subject_id: int, telegram_id: int, paragraph_number: int):
+    """O'quvchi "Vazifalar to'liq yuklandi" tugmasini bosdi — topshiriq
+    yakunlanadi va shu bilan KEYINGI paragraf ochiladi."""
+    submission_id = _ensure_homework_submission(subject_id, telegram_id, paragraph_number)
+    if not get_homework_photos(submission_id):
+        return {"ok": False, "detail": "Avval kamida bitta rasm yuklang"}
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE homework_submissions
+            SET status = 'submitted', submitted_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (submission_id,))
+        conn.commit()
+    record_daily_activity(telegram_id)
+    return {"ok": True, "status": "submitted"}
+
+
+# ---------- O'qituvchi: baholash ----------
+
+def get_homework_pending_submissions(subject_id: int = None):
+    """Baholanmagan (topshirilgan) vazifalar navbati."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = """
+            SELECT s.*, hs.title AS subject_title, hs.icon AS subject_icon,
+                   u.first_name, u.username
+            FROM homework_submissions s
+            JOIN homework_subjects hs ON hs.id = s.subject_id
+            LEFT JOIN users u ON u.telegram_id = s.telegram_id
+            WHERE s.status = 'submitted'
+        """
+        params = []
+        if subject_id:
+            query += " AND s.subject_id = ?"
+            params.append(subject_id)
+        query += " ORDER BY s.submitted_at ASC"
+        cur.execute(query, params)
+        rows = [dict(r) for r in cur.fetchall()]
+    for r in rows:
+        r["photos"] = get_homework_photos(r["id"])
+    return rows
+
+
+def grade_homework_submission(submission_id: int, teacher_score, teacher_comment: str,
+                              graded_by: int, reject: bool = False):
+    """O'qituvchi 0..10 ball qo'yadi yoki qayta ishlashga qaytaradi."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        if reject:
+            cur.execute("""
+                UPDATE homework_submissions
+                SET status = 'rejected', teacher_comment = ?, graded_by = ?, graded_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (teacher_comment or "", graded_by, submission_id))
+        else:
+            score = max(0.0, min(HOMEWORK_MAX_SCORE, float(teacher_score or 0)))
+            cur.execute("""
+                UPDATE homework_submissions
+                SET status = 'graded', teacher_score = ?, teacher_comment = ?,
+                    graded_by = ?, graded_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (score, teacher_comment or "", graded_by, submission_id))
+        conn.commit()
+    return {"ok": True}
+
+
+def get_user_homework_summary(telegram_id: int, subject_id: int = None):
+    """O'quvchining vazifa bo'yicha umumiy ko'rsatkichi (o'z natijalari
+    ekranida va reytingda ishlatiladi)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = """
+            SELECT COUNT(*) AS submitted_count,
+                   SUM(CASE WHEN status = 'graded' THEN 1 ELSE 0 END) AS graded_count,
+                   AVG(CASE WHEN status = 'graded' THEN teacher_score END) AS avg_score
+            FROM homework_submissions
+            WHERE telegram_id = ? AND status IN ('submitted', 'graded')
+        """
+        params = [telegram_id]
+        if subject_id:
+            query += " AND subject_id = ?"
+            params.append(subject_id)
+        cur.execute(query, params)
+        row = dict(cur.fetchone())
+    return {
+        "submitted_count": row["submitted_count"] or 0,
+        "graded_count": row["graded_count"] or 0,
+        "avg_score": round(row["avg_score"], 2) if row["avg_score"] is not None else None,
+    }
+
+
+# ---------- Kechikkanlar (ogohlantirish uchun) ----------
+
+def get_homework_late_students(subject_id: int = None):
+    """Vazifani KECHIKTIRGAN o'quvchilar ro'yxati.
+
+    "Kechikkan" deb hisoblanadi: o'quvchi shu fanga kirish huquqiga ega
+    (kursga yozilgan), lekin navbatdagi ochiq paragrafni belgilangan
+    kun (deadline_days) ichida topshirmagan. Hech narsa boshlamagan
+    o'quvchi ham — ro'yxatga kiradi (1-paragraf kutilmoqda)."""
+    subjects = get_homework_subjects(only_active=True)
+    if subject_id:
+        subjects = [s for s in subjects if s["id"] == subject_id]
+
+    now = datetime.datetime.utcnow()
+    late = []
+    for subject in subjects:
+        deadline_days = safe_int(subject.get("deadline_days"), 7)
+        course_ids = get_homework_subject_course_ids(subject["id"])
+        # Fanga bog'langan kurslarga yozilgan barcha o'quvchilar
+        candidates = {}
+        with get_connection() as conn:
+            cur = conn.cursor()
+            if course_ids:
+                placeholders = ",".join("?" for _ in course_ids)
+                cur.execute(f"""
+                    SELECT DISTINCT e.telegram_id, u.first_name, u.username
+                    FROM enrollments e LEFT JOIN users u ON u.telegram_id = e.telegram_id
+                    WHERE e.course_id IN ({placeholders})
+                """, course_ids)
+            else:
+                cur.execute("""
+                    SELECT DISTINCT s.telegram_id, u.first_name, u.username
+                    FROM homework_submissions s LEFT JOIN users u ON u.telegram_id = s.telegram_id
+                    WHERE s.subject_id = ?
+                """, (subject["id"],))
+            for r in cur.fetchall():
+                candidates[r["telegram_id"]] = dict(r)
+
+        for tid, info in candidates.items():
+            paragraphs = compute_homework_paragraphs(tid, subject["id"])
+            # Navbatdagi ochiq, lekin hali topshirilmagan paragraf
+            pending = next((p for p in paragraphs
+                            if p["unlocked"] and p["status"] not in ("submitted", "graded")), None)
+            if not pending:
+                continue  # hammasini topshirgan
+
+            # Oxirgi faollik: shu fandagi eng so'nggi topshirish sanasi
+            last = None
+            with get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT MAX(submitted_at) AS last_at FROM homework_submissions
+                    WHERE subject_id = ? AND telegram_id = ? AND submitted_at IS NOT NULL
+                """, (subject["id"], tid))
+                row = cur.fetchone()
+                last = row["last_at"] if row else None
+
+            if last:
+                try:
+                    last_dt = datetime.datetime.fromisoformat(last)
+                except ValueError:
+                    last_dt = now
+                days_idle = (now - last_dt).days
+            else:
+                days_idle = deadline_days + 1  # hech narsa topshirmagan — darhol kechikkan
+
+            if days_idle >= deadline_days:
+                late.append({
+                    "telegram_id": tid,
+                    "first_name": info.get("first_name") or "Foydalanuvchi",
+                    "username": info.get("username"),
+                    "subject_id": subject["id"],
+                    "subject_title": subject["title"],
+                    "waiting_paragraph": pending["paragraph_number"],
+                    "days_idle": days_idle,
+                    "last_submitted_at": last,
+                })
+    late.sort(key=lambda x: x["days_idle"], reverse=True)
+    return late
+
+
+# ---------- 50/50 UMUMLASHGAN OYLIK REYTING ----------
+
+# Nazorat testi va vazifa natijasining reytingdagi ulushi (foizda).
+# O'qituvchi kelishuviga ko'ra standart 50/50.
+RANKING_TEST_WEIGHT = 50
+RANKING_HOMEWORK_WEIGHT = 50
+
+
+def get_homework_monthly_scores(year: int, month: int):
+    """Berilgan oyda BAHOLANGAN vazifalar bo'yicha har bir o'quvchining
+    o'rtacha foizi (0..100). O'qituvchi 0..10 ball qo'yadi, shuning uchun
+    foizga aylantirish uchun 10 ga bo'lib 100 ga ko'paytiriladi."""
+    month_str = f"{year:04d}-{month:02d}"
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT s.telegram_id,
+                   AVG(s.teacher_score) AS avg_score,
+                   COUNT(*) AS graded_count
+            FROM homework_submissions s
+            WHERE s.status = 'graded'
+              AND s.teacher_score IS NOT NULL
+              AND strftime('%Y-%m', COALESCE(s.submitted_at, s.graded_at)) = ?
+            GROUP BY s.telegram_id
+        """, (month_str,))
+        rows = [dict(r) for r in cur.fetchall()]
+    return {
+        r["telegram_id"]: {
+            "homework_percent": round((r["avg_score"] / HOMEWORK_MAX_SCORE) * 100, 1),
+            "graded_count": r["graded_count"],
+            "avg_score": round(r["avg_score"], 2),
+        }
+        for r in rows
+    }
+
+
+def get_combined_monthly_leaderboard(year: int, month: int, limit: int = 100):
+    """OY YAKUNIY REYTINGI — nazorat testi va vazifa natijasini BIRLASHTIRIB
+    hisoblaydi (standart 50% + 50%).
+
+    Har bir o'quvchi uchun:
+      test_percent     — shu oydagi nazorat testlarining o'rtacha foizi
+      homework_percent — shu oyda baholangan vazifalarning o'rtacha foizi
+      total_score      — ikkalasining og'irliklangan yig'indisi (0..100)
+
+    Bir tomoni umuman yo'q bo'lsa (masalan test topshirmagan) — o'sha
+    qism 0 deb olinadi, chunki reyting IKKALA mehnatni ham talab qiladi.
+    Bu — chegirma berishda adolatli: faqat test ishlagan yoki faqat
+    vazifa tashlagan o'quvchi to'liq bajarganidan yuqori turmaydi."""
+    test_rows = get_control_test_monthly_leaderboard(year, month, limit=100000)
+    test_by_id = {r["telegram_id"]: r for r in test_rows}
+    hw_by_id = get_homework_monthly_scores(year, month)
+
+    all_ids = set(test_by_id) | set(hw_by_id)
+
+    # Ism/username ni bitta so'rovda olib qo'yamiz (har bir o'quvchi uchun
+    # alohida so'rov yubormaslik uchun).
+    users_by_id = {}
+    if all_ids:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            placeholders = ",".join("?" for _ in all_ids)
+            cur.execute(f"SELECT telegram_id, first_name, username FROM users WHERE telegram_id IN ({placeholders})",
+                        list(all_ids))
+            users_by_id = {r["telegram_id"]: dict(r) for r in cur.fetchall()}
+
+    result = []
+    for tid in all_ids:
+        t = test_by_id.get(tid)
+        h = hw_by_id.get(tid)
+        test_percent = t["avg_percent"] if t else 0.0
+        hw_percent = h["homework_percent"] if h else 0.0
+        total = (test_percent * RANKING_TEST_WEIGHT + hw_percent * RANKING_HOMEWORK_WEIGHT) / 100.0
+
+        user = users_by_id.get(tid, {})
+        result.append({
+            "telegram_id": tid,
+            "first_name": (t or {}).get("first_name") or user.get("first_name") or "Foydalanuvchi",
+            "username": user.get("username"),
+            "test_percent": round(test_percent, 1),
+            "test_attempts": (t or {}).get("attempts_count", 0),
+            "homework_percent": round(hw_percent, 1),
+            "homework_graded": (h or {}).get("graded_count", 0),
+            "homework_avg_score": (h or {}).get("avg_score"),
+            "total_score": round(total, 1),
+        })
+
+    # Saralash: umumiy ball -> vazifa soni -> test soni
+    result.sort(key=lambda r: (-r["total_score"], -r["homework_graded"], -r["test_attempts"]))
+    for idx, r in enumerate(result):
+        r["rank"] = idx + 1
+    return result[:limit]
+
+
+def get_my_combined_monthly_rank(telegram_id: int, year: int, month: int):
+    board = get_combined_monthly_leaderboard(year, month, limit=100000)
+    for row in board:
+        if row["telegram_id"] == telegram_id:
+            row = dict(row)
+            row["total_participants"] = len(board)
+            return row
+    return None
+
+
+def mark_homework_reminder_sent(telegram_id: int, subject_id: int, paragraph_number: int):
+    """Ogohlantirish yuborilganini belgilaydi — bir xil eslatma
+    qayta-qayta yuborilmasligi uchun."""
+    if not subject_id or not paragraph_number:
+        return {"ok": False}
+    submission_id = _ensure_homework_submission(subject_id, telegram_id, paragraph_number)
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("UPDATE homework_submissions SET reminder_sent_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (submission_id,))
+        conn.commit()
+    return {"ok": True}
+
+
+def get_homework_students_needing_reminder(min_hours_between: int = 48):
+    """Avtomatik eslatma uchun: kechikkan VA oxirgi ogohlantirish
+    yuborilganiga belgilangan soatdan ko'p vaqt o'tgan o'quvchilar."""
+    now = datetime.datetime.utcnow()
+    result = []
+    for s in get_homework_late_students():
+        sub = get_homework_submission(s["subject_id"], s["telegram_id"], s["waiting_paragraph"])
+        last_sent = sub.get("reminder_sent_at") if sub else None
+        if last_sent:
+            try:
+                sent_dt = datetime.datetime.fromisoformat(last_sent)
+            except ValueError:
+                sent_dt = now
+            if (now - sent_dt).total_seconds() < min_hours_between * 3600:
+                continue
+        result.append(s)
+    return result

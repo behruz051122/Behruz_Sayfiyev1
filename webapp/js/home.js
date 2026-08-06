@@ -14,6 +14,7 @@ const CARD_META = {
   books: { nav: "books", colorClass: "dc-purple" },
   games: { nav: "games", colorClass: "dc-pink" },
   results: { nav: "student-results", colorClass: "dc-cyan" },
+  homework: { nav: "homework", colorClass: "dc-purple" },
 };
 
 function escapeHtml(str) {

@@ -52,6 +52,8 @@ from routers import (
     admin_faq,
     student_results,
     admin_student_results,
+    homework,
+    admin_homework,
 )
 
 app = FastAPI(title="Behruz Sayfiyev — Mini App API")
@@ -113,6 +115,8 @@ async def startup():
     asyncio.create_task(bot_module.send_expiry_reminders_loop())
     # O'yinlar (Battle) yakunlanganda ikkala o'yinchiga Telegram orqali xabar
     asyncio.create_task(bot_module.send_battle_result_notifications_loop())
+    # Vazifani kechiktirgan o'quvchilarga avtomatik eslatma
+    asyncio.create_task(bot_module.send_homework_reminders_loop())
 
 
 @app.on_event("shutdown")
@@ -148,6 +152,8 @@ app.include_router(faq.router)
 app.include_router(admin_faq.router)
 app.include_router(student_results.router)
 app.include_router(admin_student_results.router)
+app.include_router(homework.router)
+app.include_router(admin_homework.router)
 
 
 # Admin tomonidan yuklangan rasmlar (savol grafigi/jadvali) shu yo'ldan

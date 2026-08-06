@@ -178,6 +178,49 @@ async def send_expiry_reminders_loop():
         await asyncio.sleep(REMINDER_CHECK_INTERVAL_SECONDS)
 
 
+HOMEWORK_REMINDER_INTERVAL_SECONDS = 6 * 3600  # kuniga ~4 marta tekshiriladi
+
+
+async def send_homework_reminders_loop():
+    """
+    Vazifani belgilangan muddatda topshirmagan o'quvchilarga avtomatik
+    Telegram eslatmasi yuboradi.
+
+    SPAMNING OLDINI OLISH: bir xil o'quvchiga bir xil paragraf bo'yicha
+    eslatma 48 soatda bir martadan ko'p yuborilmaydi (yuborilgan vaqt
+    homework_submissions.reminder_sent_at ustunida saqlanadi).
+    """
+    import database as db
+
+    while True:
+        try:
+            pending = db.get_homework_students_needing_reminder(min_hours_between=48)
+            for s in pending:
+                try:
+                    await bot.send_message(
+                        s["telegram_id"],
+                        f"⚠️ <b>Vazifa eslatmasi</b>\n\n"
+                        f"Hurmatli {s.get('first_name') or 'oʻquvchi'}, "
+                        f"<b>{s['subject_title']}</b> boʻlimi boʻyicha "
+                        f"<b>{s['waiting_paragraph']}-paragraf</b> vazifasi hali topshirilmagan "
+                        f"({s['days_idle']} kundan beri harakat yoʻq).\n\n"
+                        f"Iltimos, ishlangan masalalar yechimini rasmga tushirib, ilovaga yuklang.",
+                        parse_mode="HTML",
+                    )
+                    db.mark_homework_reminder_sent(
+                        s["telegram_id"], s["subject_id"], s["waiting_paragraph"]
+                    )
+                    logging.info(f"Vazifa eslatmasi yuborildi: telegram_id={s['telegram_id']}, "
+                                 f"fan={s['subject_title']}, paragraf={s['waiting_paragraph']}")
+                except Exception as send_error:
+                    logging.warning(f"Vazifa eslatmasi yuborilmadi "
+                                    f"(telegram_id={s['telegram_id']}): {send_error}")
+        except Exception as e:
+            logging.error(f"Vazifa eslatmalari siklida xato: {e}")
+
+        await asyncio.sleep(HOMEWORK_REMINDER_INTERVAL_SECONDS)
+
+
 BATTLE_NOTIFY_CHECK_INTERVAL_SECONDS = 15  # o'yin natijasi tezroq yetib borishi kerak
 
 
