@@ -2520,8 +2520,12 @@ def compute_stages_with_unlock(telegram_id: int, subject_card_id: int):
     bo'yicha qaytaradi, har biriga 'unlocked' va progress (completed/total)
     qo'shib. Birinchi bosqich doim ochiq. Keyingi bosqich — faqat
     oldingisidagi BARCHA turkumlardagi BARCHA (faol) testlar
-    tugallangandan keyin ochiladi. Agar oldingi bosqichda umuman test
-    bo'lmasa, u "tugallangan" hisoblanib, keyingisini bloklamaydi."""
+    tugallangandan keyin ochiladi. Agar oldingi bosqichda hali umuman test
+    bo'lmasa (admin hali qo'shmagan bo'lsa), u "tugallanmagan" hisoblanadi
+    va keyingi bosqichni QULFLAGAN holda qoldiradi — bo'sh bosqich
+    avtomatik "o'tib ketilgan" deb hisoblanmaydi (aks holda admin hali
+    testlar qo'shib ulgurmagan bosqich ustidan keyingisi darrov ochilib
+    qolar edi)."""
     stages = get_test_stages(subject_card_id, only_active=True)
     result = []
     prev_completed = True
@@ -2534,8 +2538,11 @@ def compute_stages_with_unlock(telegram_id: int, subject_card_id: int):
         s_out["unlocked"] = unlocked
         s_out["is_done"] = progress["total"] > 0 and progress["completed"] >= progress["total"]
         result.append(s_out)
-        # Keyingi bosqich uchun: shu bosqich tugallanganmi (bo'sh bosqich ham "tugallangan" hisoblanadi)
-        prev_completed = (progress["total"] == 0) or (progress["completed"] >= progress["total"])
+        # Keyingi bosqich uchun: shu bosqich tugallanganmi. E'TIBOR: bo'sh
+        # bosqich (hali test qo'shilmagan) ENDI "tugallangan" deb
+        # hisoblanmaydi — aks holda admin ulgurmagan bosqichdan keyingisi
+        # talaba uchun darrov ochilib qolar edi.
+        prev_completed = progress["total"] > 0 and progress["completed"] >= progress["total"]
     return result
 
 
