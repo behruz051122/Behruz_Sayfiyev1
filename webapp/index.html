@@ -647,6 +647,35 @@
         </form>
       </div>
 
+      <div id="adminPricingTiersPanel" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3 id="adminPricingTiersTitle">Narx paketlari</h3>
+          <button id="adminClosePricingTiers" class="icon-btn" aria-label="Yopish">✕</button>
+        </div>
+        <p style="font-size:11px;color:var(--text-dim);margin:-4px 0 10px;">
+          Bu yerdagi paketlar faqat talabaga KO'RSATISH uchun (referensdagi "Paket tanlang" kabi) —
+          talaba "Sotib olish" bosgach, hozirgidek admin bilan bog'lanadi, kirish huquqini esa siz
+          "Kurslar → Obuna berish" orqali qo'lda berasiz.
+        </p>
+        <div id="adminPricingTiersList" class="admin-list"></div>
+        <form id="pricingTierFormEl" class="admin-form">
+          <input type="hidden" id="pt_id">
+          <input type="hidden" id="pt_course_id">
+          <label>Nomi (masalan: 1 oy) <input id="pt_label" required></label>
+          <label>Narxi, so'm <input id="pt_price" type="number" min="0" value="0"></label>
+          <label>Eski narx (ixtiyoriy — chegirma chizib ko'rsatish uchun) <input id="pt_original_price" type="number" min="0"></label>
+          <label>Muddat matni (ixtiyoriy, masalan: 1 oy) <input id="pt_duration_text"></label>
+          <label>Tartib raqami <input id="pt_order_num" type="number" value="0"></label>
+          <label>Faolmi?
+            <select id="pt_is_active">
+              <option value="1">Ha</option>
+              <option value="0">Yo'q (yashirilgan)</option>
+            </select>
+          </label>
+          <button type="submit" class="gold-btn">Paketni saqlash</button>
+        </form>
+      </div>
+
       <div id="adminParagraphsPanel" class="admin-section hidden">
         <div class="admin-section-head">
           <h3 id="adminParagraphsTitle">Bo'limlar (paragraflar)</h3>
@@ -657,6 +686,7 @@
           <input type="hidden" id="ap_id">
           <input type="hidden" id="ap_course_id">
           <label>Bo'lim nomi (masalan: 1-§. Kirish) <input id="ap_title" required></label>
+          <label>Necha mavzu (ixtiyoriy — bo'sh qoldirsangiz ko'rsatilmaydi) <input id="ap_topic_count" type="number" min="0" value="0"></label>
           <label>Tartib raqami <input id="ap_order_num" type="number" value="0"></label>
           <button type="submit" class="gold-btn">Bo'limni saqlash</button>
         </form>

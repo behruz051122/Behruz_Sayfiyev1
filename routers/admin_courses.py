@@ -34,6 +34,30 @@ def admin_delete_course(course_id: int, admin=Depends(require_admin)):
     return {"ok": True}
 
 
+# ---------- Narx paketlari ----------
+
+@router.get("/courses/{course_id}/pricing-tiers")
+def admin_list_pricing_tiers(course_id: int, admin=Depends(require_admin)):
+    return {"tiers": db.get_pricing_tiers(course_id, only_active=False)}
+
+
+@router.post("/pricing-tiers")
+def admin_create_pricing_tier(data: dict = Body(...), admin=Depends(require_admin)):
+    return {"id": db.create_pricing_tier(data)}
+
+
+@router.put("/pricing-tiers/{tier_id}")
+def admin_update_pricing_tier(tier_id: int, data: dict = Body(...), admin=Depends(require_admin)):
+    db.update_pricing_tier(tier_id, data)
+    return {"ok": True}
+
+
+@router.delete("/pricing-tiers/{tier_id}")
+def admin_delete_pricing_tier(tier_id: int, admin=Depends(require_admin)):
+    db.delete_pricing_tier(tier_id)
+    return {"ok": True}
+
+
 # ---------- Bo'limlar (paragraflar) ----------
 
 @router.get("/courses/{course_id}/paragraphs")

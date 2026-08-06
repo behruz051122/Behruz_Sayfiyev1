@@ -366,11 +366,96 @@ function renderCourseList() {
 }
 
 // ---------- Kurs ichi (paragraflar) ----------
+// (Kelajakmediklari_bot tahlili asosida — yorqin gradient hero, "Bepul
+// sinab ko'ring" banneri, "Kurs rejasi" va "Paket tanlang" bilan)
+
+let selectedTierId = null;
+
+function buildCourseHero(course, totalLessons) {
+  const typeBadge = course.course_type === "nazoratli"
+    ? `<span class="hero-badge hero-badge-accent">🎓 NAZORATLI KURS</span>`
+    : `<span class="hero-badge hero-badge-accent">🧑‍💻 MUSTAQIL KURS</span>`;
+  const tiers = (course.pricing_tiers || []).filter(t => t.is_active);
+  const thirdPill = course.is_free
+    ? { num: "🔓", lbl: "Bepul kirish" }
+    : { num: String(tiers.length > 0 ? tiers.length : 1), lbl: tiers.length > 1 ? "paket" : "paket" };
+
+  return `
+    <div class="course-hero">
+      <div class="hero-badges">
+        ${typeBadge}
+        <span class="hero-badge">${course.subject}</span>
+      </div>
+      <h1 class="hero-title">${course.title}</h1>
+      ${course.description ? `<p class="hero-sub">${course.description}</p>` : ""}
+      <div class="hero-pills">
+        <div class="hero-pill"><div class="hero-pill-num">${totalLessons}</div><div class="hero-pill-lbl">ta dars</div></div>
+        <div class="hero-pill"><div class="hero-pill-num">${course.duration_text || "—"}</div><div class="hero-pill-lbl">davomiyligi</div></div>
+        <div class="hero-pill"><div class="hero-pill-num">${thirdPill.num}</div><div class="hero-pill-lbl">${thirdPill.lbl}</div></div>
+      </div>
+    </div>
+  `;
+}
+
+function buildModuleList(course) {
+  if (course.paragraphs.length === 0) return emptyHtml("Hozircha bo'limlar qo'shilmagan");
+  let html = `<div class="section-label">KURS REJASI</div><div class="module-list">`;
+  course.paragraphs.forEach((p, idx) => {
+    const watchedCount = p.lessons.filter(l => l.watched).length;
+    const hasAnyAccess = course.unlocked || p.lessons.some(l => !l.locked);
+    const metaParts = [`${p.lessons_count} ta dars`];
+    if (p.topic_count) metaParts.push(`${p.topic_count} ta mavzu`);
+    if (course.unlocked) metaParts.push(`${watchedCount}/${p.lessons_count} ko'rilgan`);
+    html += `
+      <div class="module-item ${hasAnyAccess ? "" : "module-locked"}" data-p-id="${p.id}">
+        <div class="module-num">${String(idx + 1).padStart(2, "0")}</div>
+        <div class="module-info">
+          <div class="module-title">${p.title}</div>
+          <div class="module-meta">${metaParts.join(" · ")}</div>
+        </div>
+        <div class="module-arrow">${hasAnyAccess ? "›" : "🔒"}</div>
+      </div>
+    `;
+  });
+  html += `</div>`;
+  return html;
+}
+
+function buildPricingSection(course) {
+  const tiers = (course.pricing_tiers || []).filter(t => t.is_active);
+  if (tiers.length === 0) return "";
+  if (selectedTierId === null || !tiers.some(t => t.id === selectedTierId)) {
+    selectedTierId = tiers[0].id;
+  }
+  const cards = tiers.map(t => {
+    const active = t.id === selectedTierId;
+    const discount = t.original_price && t.original_price > t.price
+      ? `<span class="tier-discount">-${Math.round((1 - t.price / t.original_price) * 100)}%</span>` : "";
+    return `
+      <div class="tier-card ${active ? "tier-card-active" : ""}" data-tier-id="${t.id}">
+        <div class="tier-check">${active ? "✓" : ""}</div>
+        <div class="tier-info">
+          <div class="tier-label">${t.label}</div>
+          <div class="tier-price">${t.price.toLocaleString()} so'm
+            ${t.original_price ? `<span class="tier-original">${t.original_price.toLocaleString()}</span>` : ""}
+            ${discount}
+          </div>
+        </div>
+        ${t.duration_text ? `<div class="tier-duration">⏱ ${t.duration_text}</div>` : ""}
+      </div>
+    `;
+  }).join("");
+  return `
+    <div class="section-label">PAKET TANLANG</div>
+    <div class="tier-list">${cards}</div>
+  `;
+}
 
 export async function openCourseDetail(courseId) {
   const content = document.getElementById("detailContent");
   content.innerHTML = loadingHtml();
   showScreen("detail");
+  selectedTierId = null;
 
   try {
     const res = await apiFetch(`/api/course/${courseId}`);
@@ -378,30 +463,29 @@ export async function openCourseDetail(courseId) {
     currentCourse = course;
     document.getElementById("detailTitle").textContent = course.title;
 
-    let html = `
-      <div class="detail-hero">
-        <span class="course-tag">${course.subject}</span>
-        <h1>${course.title}</h1>
-        <p>${course.description || ""}</p>
-      </div>
-      <div class="stat-boxes">
-        <div class="stat-box"><div class="num">${course.paragraphs.reduce((a,p)=>a+p.lessons_count,0)}</div><div class="lbl">ta dars</div></div>
-        <div class="stat-box"><div class="num">${course.paragraphs.length}</div><div class="lbl">bo'lim</div></div>
-        <div class="stat-box"><div class="num">${course.unlocked ? "🔓" : "🔒"}</div><div class="lbl">${course.unlocked ? "Ochiq" : "Yopiq"}</div></div>
-      </div>
-    `;
+    const totalLessons = course.paragraphs.reduce((a, p) => a + p.lessons_count, 0);
+    let html = buildCourseHero(course, totalLessons);
+
+    // "Bepul sinab ko'ring" — kurs yopiq bo'lsa-yu, admin belgilagan bepul
+    // namuna darslar bo'lsa (Kelajakmediklari_bot'dagi kabi).
+    const freeLessonsTotal = course.paragraphs.reduce((a, p) => a + p.lessons.filter(l => l.is_free_preview).length, 0);
+    if (!course.unlocked && freeLessonsTotal > 0) {
+      html += `
+        <div class="free-trial-banner">
+          <div class="free-trial-title">🎁 Bepul sinab ko'ring — ${freeLessonsTotal} ta dars ochiq</div>
+          <div class="free-trial-sub">To'lov qilmasdan birinchi darslarni ko'ring, kurs sizga yoqsa keyin sotib oling.</div>
+          <button type="button" class="free-trial-btn" id="freeTrialBtn">▶ Bepul darslarni ko'rish</button>
+        </div>
+      `;
+    }
 
     if (course.unlocked && course.reason === "grace") {
       html += `<div class="grace-banner">⏳ Obuna muddatingiz tugagan. ${course.days_left <= 0 ? Math.abs(course.days_left) : 0} kundan so'ng darslar avtomatik yopiladi — obunani yangilashni unutmang.</div>`;
     }
 
     // Kurs 100% tugallangan bo'lsa — sertifikat yuklab olish bannerini ko'rsatamiz.
-    // To'liqlik darajasi mavjud paragraf/dars ma'lumotlaridan (client tomonda)
-    // hisoblanadi — bu qo'shimcha API so'rovisiz tezkor ko'rsatish imkonini beradi;
-    // yuklab olishda server o'zi yana bir bor tekshirib, sertifikatni "beradi".
     if (course.unlocked) {
-      const totalLessons = course.paragraphs.reduce((a, p) => a + p.lessons_count, 0);
-      const watchedLessons = course.paragraphs.reduce((a, p) => a + (p.lessons || []).filter(l => l.watched).length, 0);
+      const watchedLessons = course.paragraphs.reduce((a, p) => a + p.lessons.filter(l => l.watched).length, 0);
       const isComplete = totalLessons > 0 && watchedLessons >= totalLessons;
       if (isComplete) {
         html += `
@@ -417,77 +501,67 @@ export async function openCourseDetail(courseId) {
       }
     }
 
-    if (course.unlocked) {
-      html += `<div class="paragraph-list">`;
-      if (course.paragraphs.length === 0) {
-        html += emptyHtml("Hozircha bo'limlar qo'shilmagan");
-      } else {
-        course.paragraphs.forEach((p, idx) => {
-          const watchedCount = p.lessons.filter(l => l.watched).length;
-          html += `
-            <div class="paragraph-item" data-p-id="${p.id}">
-              <div class="paragraph-num">${idx + 1}</div>
-              <div class="paragraph-info">
-                <div class="paragraph-title">${p.title}</div>
-                <div class="paragraph-meta">${p.lessons_count} ta video · ${watchedCount}/${p.lessons_count} ko'rilgan</div>
-              </div>
-              <div class="lesson-play">›</div>
-            </div>
-          `;
-        });
-      }
-      html += `</div>`;
-    } else {
+    html += buildModuleList(course);
+
+    if (!course.unlocked) {
       const reasonText = course.reason === "expired"
         ? "Obuna muddatingiz tugagan. Davom ettirish uchun obunani yangilang."
         : course.required_referrals > 0
           ? `Ushbu kursni ochish uchun ${course.required_referrals} kishini taklif qiling.`
-          : `Ushbu kurs pullik. Narxi: ${(course.price || 0).toLocaleString()} so'm${course.duration_text ? " / " + course.duration_text : ""}.`;
+          : `Ushbu kurs pullik. To'liq kirish uchun quyidagi paketlardan birini tanlab, admin bilan bog'laning.`;
 
-      // Kurs yopiq bo'lsa ham, admin "bepul namuna" deb belgilagan darslar
-      // bor bo'lsa — ularni ro'yxatdan o'tmasdan ko'rish imkonini beramiz
-      // (Kelajakmediklari_bot'dagi "N BEPUL" belgisi shu ma'noni bildiradi).
-      const previewParagraphs = course.paragraphs.filter(p => (p.lessons || []).length > 0);
-      if (previewParagraphs.length > 0) {
-        html += `<p style="margin:0 16px 10px;font-size:11.5px;color:var(--text-dim);">🔓 Quyidagi darslarni ro'yxatdan o'tmasdan bepul ko'rishingiz mumkin:</p>`;
-        html += `<div class="paragraph-list">`;
-        previewParagraphs.forEach((p) => {
-          html += `
-            <div class="paragraph-item" data-p-id="${p.id}">
-              <div class="paragraph-num">🔓</div>
-              <div class="paragraph-info">
-                <div class="paragraph-title">${p.title}</div>
-                <div class="paragraph-meta">${p.lessons.length} ta bepul namuna video</div>
-              </div>
-              <div class="lesson-play">›</div>
-            </div>
-          `;
-        });
-        html += `</div>`;
+      if (course.required_referrals > 0 || course.reason === "expired") {
+        html += `
+          <div class="locked-box">
+            <div class="lock-emoji">🔒</div>
+            <h3>Bu kurs hali yopiq</h3>
+            <p>${reasonText}</p>
+            ${course.required_referrals > 0
+              ? `<button class="gold-btn" id="lockedReferralBtn">Do'stlarni taklif qilish</button>`
+              : `<button class="gold-btn" id="lockedContactBtn">Admin bilan bog'lanish</button>`}
+          </div>
+        `;
+      } else {
+        html += buildPricingSection(course);
+        const tiers = (course.pricing_tiers || []).filter(t => t.is_active);
+        const buyPrice = tiers.length > 0
+          ? (tiers.find(t => t.id === selectedTierId) || tiers[0]).price
+          : (course.price || 0);
+        html += `
+          <div class="buy-bar">
+            <button type="button" class="buy-bar-btn" id="buyCourseBtn">Sotib olish · ${buyPrice.toLocaleString()} so'm ›</button>
+          </div>
+        `;
       }
-
-      html += `
-        <div class="locked-box">
-          <div class="lock-emoji">🔒</div>
-          <h3>Bu kurs hali yopiq</h3>
-          <p>${reasonText}</p>
-          ${course.required_referrals > 0
-            ? `<button class="gold-btn" id="lockedReferralBtn">Do'stlarni taklif qilish</button>`
-            : `<button class="gold-btn" id="lockedContactBtn">Admin bilan bog'lanish</button>`}
-        </div>
-      `;
     }
 
     content.innerHTML = html;
 
-    document.querySelectorAll(".paragraph-item").forEach(item => {
+    document.querySelectorAll(".module-item").forEach(item => {
       item.addEventListener("click", () => openParagraph(parseInt(item.getAttribute("data-p-id"))));
     });
+
+    document.querySelectorAll(".tier-card").forEach(card => {
+      card.addEventListener("click", () => {
+        selectedTierId = parseInt(card.getAttribute("data-tier-id"));
+        openCourseDetail(courseId);
+      });
+    });
+
+    const freeTrialBtn = document.getElementById("freeTrialBtn");
+    if (freeTrialBtn) {
+      freeTrialBtn.addEventListener("click", () => {
+        const firstPreview = course.paragraphs.find(p => p.lessons.some(l => l.is_free_preview));
+        if (firstPreview) openParagraph(firstPreview.id);
+      });
+    }
 
     const referralBtn = document.getElementById("lockedReferralBtn");
     if (referralBtn) referralBtn.addEventListener("click", () => navigateTo("referral"));
     const contactBtn = document.getElementById("lockedContactBtn");
     if (contactBtn) contactBtn.addEventListener("click", () => navigateTo("profile"));
+    const buyBtn = document.getElementById("buyCourseBtn");
+    if (buyBtn) buyBtn.addEventListener("click", () => navigateTo("profile"));
 
     const certBtn = document.getElementById("downloadCertificateBtn");
     if (certBtn) certBtn.addEventListener("click", () => downloadCertificate(courseId, certBtn));
@@ -529,6 +603,9 @@ export async function downloadCertificate(courseId, btnEl) {
 
 // ---------- Paragraf ichi (video darslar) ----------
 
+// Darslar "yo'lak" (ilonsimon) ko'rinishi — Kelajakmediklari_bot tahlili
+// asosida: har bir dars raqamli doira, ko'rilgan bo'lsa ✓ (yashil), bepul
+// namuna bo'lsa "BEPUL" belgisi, qulflangan bo'lsa 🔒 (bosilmaydi).
 export function openParagraph(paragraphId) {
   const p = currentCourse.paragraphs.find(x => x.id === paragraphId);
   if (!p) return;
@@ -536,25 +613,57 @@ export function openParagraph(paragraphId) {
   document.getElementById("paragraphTitle").textContent = p.title;
 
   const content = document.getElementById("paragraphContent");
-  let html = `<div class="lesson-list">`;
-  if (p.lessons.length === 0) {
+  const watchedCount = p.lessons.filter(l => l.watched).length;
+  const total = p.lessons.length;
+  const percent = total > 0 ? Math.round((watchedCount / total) * 100) : 0;
+
+  let html = `
+    <div class="path-progress-box">
+      <div class="path-progress-top">
+        <span>Umumiy progress</span>
+        <span>${watchedCount}/${total} · ${percent}%</span>
+      </div>
+      <div class="score-bar-track"><div class="score-bar-fill" style="width:${percent}%"></div></div>
+    </div>
+  `;
+
+  if (total === 0) {
     html += emptyHtml("Bu bo'limda hozircha video yo'q");
   } else {
+    const nextIndex = p.lessons.findIndex(l => !l.locked && !l.watched);
+    html += `<div class="lesson-path">`;
     p.lessons.forEach((lesson, idx) => {
+      const isNext = idx === nextIndex;
+      const circleCls = lesson.locked
+        ? "path-circle-locked"
+        : lesson.watched
+          ? "path-circle-watched"
+          : isNext
+            ? "path-circle-current"
+            : "path-circle-open";
+      const circleContent = lesson.locked ? "🔒" : lesson.watched ? "✓" : (idx + 1);
+      const freeBadge = (!currentCourse.unlocked && lesson.is_free_preview) ? `<span class="path-badge">BEPUL</span>` : "";
       html += `
-        <div class="lesson-item" data-lesson-id="${lesson.id}">
-          <div class="lesson-num ${lesson.watched ? "watched" : ""}">${lesson.watched ? "✓" : idx + 1}</div>
-          <div class="lesson-title">${lesson.title}</div>
-          <div class="lesson-play">▶</div>
+        <div class="path-node" data-lesson-id="${lesson.id}" data-locked="${lesson.locked ? "1" : "0"}">
+          ${isNext ? `<div class="path-start-tag">BOSHLASH</div>` : ""}
+          <div class="path-circle ${circleCls}">
+            ${freeBadge}
+            <span>${circleContent}</span>
+          </div>
+          <div class="path-node-label">${lesson.title}</div>
         </div>
       `;
     });
+    html += `</div>`;
   }
-  html += `</div>`;
   content.innerHTML = html;
 
-  document.querySelectorAll(".lesson-item").forEach(item => {
+  document.querySelectorAll(".path-node").forEach(item => {
     item.addEventListener("click", () => {
+      if (item.getAttribute("data-locked") === "1") {
+        showToast("🔒 Bu dars qulflangan — kursni sotib olgandan so'ng ochiladi");
+        return;
+      }
       const lessonId = parseInt(item.getAttribute("data-lesson-id"));
       const lesson = p.lessons.find(l => l.id === lessonId);
       playLesson(lesson);
@@ -583,6 +692,13 @@ function extractYoutubeId(url) {
 }
 
 function playLesson(lesson) {
+  // Oldingi/keyingi tugmalari yoki klaviatura orqali qulflangan darsga
+  // o'tib qolinmasin (masalan bepul namunadan keyingi dars yopiq bo'lsa).
+  if (lesson.locked) {
+    showToast("🔒 Bu dars qulflangan — kursni sotib olgandan so'ng ochiladi");
+    if (currentParagraph) openParagraph(currentParagraph.id);
+    return;
+  }
   currentLesson = lesson;
   document.getElementById("lessonTitle").textContent = lesson.title;
   const content = document.getElementById("lessonContent");

@@ -29,22 +29,37 @@ def api_get_course(course_id: int, user=Depends(get_verified_telegram_user)):
     telegram_id = user["telegram_id"]
     access = db.compute_course_access(telegram_id, course)
     course.update(access)
+    course["pricing_tiers"] = db.get_pricing_tiers(course_id)
 
     paragraphs = db.get_paragraphs(course_id)
     watched_ids = set(db.get_watched_lesson_ids(telegram_id, course_id)) if course["unlocked"] else set()
     # Kurs qulflangan bo'lsa ham, admin "bepul namuna" deb belgilagan darslar
     # ro'yxatdan o'tmasdan ko'rsatiladi (Kelajakmediklari_bot'dagi "N BEPUL"
     # belgisi shu ma'noni bildiradi — reklama/namuna sifatida ochiq turadi).
+    # QOLGAN (qulflangan) darslar endi BUTUNLAY yashirilmaydi — talaba
+    # "yo'lak" ko'rinishida ularning NOMI/tartibini ko'radi (Kelajakmediklari
+    # bot'dagi kabi, qulf belgisi bilan), faqat video/tavsif kabi haqiqiy
+    # kontent berilmaydi.
     free_preview_ids = set() if course["unlocked"] else db.get_free_preview_lesson_ids(course_id)
 
     for p in paragraphs:
-        if course["unlocked"]:
-            lessons = db.get_lessons(p["id"])
-        else:
-            lessons = [l for l in db.get_lessons(p["id"]) if l["id"] in free_preview_ids]
-        for l in lessons:
-            l["watched"] = l["id"] in watched_ids
-            l["is_free_preview"] = bool(l.get("is_free_preview"))
+        raw_lessons = db.get_lessons(p["id"])
+        lessons = []
+        for l in raw_lessons:
+            is_preview = bool(l.get("is_free_preview"))
+            if course["unlocked"] or is_preview:
+                lessons.append({
+                    **l,
+                    "watched": l["id"] in watched_ids,
+                    "is_free_preview": is_preview,
+                    "locked": False,
+                })
+            else:
+                lessons.append({
+                    "id": l["id"], "title": l["title"], "order_num": l["order_num"],
+                    "is_free_preview": False, "locked": True, "watched": False,
+                    "video_url": None, "image_url": None, "description": None, "table_data": None,
+                })
         p["lessons"] = lessons
         p["lessons_count"] = db.count_paragraph_lessons(p["id"])
 

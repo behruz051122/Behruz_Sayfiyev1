@@ -516,6 +516,7 @@ export async function loadAdminCourses() {
   document.getElementById("adminCourseForm").classList.add("hidden");
   document.getElementById("adminParagraphsPanel").classList.add("hidden");
   document.getElementById("adminLessonsPanel").classList.add("hidden");
+  document.getElementById("adminPricingTiersPanel").classList.add("hidden");
   const box = document.getElementById("adminCoursesList");
   box.innerHTML = skeletonCards(2);
   try {
@@ -528,6 +529,7 @@ export async function loadAdminCourses() {
       row.className = "admin-row";
       const accessLabel = c.is_free ? "Bepul" : (c.price > 0 ? c.price.toLocaleString() + " so'm" : c.required_referrals + " taklif");
       const courseTypeBadge = c.course_type === "nazoratli" ? `<span class="control-badge">🎓 NAZORATLI</span>` : "";
+      const pricingBtn = !c.is_free ? `<button data-a="pricing">💳 Paketlar</button>` : "";
       row.innerHTML = `
         <div class="emoji">${c.thumbnail_emoji || "📘"}</div>
         <div class="info">
@@ -536,11 +538,13 @@ export async function loadAdminCourses() {
         </div>
         <div class="row-actions">
           <button data-a="paragraphs">Bo'limlar</button>
+          ${pricingBtn}
           <button data-a="edit">Tahrirlash</button>
           <button data-a="delete" class="danger">O'chirish</button>
         </div>
       `;
       row.querySelector('[data-a="paragraphs"]').onclick = () => openAdminParagraphs(c.id, c.title);
+      if (pricingBtn) row.querySelector('[data-a="pricing"]').onclick = () => openAdminPricingTiers(c.id, c.title);
       row.querySelector('[data-a="edit"]').onclick = () => openAdminCourseForm(c);
       row.querySelector('[data-a="delete"]').onclick = () => deleteAdminCourse(c.id);
       box.appendChild(row);
@@ -567,6 +571,7 @@ function openAdminCourseForm(course) {
   document.getElementById("adminCourseForm").classList.remove("hidden");
   document.getElementById("adminParagraphsPanel").classList.add("hidden");
   document.getElementById("adminLessonsPanel").classList.add("hidden");
+  document.getElementById("adminPricingTiersPanel").classList.add("hidden");
   document.getElementById("adminCourseFormTitle").textContent = course ? "Kursni tahrirlash" : "Yangi kurs";
   document.getElementById("ac_id").value = course ? course.id : "";
   document.getElementById("ac_title").value = course ? course.title : "";
@@ -591,6 +596,72 @@ async function deleteAdminCourse(id) {
   loadAdminCourses();
 }
 
+// ---------- Narx paketlari ----------
+
+let adminActivePricingCourseId = null;
+
+async function openAdminPricingTiers(courseId, title) {
+  adminActivePricingCourseId = courseId;
+  document.getElementById("adminPricingTiersPanel").classList.remove("hidden");
+  document.getElementById("adminCourseForm").classList.add("hidden");
+  document.getElementById("adminParagraphsPanel").classList.add("hidden");
+  document.getElementById("adminLessonsPanel").classList.add("hidden");
+  document.getElementById("adminPricingTiersTitle").textContent = `Narx paketlari — ${title}`;
+  document.getElementById("pt_course_id").value = courseId;
+  resetPricingTierForm();
+  await renderAdminPricingTiers(courseId);
+}
+
+function resetPricingTierForm() {
+  document.getElementById("pt_id").value = "";
+  document.getElementById("pt_label").value = "";
+  document.getElementById("pt_price").value = 0;
+  document.getElementById("pt_original_price").value = "";
+  document.getElementById("pt_duration_text").value = "";
+  document.getElementById("pt_order_num").value = 0;
+  document.getElementById("pt_is_active").value = "1";
+}
+
+async function renderAdminPricingTiers(courseId) {
+  const res = await apiFetch(`/api/admin/courses/${courseId}/pricing-tiers`);
+  const data = await res.json();
+  const box = document.getElementById("adminPricingTiersList");
+  box.innerHTML = "";
+  if (data.tiers.length === 0) box.innerHTML = emptyHtml("Hali paket qo'shilmagan — bo'lmasa talabaga oddiy narx ko'rsatiladi");
+  data.tiers.forEach(t => {
+    const row = document.createElement("div");
+    row.className = "admin-row";
+    const priceText = t.original_price
+      ? `${t.price.toLocaleString()} so'm (avvalgisi ${t.original_price.toLocaleString()})`
+      : `${t.price.toLocaleString()} so'm`;
+    row.innerHTML = `
+      <div class="info">
+        <div class="t">${t.label}${t.is_active ? "" : " (yashirin)"}</div>
+        <div class="s">${priceText}${t.duration_text ? " · " + t.duration_text : ""}</div>
+      </div>
+      <div class="row-actions">
+        <button data-a="edit">Tahrirlash</button>
+        <button data-a="delete" class="danger">O'chirish</button>
+      </div>
+    `;
+    row.querySelector('[data-a="edit"]').onclick = () => {
+      document.getElementById("pt_id").value = t.id;
+      document.getElementById("pt_label").value = t.label;
+      document.getElementById("pt_price").value = t.price;
+      document.getElementById("pt_original_price").value = t.original_price || "";
+      document.getElementById("pt_duration_text").value = t.duration_text || "";
+      document.getElementById("pt_order_num").value = t.order_num;
+      document.getElementById("pt_is_active").value = String(t.is_active);
+    };
+    row.querySelector('[data-a="delete"]').onclick = async () => {
+      if (!confirm("Bu paketni o'chirmoqchimisiz?")) return;
+      await apiFetch(`/api/admin/pricing-tiers/${t.id}`, { method: "DELETE" });
+      renderAdminPricingTiers(courseId);
+    };
+    box.appendChild(row);
+  });
+}
+
 // ---------- Bo'limlar (paragraflar) ----------
 
 let adminActiveCourseId = null;
@@ -600,11 +671,13 @@ async function openAdminParagraphs(courseId, title) {
   document.getElementById("adminParagraphsPanel").classList.remove("hidden");
   document.getElementById("adminCourseForm").classList.add("hidden");
   document.getElementById("adminLessonsPanel").classList.add("hidden");
+  document.getElementById("adminPricingTiersPanel").classList.add("hidden");
   document.getElementById("adminParagraphsTitle").textContent = `Bo'limlar — ${title}`;
   document.getElementById("ap_course_id").value = courseId;
   document.getElementById("ap_id").value = "";
   document.getElementById("ap_title").value = "";
   document.getElementById("ap_order_num").value = 0;
+  document.getElementById("ap_topic_count").value = 0;
   await renderAdminParagraphs(courseId);
 }
 
@@ -618,7 +691,7 @@ async function renderAdminParagraphs(courseId) {
     const row = document.createElement("div");
     row.className = "admin-row";
     row.innerHTML = `
-      <div class="info"><div class="t">${idx + 1}. ${p.title}</div><div class="s">${p.lessons_count} ta video</div></div>
+      <div class="info"><div class="t">${idx + 1}. ${p.title}</div><div class="s">${p.lessons_count} ta video${p.topic_count ? ` · ${p.topic_count} ta mavzu` : ""}</div></div>
       <div class="row-actions">
         <button data-a="lessons">Videolar</button>
         <button data-a="edit">Tahrirlash</button>
@@ -630,6 +703,7 @@ async function renderAdminParagraphs(courseId) {
       document.getElementById("ap_id").value = p.id;
       document.getElementById("ap_title").value = p.title;
       document.getElementById("ap_order_num").value = p.order_num;
+      document.getElementById("ap_topic_count").value = p.topic_count || 0;
     };
     row.querySelector('[data-a="delete"]').onclick = async () => {
       if (!confirm("Bu bo'limni o'chirmoqchimisiz? Ichidagi videolar ham o'chadi.")) return;
@@ -1105,6 +1179,28 @@ export function initAdminModule() {
     loadAdminCourses();
   });
 
+  document.getElementById("adminClosePricingTiers").addEventListener("click", () => document.getElementById("adminPricingTiersPanel").classList.add("hidden"));
+
+  document.getElementById("pricingTierFormEl").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const id = document.getElementById("pt_id").value;
+    const courseId = document.getElementById("pt_course_id").value;
+    const originalPriceRaw = document.getElementById("pt_original_price").value;
+    const data = {
+      course_id: parseInt(courseId),
+      label: document.getElementById("pt_label").value,
+      price: parseInt(document.getElementById("pt_price").value || 0),
+      original_price: originalPriceRaw ? parseInt(originalPriceRaw) : null,
+      duration_text: document.getElementById("pt_duration_text").value,
+      order_num: parseInt(document.getElementById("pt_order_num").value),
+      is_active: parseInt(document.getElementById("pt_is_active").value)
+    };
+    if (id) await apiFetch(`/api/admin/pricing-tiers/${id}`, { method: "PUT", body: JSON.stringify(data) });
+    else await apiFetch(`/api/admin/pricing-tiers`, { method: "POST", body: JSON.stringify(data) });
+    resetPricingTierForm();
+    renderAdminPricingTiers(courseId);
+  });
+
   document.getElementById("adminCloseParagraphs").addEventListener("click", () => document.getElementById("adminParagraphsPanel").classList.add("hidden"));
 
   document.getElementById("paragraphFormEl").addEventListener("submit", async (e) => {
@@ -1114,13 +1210,15 @@ export function initAdminModule() {
     const data = {
       course_id: parseInt(courseId),
       title: document.getElementById("ap_title").value,
-      order_num: parseInt(document.getElementById("ap_order_num").value)
+      order_num: parseInt(document.getElementById("ap_order_num").value),
+      topic_count: parseInt(document.getElementById("ap_topic_count").value || 0)
     };
     if (id) await apiFetch(`/api/admin/paragraphs/${id}`, { method: "PUT", body: JSON.stringify(data) });
     else await apiFetch(`/api/admin/paragraphs`, { method: "POST", body: JSON.stringify(data) });
     document.getElementById("ap_id").value = "";
     document.getElementById("ap_title").value = "";
     document.getElementById("ap_order_num").value = 0;
+    document.getElementById("ap_topic_count").value = 0;
     renderAdminParagraphs(courseId);
     loadAdminCourses();
   });

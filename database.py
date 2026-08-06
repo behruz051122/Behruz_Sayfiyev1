@@ -103,6 +103,37 @@ def init_db():
             )
         """)
 
+        # "Mavzu soni" — Kelajakmediklari_bot'dagi "30 ta dars · 42 ta mavzu"
+        # ko'rinishidagi ikkinchi son. Bizda dars = mavzu (1:1) bo'lsa ham,
+        # admin ba'zan kattaroq "mavzular" sonini alohida ko'rsatmoqchi
+        # bo'lishi mumkin (masalan bitta darsda bir nechta mavzu qamrab
+        # olingan bo'lsa) — shuning uchun darsdan MUSTAQIL, qo'lda
+        # kiritiladigan ustun sifatida qo'shildi.
+        try:
+            cur.execute("ALTER TABLE paragraphs ADD COLUMN topic_count INTEGER DEFAULT 0")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # ustun allaqachon mavjud — muammo emas
+
+        # Kurs narx paketlari ("PAKET TANLANG") — bir kursga bir nechta
+        # muddat/narx variantini ko'rsatish imkonini beradi (masalan "1 oy —
+        # 250 000 so'm", "3 oy — 650 000 so'm"). Bu FAQAT ko'rsatish/marketing
+        # uchun — haqiqiy kirish huquqi hozirgidek admin tomonidan qo'lda
+        # (grant_enrollment) beriladi, chunki ilovada onlayn to'lov integratsiyasi yo'q.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS course_pricing_tiers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                course_id INTEGER NOT NULL,
+                label TEXT NOT NULL,
+                price INTEGER DEFAULT 0,
+                original_price INTEGER,
+                duration_text TEXT,
+                order_num INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
+                FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+            )
+        """)
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS lessons (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1215,8 +1246,9 @@ def get_paragraph(paragraph_id: int):
 def create_paragraph(data: dict) -> int:
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("INSERT INTO paragraphs (course_id, title, order_num) VALUES (?, ?, ?)", (
-            int(data["course_id"]), data.get("title", ""), int(data.get("order_num", 0))
+        cur.execute("INSERT INTO paragraphs (course_id, title, order_num, topic_count) VALUES (?, ?, ?, ?)", (
+            int(data["course_id"]), data.get("title", ""), int(data.get("order_num", 0)),
+            int(data.get("topic_count", 0) or 0)
         ))
         conn.commit()
         return cur.lastrowid
@@ -1226,7 +1258,7 @@ def update_paragraph(paragraph_id: int, data: dict):
     with get_connection() as conn:
         cur = conn.cursor()
         fields, values = [], []
-        for key in ["title", "order_num"]:
+        for key in ["title", "order_num", "topic_count"]:
             if key in data:
                 fields.append(f"{key} = ?")
                 values.append(data[key])
@@ -1240,6 +1272,56 @@ def delete_paragraph(paragraph_id: int):
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("DELETE FROM paragraphs WHERE id = ?", (paragraph_id,))
+        conn.commit()
+
+
+# ---------- KURS NARX PAKETLARI ----------
+
+def get_pricing_tiers(course_id: int, only_active: bool = True):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = "SELECT * FROM course_pricing_tiers WHERE course_id = ?"
+        params = [course_id]
+        if only_active:
+            query += " AND is_active = 1"
+        query += " ORDER BY order_num ASC, id ASC"
+        cur.execute(query, params)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def create_pricing_tier(data: dict) -> int:
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO course_pricing_tiers (course_id, label, price, original_price, duration_text, order_num, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            int(data["course_id"]), data.get("label", ""), int(data.get("price", 0) or 0),
+            int(data["original_price"]) if data.get("original_price") else None,
+            data.get("duration_text", ""), int(data.get("order_num", 0)), int(data.get("is_active", 1))
+        ))
+        conn.commit()
+        return cur.lastrowid
+
+
+def update_pricing_tier(tier_id: int, data: dict):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        fields, values = [], []
+        for key in ["label", "price", "original_price", "duration_text", "order_num", "is_active"]:
+            if key in data:
+                fields.append(f"{key} = ?")
+                values.append(data[key] if data[key] != "" else None)
+        if fields:
+            values.append(tier_id)
+            cur.execute(f"UPDATE course_pricing_tiers SET {', '.join(fields)} WHERE id = ?", values)
+            conn.commit()
+
+
+def delete_pricing_tier(tier_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM course_pricing_tiers WHERE id = ?", (tier_id,))
         conn.commit()
 
 
