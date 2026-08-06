@@ -58,6 +58,28 @@ def admin_delete_test_subject_card(card_id: int, admin=Depends(require_admin)):
     return {"ok": True}
 
 
+@router.get("/test-stages")
+def admin_list_test_stages(admin=Depends(require_admin)):
+    return {"stages": db.get_all_test_stages(only_active=False)}
+
+
+@router.post("/test-stages")
+def admin_create_test_stage(data: dict = Body(...), admin=Depends(require_admin)):
+    return {"id": db.create_test_stage(data)}
+
+
+@router.put("/test-stages/{stage_id}")
+def admin_update_test_stage(stage_id: int, data: dict = Body(...), admin=Depends(require_admin)):
+    db.update_test_stage(stage_id, data)
+    return {"ok": True}
+
+
+@router.delete("/test-stages/{stage_id}")
+def admin_delete_test_stage(stage_id: int, admin=Depends(require_admin)):
+    db.delete_test_stage(stage_id)
+    return {"ok": True}
+
+
 @router.get("/test-groups")
 def admin_list_test_groups(admin=Depends(require_admin)):
     return {"groups": db.get_all_test_groups(only_active=False)}

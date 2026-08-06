@@ -21,6 +21,7 @@ let currentAdminCourses = [];
 let currentAdminCourseCategories = [];
 let currentAdminTests = [];
 let currentTestSubjectCards = [];
+let currentTestStages = [];
 let currentTestGroups = [];
 let objectionsStatusFilter = "pending";
 
@@ -866,18 +867,21 @@ export async function loadAdminTests() {
   document.getElementById("adminControlAccessPanel").classList.add("hidden");
   document.getElementById("adminControlResultsPanel").classList.add("hidden");
   document.getElementById("adminTestSubjectCardsPanel").classList.add("hidden");
+  document.getElementById("adminTestStagesPanel").classList.add("hidden");
   document.getElementById("adminTestGroupsPanel").classList.add("hidden");
   const box = document.getElementById("adminTestsList");
   box.innerHTML = skeletonCards(2);
   try {
-    const [testsRes, cardsRes, groupsRes] = await Promise.all([
+    const [testsRes, cardsRes, stagesRes, groupsRes] = await Promise.all([
       apiFetch(`/api/admin/tests`),
       apiFetch(`/api/admin/test-subject-cards`),
+      apiFetch(`/api/admin/test-stages`),
       apiFetch(`/api/admin/test-groups`)
     ]);
     const data = await testsRes.json();
     currentAdminTests = data.tests;
     currentTestSubjectCards = (await cardsRes.json()).cards;
+    currentTestStages = (await stagesRes.json()).stages;
     currentTestGroups = (await groupsRes.json()).groups;
     const groupById = Object.fromEntries(currentTestGroups.map(g => [g.id, g]));
     box.innerHTML = "";
@@ -888,7 +892,7 @@ export async function loadAdminTests() {
       const controlBadge = t.is_control_test ? `<span class="control-badge">🎓 NAZORAT</span>` : "";
       const attestationBadge = t.test_kind === "attestation" ? `<span class="control-badge">📋 ATTESTATSIYA</span>` : "";
       const group = t.test_group_id ? groupById[t.test_group_id] : null;
-      const groupBadge = group ? `<span class="control-badge">${group.icon || "📂"} ${group.subject_title} · ${group.title}</span>` : "";
+      const groupBadge = group ? `<span class="control-badge">${group.icon || "📂"} ${group.subject_title} · ${group.stage_title} · ${group.title}</span>` : "";
       const accessBtn = t.is_control_test ? `<button data-a="access">👥 Talabalar</button>` : "";
       const resultsBtn = t.is_control_test ? `<button data-a="results">📊 Natijalar</button>` : "";
       row.innerHTML = `
@@ -931,13 +935,18 @@ function populateControlCourseSelect() {
 }
 
 function populateTestGroupSelect(selectedId) {
+  // Uch bosqichli tanlov: Fan -> Bosqich -> Turkum. HTML <optgroup> ichma-ich
+  // bo'lolmagani uchun har bir optgroup nomini "Fan — Bosqich" qilib
+  // birlashtiramiz, ostidagi variantlar esa shu bosqichdagi turkumlar.
   const select = document.getElementById("at_test_group_id");
-  select.innerHTML = `<option value="">— Guruhga bog'lamaslik —</option>`;
-  currentTestSubjectCards.forEach(card => {
-    const groups = currentTestGroups.filter(g => g.subject_card_id === card.id);
+  select.innerHTML = `<option value="">— Turkumga bog'lamaslik —</option>`;
+  const cardById = Object.fromEntries(currentTestSubjectCards.map(c => [c.id, c]));
+  currentTestStages.forEach(stage => {
+    const groups = currentTestGroups.filter(g => g.stage_id === stage.id);
     if (groups.length === 0) return;
+    const card = cardById[stage.subject_card_id];
     const optgroup = document.createElement("optgroup");
-    optgroup.label = `${card.icon || "📘"} ${card.title}`;
+    optgroup.label = `${card ? (card.icon || "📘") + " " + card.title : "Fan"} — ${stage.icon || "📶"} ${stage.title}`;
     groups.forEach(g => {
       const opt = document.createElement("option");
       opt.value = g.id;
@@ -961,6 +970,7 @@ function openAdminTestForm(test) {
   document.getElementById("adminControlAccessPanel").classList.add("hidden");
   document.getElementById("adminControlResultsPanel").classList.add("hidden");
   document.getElementById("adminTestSubjectCardsPanel").classList.add("hidden");
+  document.getElementById("adminTestStagesPanel").classList.add("hidden");
   document.getElementById("adminTestGroupsPanel").classList.add("hidden");
   document.getElementById("adminTestFormTitle").textContent = test ? "Testni tahrirlash" : "Yangi test";
   document.getElementById("at_id").value = test ? test.id : "";
@@ -998,6 +1008,7 @@ async function deleteAdminTest(id) {
 
 async function openAdminTestSubjectCards() {
   document.getElementById("adminTestSubjectCardsPanel").classList.remove("hidden");
+  document.getElementById("adminTestStagesPanel").classList.add("hidden");
   document.getElementById("adminTestGroupsPanel").classList.add("hidden");
   document.getElementById("adminTestForm").classList.add("hidden");
   resetTestSubjectCardForm();
@@ -1051,24 +1062,108 @@ async function renderAdminTestSubjectCards() {
   });
 }
 
-// ---------- Mavzuli test: Guruhlar ----------
+// ---------- Mavzuli test: Bosqichlar ----------
 
-async function openAdminTestGroups() {
-  document.getElementById("adminTestGroupsPanel").classList.remove("hidden");
+async function openAdminTestStages() {
+  document.getElementById("adminTestStagesPanel").classList.remove("hidden");
   document.getElementById("adminTestSubjectCardsPanel").classList.add("hidden");
+  document.getElementById("adminTestGroupsPanel").classList.add("hidden");
   document.getElementById("adminTestForm").classList.add("hidden");
-  resetTestGroupForm();
-  populateSubjectCardSelectForGroupForm();
-  await renderAdminTestGroups();
+  resetTestStageForm();
+  populateSubjectCardSelectForStageForm();
+  await renderAdminTestStages();
 }
 
-function populateSubjectCardSelectForGroupForm() {
-  const select = document.getElementById("tg_subject_card_id");
+function populateSubjectCardSelectForStageForm() {
+  const select = document.getElementById("ts_subject_card_id");
   select.innerHTML = "";
   currentTestSubjectCards.forEach(card => {
     const opt = document.createElement("option");
     opt.value = card.id;
     opt.textContent = `${card.icon || "📘"} ${card.title}`;
+    select.appendChild(opt);
+  });
+}
+
+function resetTestStageForm() {
+  document.getElementById("ts_id").value = "";
+  document.getElementById("ts_title").value = "";
+  document.getElementById("ts_subtitle").value = "";
+  document.getElementById("ts_icon").value = "📶";
+  document.getElementById("ts_order_num").value = 0;
+  document.getElementById("ts_is_active").value = "1";
+}
+
+async function renderAdminTestStages() {
+  const res = await apiFetch(`/api/admin/test-stages`);
+  const data = await res.json();
+  currentTestStages = data.stages;
+  const box = document.getElementById("adminTestStagesList");
+  box.innerHTML = "";
+  if (data.stages.length === 0) box.innerHTML = emptyHtml("Hali bosqich qo'shilmagan");
+  data.stages.forEach(s => {
+    const row = document.createElement("div");
+    row.className = "admin-row";
+    row.innerHTML = `
+      <div class="emoji">${s.icon || "📶"}</div>
+      <div class="info">
+        <div class="t">${s.title}${s.is_active ? "" : " (yashirin)"}</div>
+        <div class="s">${s.subject_title} · tartib: ${s.order_num}${s.subtitle ? " · " + s.subtitle : ""}</div>
+      </div>
+      <div class="row-actions">
+        <button data-a="edit">Tahrirlash</button>
+        <button data-a="delete" class="danger">O'chirish</button>
+      </div>
+    `;
+    row.querySelector('[data-a="edit"]').onclick = () => {
+      document.getElementById("ts_id").value = s.id;
+      document.getElementById("ts_subject_card_id").value = String(s.subject_card_id);
+      document.getElementById("ts_title").value = s.title;
+      document.getElementById("ts_subtitle").value = s.subtitle || "";
+      document.getElementById("ts_icon").value = s.icon || "📶";
+      document.getElementById("ts_order_num").value = s.order_num;
+      document.getElementById("ts_is_active").value = String(s.is_active);
+    };
+    row.querySelector('[data-a="delete"]').onclick = async () => {
+      if (!confirm(`"${s.title}" bosqichini o'chirmoqchimisiz? Ichidagi barcha turkumlar ham o'chadi.`)) return;
+      await apiFetch(`/api/admin/test-stages/${s.id}`, { method: "DELETE" });
+      renderAdminTestStages();
+    };
+    box.appendChild(row);
+  });
+}
+
+// ---------- Mavzuli test: Turkumlar (guruhlar) ----------
+
+async function openAdminTestGroups() {
+  document.getElementById("adminTestGroupsPanel").classList.remove("hidden");
+  document.getElementById("adminTestSubjectCardsPanel").classList.add("hidden");
+  document.getElementById("adminTestStagesPanel").classList.add("hidden");
+  document.getElementById("adminTestForm").classList.add("hidden");
+  resetTestGroupForm();
+  await populateStageSelectForGroupForm();
+  await renderAdminTestGroups();
+}
+
+async function populateStageSelectForGroupForm() {
+  // Bosqichlar ro'yxati hali yuklanmagan bo'lishi mumkin (masalan admin
+  // to'g'ridan-to'g'ri "🗂 Turkumlar" tugmasini bossa) — shu holatda yangilab olamiz.
+  if (currentTestStages.length === 0) {
+    const res = await apiFetch(`/api/admin/test-stages`);
+    currentTestStages = (await res.json()).stages;
+  }
+  const select = document.getElementById("tg_stage_id");
+  select.innerHTML = "";
+  const cardById = Object.fromEntries(currentTestSubjectCards.map(c => [c.id, c]));
+  if (currentTestStages.length === 0) {
+    select.innerHTML = `<option value="">— Avval "📶 Bosqichlar" bo'limida bosqich yarating —</option>`;
+    return;
+  }
+  currentTestStages.forEach(stage => {
+    const card = cardById[stage.subject_card_id];
+    const opt = document.createElement("option");
+    opt.value = stage.id;
+    opt.textContent = `${card ? card.title : "Fan"} — ${stage.icon || "📶"} ${stage.title}`;
     select.appendChild(opt);
   });
 }
@@ -1088,7 +1183,7 @@ async function renderAdminTestGroups() {
   currentTestGroups = data.groups;
   const box = document.getElementById("adminTestGroupsList");
   box.innerHTML = "";
-  if (data.groups.length === 0) box.innerHTML = emptyHtml("Hali guruh qo'shilmagan");
+  if (data.groups.length === 0) box.innerHTML = emptyHtml("Hali turkum qo'shilmagan");
   data.groups.forEach(g => {
     const row = document.createElement("div");
     row.className = "admin-row";
@@ -1096,16 +1191,17 @@ async function renderAdminTestGroups() {
       <div class="emoji">${g.icon || "📂"}</div>
       <div class="info">
         <div class="t">${g.title}${g.is_active ? "" : " (yashirin)"}</div>
-        <div class="s">${g.subject_title} · tartib: ${g.order_num}${g.subtitle ? " · " + g.subtitle : ""}</div>
+        <div class="s">${g.subject_title} · ${g.stage_title} · tartib: ${g.order_num}${g.subtitle ? " · " + g.subtitle : ""}</div>
       </div>
       <div class="row-actions">
         <button data-a="edit">Tahrirlash</button>
         <button data-a="delete" class="danger">O'chirish</button>
       </div>
     `;
-    row.querySelector('[data-a="edit"]').onclick = () => {
+    row.querySelector('[data-a="edit"]').onclick = async () => {
+      await populateStageSelectForGroupForm();
       document.getElementById("tg_id").value = g.id;
-      document.getElementById("tg_subject_card_id").value = String(g.subject_card_id);
+      document.getElementById("tg_stage_id").value = String(g.stage_id);
       document.getElementById("tg_title").value = g.title;
       document.getElementById("tg_subtitle").value = g.subtitle || "";
       document.getElementById("tg_icon").value = g.icon || "📂";
@@ -1113,7 +1209,7 @@ async function renderAdminTestGroups() {
       document.getElementById("tg_is_active").value = String(g.is_active);
     };
     row.querySelector('[data-a="delete"]').onclick = async () => {
-      if (!confirm(`"${g.title}" guruhini o'chirmoqchimisiz?`)) return;
+      if (!confirm(`"${g.title}" turkumini o'chirmoqchimisiz?`)) return;
       await apiFetch(`/api/admin/test-groups/${g.id}`, { method: "DELETE" });
       renderAdminTestGroups();
     };
@@ -1565,6 +1661,26 @@ export function initAdminModule() {
     renderAdminTestSubjectCards();
   });
 
+  document.getElementById("adminManageTestStagesBtn").addEventListener("click", () => openAdminTestStages());
+  document.getElementById("adminCloseTestStages").addEventListener("click", () => document.getElementById("adminTestStagesPanel").classList.add("hidden"));
+
+  document.getElementById("testStageFormEl").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const id = document.getElementById("ts_id").value;
+    const data = {
+      subject_card_id: parseInt(document.getElementById("ts_subject_card_id").value),
+      title: document.getElementById("ts_title").value,
+      subtitle: document.getElementById("ts_subtitle").value,
+      icon: document.getElementById("ts_icon").value || "📶",
+      order_num: parseInt(document.getElementById("ts_order_num").value),
+      is_active: parseInt(document.getElementById("ts_is_active").value)
+    };
+    if (id) await apiFetch(`/api/admin/test-stages/${id}`, { method: "PUT", body: JSON.stringify(data) });
+    else await apiFetch(`/api/admin/test-stages`, { method: "POST", body: JSON.stringify(data) });
+    resetTestStageForm();
+    renderAdminTestStages();
+  });
+
   document.getElementById("adminManageTestGroupsBtn").addEventListener("click", () => openAdminTestGroups());
   document.getElementById("adminCloseTestGroups").addEventListener("click", () => document.getElementById("adminTestGroupsPanel").classList.add("hidden"));
 
@@ -1572,7 +1688,7 @@ export function initAdminModule() {
     e.preventDefault();
     const id = document.getElementById("tg_id").value;
     const data = {
-      subject_card_id: parseInt(document.getElementById("tg_subject_card_id").value),
+      stage_id: parseInt(document.getElementById("tg_stage_id").value),
       title: document.getElementById("tg_title").value,
       subtitle: document.getElementById("tg_subtitle").value,
       icon: document.getElementById("tg_icon").value || "📂",

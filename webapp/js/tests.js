@@ -13,12 +13,17 @@ let testSearchQuery = "";
 let myTestResults = [];
 let currentTestMeta = null;
 
-// ---------- Mavzuli test: fan -> guruh -> testlar (ko'p kishi ishlatishi
-// uchun, bir marta ishlangan testni qayta ko'rsatmaslik maqsadida guruhlar
-// KETMA-KET ochiladi) ----------
+// ---------- Mavzuli test: fan -> bosqich -> turkum -> testlar (ko'p kishi
+// ishlatishi uchun, bir marta ishlangan testni qayta ko'rsatmaslik
+// maqsadida BOSQICHLAR ("1-bo'lim", "2-bo'lim"...) KETMA-KET ochiladi; har
+// bir bosqich ICHIDA esa bir nechta turkum — masalan "Mavzulashtirilgan
+// testlar", "Nazorat testlari" — bo'lishi mumkin, ular bir-biriga nisbatan
+// qulflanmaydi) ----------
 let practiceSubjectCards = [];
 let practiceSubjectsLoaded = false;
 let activePracticeSubject = null;
+let practiceStages = [];
+let activePracticeStage = null;
 let practiceGroups = [];
 let activePracticeGroup = null;
 
@@ -111,18 +116,23 @@ function switchTestsTab(tab) {
 }
 
 // ================================================================
-// MAVZULI TEST: 1) FAN TANLASH -> 2) GURUH (ketma-ket ochiladi) -> 3) TESTLAR
+// MAVZULI TEST: 1) FAN TANLASH -> 2) BOSQICH (ketma-ket ochiladi) ->
+// 3) TURKUM (bosqich ichida, qulflanmaydi) -> 4) TESTLAR
 // Ko'proq kishi foydalanishi va bir marta ishlangan testni qayta
-// ko'rsatmaslik uchun — talaba avval fanni, keyin guruhni tanlaydi;
-// guruhlar admin belgilagan tartib bo'yicha KETMA-KET ochiladi (oldingi
-// guruhdagi barcha testlar tugatilmaguncha keyingisi qulflangan turadi).
+// ko'rsatmaslik uchun — talaba avval fanni, keyin bosqichni tanlaydi;
+// bosqichlar admin belgilagan tartib bo'yicha KETMA-KET ochiladi (oldingi
+// bosqichdagi barcha turkum/testlar tugatilmaguncha keyingisi qulflangan
+// turadi). Bosqich ICHIDAGI turkumlar esa bir-biriga nisbatan erkin —
+// bosqich ochiq bo'lsa, barcha turkumlar baravar ochiq.
 // ================================================================
 
 function resetPracticeFlowToSubjects() {
   document.getElementById("practiceSubjectLanding").classList.remove("hidden");
+  document.getElementById("practiceStageLanding").classList.add("hidden");
   document.getElementById("practiceGroupLanding").classList.add("hidden");
   document.getElementById("practiceTestListView").classList.add("hidden");
   activePracticeSubject = null;
+  activePracticeStage = null;
   activePracticeGroup = null;
 }
 
@@ -159,22 +169,92 @@ function renderPracticeSubjectCards() {
         <div class="subject-card-cta">OCHISH →</div>
       </div>
     `;
-    el.addEventListener("click", () => openPracticeGroups(card));
+    el.addEventListener("click", () => openPracticeStages(card));
     grid.appendChild(el);
   });
 }
 
-async function openPracticeGroups(card) {
+// ---------- 2-bosqich: fan ichidagi BOSQICHLAR ("1-bo'lim", "2-bo'lim"...) ----------
+
+async function openPracticeStages(card) {
   activePracticeSubject = card;
+  activePracticeStage = null;
   activePracticeGroup = null;
   document.getElementById("practiceSubjectLanding").classList.add("hidden");
+  document.getElementById("practiceStageLanding").classList.remove("hidden");
+  document.getElementById("practiceGroupLanding").classList.add("hidden");
+  document.getElementById("practiceTestListView").classList.add("hidden");
+  document.getElementById("practiceStageLandingTitle").textContent = `${card.icon || "📘"} ${card.title}`;
+  const box = document.getElementById("practiceStageList");
+  box.innerHTML = skeletonCards(2);
+  try {
+    const res = await apiFetch(`/api/test-subject-cards/${card.id}/stages`);
+    const data = await res.json();
+    practiceStages = data.stages;
+    renderPracticeStageList();
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml();
+  }
+}
+
+function renderPracticeStageList() {
+  const box = document.getElementById("practiceStageList");
+  box.innerHTML = "";
+  if (practiceStages.length === 0) {
+    box.innerHTML = emptyHtml("Bu fan uchun hozircha bosqich qo'shilmagan");
+    return;
+  }
+  practiceStages.forEach((s, i) => {
+    const row = document.createElement("div");
+    row.className = "module-item" + (s.unlocked ? "" : " module-locked");
+    const metaText = s.total_count > 0
+      ? `${s.completed_count}/${s.total_count} test tugallandi${s.is_done ? " · ✅ Tugallangan" : ""}`
+      : "Hozircha test qo'shilmagan";
+    row.innerHTML = `
+      <div class="module-num">${s.unlocked ? (s.icon || (i + 1)) : "🔒"}</div>
+      <div class="module-info">
+        <div class="module-title">${s.title}</div>
+        <div class="module-meta">${s.subtitle ? s.subtitle + " · " : ""}${metaText}</div>
+      </div>
+      <div class="module-arrow">${s.unlocked ? "›" : ""}</div>
+    `;
+    row.addEventListener("click", () => {
+      if (!s.unlocked) {
+        tg.showAlert ? tg.showAlert("🔒 Bu bo'lim hali ochilmagan — avvalgi bo'limdagi barcha testlarni tugating") : alert("Bu bo'lim hali ochilmagan");
+        return;
+      }
+      openPracticeGroupsForStage(s);
+    });
+    box.appendChild(row);
+
+    // Qulflangan bosqich ostiga — nega qulf ekanini tushuntiruvchi, chiroyli
+    // alohida izoh qatori (foydalanuvchi so'ragan "pastiga izoh" ko'rinishi).
+    if (!s.unlocked) {
+      const prevStage = practiceStages[i - 1];
+      const hint = document.createElement("div");
+      hint.className = "group-lock-hint";
+      hint.innerHTML = prevStage
+        ? `🔒 Avval <strong>"${prevStage.title}"</strong> bo'limidagi barcha testlarni tugating`
+        : `🔒 Bu bo'lim hali ochilmagan`;
+      box.appendChild(hint);
+    }
+  });
+}
+
+// ---------- 3-bosqich: tanlangan bosqich ICHIDAGI turkumlar (qulflanmaydi) ----------
+
+async function openPracticeGroupsForStage(stage) {
+  activePracticeStage = stage;
+  activePracticeGroup = null;
+  document.getElementById("practiceStageLanding").classList.add("hidden");
   document.getElementById("practiceGroupLanding").classList.remove("hidden");
   document.getElementById("practiceTestListView").classList.add("hidden");
-  document.getElementById("practiceGroupLandingTitle").textContent = `${card.icon || "📘"} ${card.title}`;
+  document.getElementById("practiceGroupLandingTitle").textContent = `${stage.icon || "📶"} ${stage.title}`;
   const box = document.getElementById("practiceGroupList");
   box.innerHTML = skeletonCards(2);
   try {
-    const res = await apiFetch(`/api/test-subject-cards/${card.id}/groups`);
+    const res = await apiFetch(`/api/test-stages/${stage.id}/groups`);
     const data = await res.json();
     practiceGroups = data.groups;
     renderPracticeGroupList();
@@ -185,46 +265,30 @@ async function openPracticeGroups(card) {
 }
 
 function renderPracticeGroupList() {
+  // Bosqich ICHIDAGI turkumlar bir-biriga nisbatan QULFLANMAYDI — bosqich
+  // allaqachon ochilgan bo'lgani uchun barchasi baravar ochiq ko'rsatiladi.
   const box = document.getElementById("practiceGroupList");
   box.innerHTML = "";
   if (practiceGroups.length === 0) {
-    box.innerHTML = emptyHtml("Bu fan uchun hozircha guruh qo'shilmagan");
+    box.innerHTML = emptyHtml("Bu bo'lim uchun hozircha turkum qo'shilmagan");
     return;
   }
   practiceGroups.forEach((g, i) => {
     const row = document.createElement("div");
-    row.className = "module-item" + (g.unlocked ? "" : " module-locked");
+    row.className = "module-item";
     const metaText = g.total_count > 0
       ? `${g.completed_count}/${g.total_count} test tugallandi${g.is_done ? " · ✅ Tugallangan" : ""}`
       : "Hozircha test qo'shilmagan";
     row.innerHTML = `
-      <div class="module-num">${g.unlocked ? (g.icon || (i + 1)) : "🔒"}</div>
+      <div class="module-num">${g.icon || (i + 1)}</div>
       <div class="module-info">
         <div class="module-title">${g.title}</div>
         <div class="module-meta">${g.subtitle ? g.subtitle + " · " : ""}${metaText}</div>
       </div>
-      <div class="module-arrow">${g.unlocked ? "›" : ""}</div>
+      <div class="module-arrow">›</div>
     `;
-    row.addEventListener("click", () => {
-      if (!g.unlocked) {
-        tg.showAlert ? tg.showAlert("🔒 Bu guruh hali ochilmagan — avvalgi guruhdagi barcha testlarni tugating") : alert("Bu guruh hali ochilmagan");
-        return;
-      }
-      openPracticeGroupTests(g);
-    });
+    row.addEventListener("click", () => openPracticeGroupTests(g));
     box.appendChild(row);
-
-    // Qulflangan guruh ostiga — nega qulf ekanini tushuntiruvchi, chiroyli
-    // alohida izoh qatori (foydalanuvchi so'ragan "pastiga izoh" ko'rinishi).
-    if (!g.unlocked) {
-      const prevGroup = practiceGroups[i - 1];
-      const hint = document.createElement("div");
-      hint.className = "group-lock-hint";
-      hint.innerHTML = prevGroup
-        ? `🔒 Avval <strong>"${prevGroup.title}"</strong> bo'limidagi barcha testlarni tugating`
-        : `🔒 Bu bo'lim hali ochilmagan`;
-      box.appendChild(hint);
-    }
   });
 }
 
@@ -1100,8 +1164,13 @@ export function initTestsModule() {
   document.getElementById("tabBtnAttestation").addEventListener("click", () => switchTestsTab("attestation"));
 
   document.getElementById("practiceBackToSubjectsBtn").addEventListener("click", () => resetPracticeFlowToSubjects());
+  document.getElementById("practiceBackToStagesBtn").addEventListener("click", () => {
+    if (activePracticeSubject) openPracticeStages(activePracticeSubject);
+    else resetPracticeFlowToSubjects();
+  });
   document.getElementById("practiceBackToGroupsBtn").addEventListener("click", () => {
-    if (activePracticeSubject) openPracticeGroups(activePracticeSubject);
+    if (activePracticeStage) openPracticeGroupsForStage(activePracticeStage);
+    else if (activePracticeSubject) openPracticeStages(activePracticeSubject);
     else resetPracticeFlowToSubjects();
   });
 

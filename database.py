@@ -424,6 +424,65 @@ def init_db():
                 cur.execute("UPDATE tests SET test_group_id = ? WHERE id = ?", (group_id, row["id"]))
         conn.commit()
 
+        # ---------- MAVZULI TEST: BOSQICHLAR ("1-bo'lim", "2-bo'lim"...) ----------
+        # Foydalanuvchi aniqlab berdi: yuqoridagi test_groups aslida ikkinchi
+        # QAVAT bo'lishi kerak edi — Fan ichida avval "1-bo'lim"/"2-bo'lim"
+        # kabi KETMA-KET ochiladigan bosqichlar bo'lib, HAR BIR bosqich
+        # ICHIDA "Mavzulashtirilgan testlar"/"Nazorat testlari" kabi
+        # turkumlar (test_groups) joylashadi. Shuning uchun bosqich qatlami
+        # (test_stages) qo'shildi va test_groups endi FAN'ga emas, BOSQICHGA
+        # bog'lanadi (test_groups.stage_id). Ketma-ket ochilish mantiqi endi
+        # BOSQICH darajasida ishlaydi (bir bosqichning barcha turkumlaridagi
+        # BARCHA testlar tugagandan keyin keyingi bosqich ochiladi).
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS test_stages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                subject_card_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                subtitle TEXT,
+                icon TEXT DEFAULT '📶',
+                order_num INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (subject_card_id) REFERENCES test_subject_cards (id) ON DELETE CASCADE
+            )
+        """)
+        conn.commit()
+
+        try:
+            cur.execute("ALTER TABLE test_groups ADD COLUMN stage_id INTEGER REFERENCES test_stages (id) ON DELETE CASCADE")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # ustun allaqachon mavjud — muammo emas
+
+        # Migratsiya: hali stage_id belgilanmagan (eski, to'g'ridan-to'g'ri
+        # fanga bog'langan) turkumlarni — admin allaqachon qo'lda yaratgan
+        # bo'lishi mumkin — har bir fan uchun avtomatik "1-bo'lim" bosqichiga
+        # ko'chiramiz. Shu tarzda mavjud hech qanday turkum/test yo'qolmaydi,
+        # admin keyin "2-bo'lim" va h.k. o'zi qo'sha oladi.
+        cur.execute("SELECT DISTINCT subject_card_id FROM test_groups WHERE stage_id IS NULL")
+        cards_needing_default_stage = [row["subject_card_id"] for row in cur.fetchall()]
+        for card_id in cards_needing_default_stage:
+            cur.execute(
+                "SELECT id FROM test_stages WHERE subject_card_id = ? ORDER BY order_num ASC, id ASC LIMIT 1",
+                (card_id,)
+            )
+            row = cur.fetchone()
+            if row:
+                default_stage_id = row["id"]
+            else:
+                cur.execute("""
+                    INSERT INTO test_stages (subject_card_id, title, order_num, is_active)
+                    VALUES (?, ?, 1, 1)
+                """, (card_id, "1-bo'lim"))
+                conn.commit()
+                default_stage_id = cur.lastrowid
+            cur.execute(
+                "UPDATE test_groups SET stage_id = ? WHERE subject_card_id = ? AND stage_id IS NULL",
+                (default_stage_id, card_id)
+            )
+            conn.commit()
+
         # Nazorat testiga TO'G'RIDAN-TO'G'RI (kursdan mustaqil) tayinlangan
         # o'quvchilar ro'yxati. Admin panelda o'qituvchi aynan qaysi
         # talabalarga shu nazorat testini topshirishga ruxsat berishni
@@ -2217,10 +2276,10 @@ def delete_test_subject_card(card_id: int):
         conn.commit()
 
 
-def get_test_groups(subject_card_id: int, only_active: bool = True):
+def get_test_stages(subject_card_id: int, only_active: bool = True):
     with get_connection() as conn:
         cur = conn.cursor()
-        query = "SELECT * FROM test_groups WHERE subject_card_id = ?"
+        query = "SELECT * FROM test_stages WHERE subject_card_id = ?"
         params = [subject_card_id]
         if only_active:
             query += " AND is_active = 1"
@@ -2229,18 +2288,92 @@ def get_test_groups(subject_card_id: int, only_active: bool = True):
         return [dict(r) for r in cur.fetchall()]
 
 
-def get_all_test_groups(only_active: bool = False):
-    """Admin panel uchun — barcha guruhlarni, fan nomi bilan birga qaytaradi."""
+def get_all_test_stages(only_active: bool = False):
+    """Admin panel uchun — barcha bosqichlarni, fan nomi bilan birga qaytaradi."""
     with get_connection() as conn:
         cur = conn.cursor()
         query = """
-            SELECT g.*, c.title AS subject_title FROM test_groups g
-            JOIN test_subject_cards c ON c.id = g.subject_card_id
+            SELECT s.*, c.title AS subject_title FROM test_stages s
+            JOIN test_subject_cards c ON c.id = s.subject_card_id
+            WHERE 1=1
+        """
+        if only_active:
+            query += " AND s.is_active = 1"
+        query += " ORDER BY c.order_num ASC, s.order_num ASC, s.id ASC"
+        cur.execute(query)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_test_stage(stage_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM test_stages WHERE id = ?", (stage_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def create_test_stage(data: dict) -> int:
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO test_stages (subject_card_id, title, subtitle, icon, order_num, is_active)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            int(data["subject_card_id"]), data.get("title", ""), data.get("subtitle") or None,
+            data.get("icon") or "📶", int(data.get("order_num", 0)), int(data.get("is_active", 1))
+        ))
+        conn.commit()
+        return cur.lastrowid
+
+
+def update_test_stage(stage_id: int, data: dict):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        fields, values = [], []
+        for key in ["subject_card_id", "title", "subtitle", "icon", "order_num", "is_active"]:
+            if key in data:
+                fields.append(f"{key} = ?")
+                values.append(data[key] if data[key] != "" else None)
+        if fields:
+            values.append(stage_id)
+            cur.execute(f"UPDATE test_stages SET {', '.join(fields)} WHERE id = ?", values)
+            conn.commit()
+
+
+def delete_test_stage(stage_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM test_stages WHERE id = ?", (stage_id,))
+        conn.commit()
+
+
+def get_test_groups(stage_id: int, only_active: bool = True):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = "SELECT * FROM test_groups WHERE stage_id = ?"
+        params = [stage_id]
+        if only_active:
+            query += " AND is_active = 1"
+        query += " ORDER BY order_num ASC, id ASC"
+        cur.execute(query, params)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_all_test_groups(only_active: bool = False):
+    """Admin panel uchun — barcha turkumlarni, bosqich va fan nomi bilan birga qaytaradi."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query = """
+            SELECT g.*, s.title AS stage_title, s.subject_card_id AS subject_card_id,
+                   c.title AS subject_title
+            FROM test_groups g
+            JOIN test_stages s ON s.id = g.stage_id
+            JOIN test_subject_cards c ON c.id = s.subject_card_id
             WHERE 1=1
         """
         if only_active:
             query += " AND g.is_active = 1"
-        query += " ORDER BY c.order_num ASC, g.order_num ASC, g.id ASC"
+        query += " ORDER BY c.order_num ASC, s.order_num ASC, g.order_num ASC, g.id ASC"
         cur.execute(query)
         return [dict(r) for r in cur.fetchall()]
 
@@ -2254,13 +2387,19 @@ def get_test_group(group_id: int):
 
 
 def create_test_group(data: dict) -> int:
+    # ESLATMA: test_groups.subject_card_id ustuni eski (bir qavatli)
+    # arxitekturadan meros qolgan va hamon NOT NULL — shuning uchun yangi
+    # turkum yaratganda ham uni bosqichning fanidan avtomatik hisoblab,
+    # birga saqlaymiz (talaba/admin buni ko'rmaydi ham, sezmaydi ham).
+    stage = get_test_stage(int(data["stage_id"]))
+    subject_card_id = stage["subject_card_id"] if stage else None
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO test_groups (subject_card_id, title, subtitle, icon, order_num, is_active)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO test_groups (stage_id, subject_card_id, title, subtitle, icon, order_num, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
-            int(data["subject_card_id"]), data.get("title", ""), data.get("subtitle") or None,
+            int(data["stage_id"]), subject_card_id, data.get("title", ""), data.get("subtitle") or None,
             data.get("icon") or "📂", int(data.get("order_num", 0)), int(data.get("is_active", 1))
         ))
         conn.commit()
@@ -2268,10 +2407,17 @@ def create_test_group(data: dict) -> int:
 
 
 def update_test_group(group_id: int, data: dict):
+    # Bosqich o'zgarsa (turkum boshqa bosqichga ko'chirilsa), meros qolgan
+    # subject_card_id ustunini ham yangi bosqichning fani bilan sinxronlab turamiz.
+    if "stage_id" in data and data["stage_id"]:
+        stage = get_test_stage(int(data["stage_id"]))
+        if stage:
+            data = dict(data)
+            data["subject_card_id"] = stage["subject_card_id"]
     with get_connection() as conn:
         cur = conn.cursor()
         fields, values = [], []
-        for key in ["subject_card_id", "title", "subtitle", "icon", "order_num", "is_active"]:
+        for key in ["stage_id", "subject_card_id", "title", "subtitle", "icon", "order_num", "is_active"]:
             if key in data:
                 fields.append(f"{key} = ?")
                 values.append(data[key] if data[key] != "" else None)
@@ -2327,26 +2473,68 @@ def compute_group_progress(telegram_id: int, group_id: int):
         return {"completed": completed, "total": total}
 
 
-def compute_groups_with_unlock(telegram_id: int, subject_card_id: int):
-    """Fan ichidagi guruhlarni order_num bo'yicha qaytaradi, har biriga
-    'unlocked' (shu guruhni boshlash mumkinmi) va progress (completed/total)
-    qo'shib. Birinchi guruh doim ochiq. Keyingi guruh — faqat oldingisidagi
-    BARCHA (faol) testlar tugallangandan keyin ochiladi. Agar oldingi guruhda
-    umuman test bo'lmasa (admin hali qo'shmagan bo'lsa), u "tugallangan"
-    hisoblanib, keyingisini bloklamaydi (talaba abadiy qulflanib qolmasin)."""
-    groups = get_test_groups(subject_card_id, only_active=True)
+def get_groups_with_progress(telegram_id: int, stage_id: int):
+    """Bosqich ICHIDAGI turkumlarni (masalan 'Mavzulashtirilgan testlar',
+    'Nazorat testlari') progress bilan qaytaradi. Bular bir-biriga nisbatan
+    QULFLANMAYDI — bosqichning o'zi ochiq bo'lsa, ichidagi barcha turkumlar
+    talaba uchun teng ravishda ochiq (parallel), faqat progress ko'rsatish
+    uchun completed/total hisoblanadi."""
+    groups = get_test_groups(stage_id, only_active=True)
     result = []
-    prev_completed = True
     for g in groups:
         progress = compute_group_progress(telegram_id, g["id"])
-        unlocked = prev_completed
         g_out = dict(g)
         g_out["completed_count"] = progress["completed"]
         g_out["total_count"] = progress["total"]
-        g_out["unlocked"] = unlocked
         g_out["is_done"] = progress["total"] > 0 and progress["completed"] >= progress["total"]
+        g_out["unlocked"] = True
         result.append(g_out)
-        # Keyingi guruh uchun: shu guruh tugallanganmi (bo'sh guruh ham "tugallangan" hisoblanadi)
+    return result
+
+
+def compute_stage_progress(telegram_id: int, stage_id: int):
+    """Bosqich ICHIDAGI barcha turkumlardagi FAOL testlardan nechtasi shu
+    talaba tomonidan tugallanganini hisoblaydi (turkumlar bo'yicha yig'indi)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT t.id FROM tests t
+            JOIN test_groups g ON g.id = t.test_group_id
+            WHERE g.stage_id = ? AND g.is_active = 1 AND t.is_active = 1
+        """, (stage_id,))
+        test_ids = [row["id"] for row in cur.fetchall()]
+        total = len(test_ids)
+        if total == 0:
+            return {"completed": 0, "total": 0}
+        placeholders = ",".join("?" for _ in test_ids)
+        cur.execute(f"""
+            SELECT COUNT(DISTINCT test_id) as c FROM test_attempts
+            WHERE telegram_id = ? AND finished_at IS NOT NULL AND test_id IN ({placeholders})
+        """, [telegram_id] + test_ids)
+        completed = cur.fetchone()["c"]
+        return {"completed": completed, "total": total}
+
+
+def compute_stages_with_unlock(telegram_id: int, subject_card_id: int):
+    """Fan ichidagi bosqichlarni ('1-bo'lim', '2-bo'lim'...) order_num
+    bo'yicha qaytaradi, har biriga 'unlocked' va progress (completed/total)
+    qo'shib. Birinchi bosqich doim ochiq. Keyingi bosqich — faqat
+    oldingisidagi BARCHA turkumlardagi BARCHA (faol) testlar
+    tugallangandan keyin ochiladi. Agar oldingi bosqichda umuman test
+    bo'lmasa, u "tugallangan" hisoblanib, keyingisini bloklamaydi."""
+    stages = get_test_stages(subject_card_id, only_active=True)
+    result = []
+    prev_completed = True
+    for s in stages:
+        progress = compute_stage_progress(telegram_id, s["id"])
+        unlocked = prev_completed
+        s_out = dict(s)
+        s_out["completed_count"] = progress["completed"]
+        s_out["total_count"] = progress["total"]
+        s_out["unlocked"] = unlocked
+        s_out["is_done"] = progress["total"] > 0 and progress["completed"] >= progress["total"]
+        result.append(s_out)
+        # Keyingi bosqich uchun: shu bosqich tugallanganmi (bo'sh bosqich ham "tugallangan" hisoblanadi)
         prev_completed = (progress["total"] == 0) or (progress["completed"] >= progress["total"])
     return result
 

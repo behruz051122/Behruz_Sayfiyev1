@@ -283,16 +283,25 @@
           <div id="practiceSubjectGrid" class="subject-select-grid"></div>
         </div>
 
-        <!-- 2-bosqich: tanlangan fan ichidagi guruhlar (ketma-ket ochiladi) -->
-        <div id="practiceGroupLanding" class="hidden">
+        <!-- 2-bosqich: tanlangan fan ichidagi BOSQICHLAR ("1-bo'lim", "2-bo'lim"...
+             ketma-ket ochiladi — avvalgi bosqich to'liq tugatilmaguncha keyingisi qulf) -->
+        <div id="practiceStageLanding" class="hidden">
           <button class="results-link-btn" id="practiceBackToSubjectsBtn">‹ Fanlarga qaytish</button>
+          <h3 id="practiceStageLandingTitle" style="margin:0 16px 10px;font-size:15px;font-weight:800;"></h3>
+          <div id="practiceStageList" class="module-list"></div>
+        </div>
+
+        <!-- 3-bosqich: tanlangan bosqich ICHIDAGI turkumlar (Mavzulashtirilgan
+             testlar, Nazorat testlari kabi — bular bir-biriga nisbatan qulflanmaydi) -->
+        <div id="practiceGroupLanding" class="hidden">
+          <button class="results-link-btn" id="practiceBackToStagesBtn">‹ Bosqichlarga qaytish</button>
           <h3 id="practiceGroupLandingTitle" style="margin:0 16px 10px;font-size:15px;font-weight:800;"></h3>
           <div id="practiceGroupList" class="module-list"></div>
         </div>
 
-        <!-- 3-bosqich: guruh ichidagi testlar -->
+        <!-- 4-bosqich: turkum ichidagi testlar -->
         <div id="practiceTestListView" class="hidden">
-          <button class="results-link-btn" id="practiceBackToGroupsBtn">‹ Guruhlarga qaytish</button>
+          <button class="results-link-btn" id="practiceBackToGroupsBtn">‹ Turkumlarga qaytish</button>
           <h3 id="practiceTestListTitle" style="margin:0 16px 10px;font-size:15px;font-weight:800;"></h3>
           <div class="search-box">
             <span class="search-icon" aria-hidden="true">🔍</span>
@@ -774,7 +783,8 @@
           <h3>Testlar</h3>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button id="adminManageTestSubjectsBtn" class="gold-btn small" style="background:var(--surface2);color:var(--text);">📚 Fanlar</button>
-            <button id="adminManageTestGroupsBtn" class="gold-btn small" style="background:var(--surface2);color:var(--text);">🗂 Guruhlar</button>
+            <button id="adminManageTestStagesBtn" class="gold-btn small" style="background:var(--surface2);color:var(--text);">📶 Bosqichlar</button>
+            <button id="adminManageTestGroupsBtn" class="gold-btn small" style="background:var(--surface2);color:var(--text);">🗂 Turkumlar</button>
             <button id="adminNewTestBtn" class="gold-btn small">+ Yangi test</button>
           </div>
         </div>
@@ -814,33 +824,65 @@
         </form>
       </div>
 
+      <div id="adminTestStagesPanel" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3>Mavzuli test — Bosqichlar</h3>
+          <button id="adminCloseTestStages" class="icon-btn" aria-label="Yopish">✕</button>
+        </div>
+        <p style="font-size:11px;color:var(--text-dim);margin:-4px 0 10px;">
+          Har bir fan ichida bosqichlar ("1-bo'lim", "2-bo'lim"...) bo'ladi. Bosqichlar
+          TARTIB RAQAMI bo'yicha KETMA-KET ochiladi — talaba avvalgi bosqichdagi
+          BARCHA turkumlar/testlarni tugatmaguncha keyingisi qulflangan turadi. Har bir
+          bosqich ICHIDA esa bir nechta turkum ("Mavzulashtirilgan testlar", "Nazorat
+          testlari" kabi) bo'lishi mumkin — pastdagi "🗂 Turkumlar" tugmasi orqali qo'shasiz.
+        </p>
+        <div id="adminTestStagesList" class="admin-list"></div>
+        <form id="testStageFormEl" class="admin-form">
+          <input type="hidden" id="ts_id">
+          <label>Fan
+            <select id="ts_subject_card_id" required></select>
+          </label>
+          <label>Bosqich nomi (masalan: 1-bo'lim) <input id="ts_title" required></label>
+          <label>Qo'shimcha matn (ixtiyoriy) <input id="ts_subtitle"></label>
+          <label>Emoji <input id="ts_icon" value="📶"></label>
+          <label>Tartib raqami (ochilish ketma-ketligi) <input id="ts_order_num" type="number" value="0"></label>
+          <label>Faolmi?
+            <select id="ts_is_active">
+              <option value="1">Ha</option>
+              <option value="0">Yo'q (yashirilgan)</option>
+            </select>
+          </label>
+          <button type="submit" class="gold-btn">Bosqichni saqlash</button>
+        </form>
+      </div>
+
       <div id="adminTestGroupsPanel" class="admin-section hidden">
         <div class="admin-section-head">
-          <h3>Mavzuli test — Guruhlar</h3>
+          <h3>Mavzuli test — Turkumlar</h3>
           <button id="adminCloseTestGroups" class="icon-btn" aria-label="Yopish">✕</button>
         </div>
         <p style="font-size:11px;color:var(--text-dim);margin:-4px 0 10px;">
-          Har bir fan ichida guruhlar (masalan "Mavzulashtirilgan testlar", "Aralash testlar")
-          bo'ladi. Guruhlar TARTIB RAQAMI bo'yicha KETMA-KET ochiladi — talaba avvalgi
-          guruhdagi barcha testlarni tugatmaguncha keyingisi qulflangan turadi.
+          Har bir BOSQICH ichida turkumlar (masalan "Mavzulashtirilgan testlar", "Nazorat
+          testlari", "Aralash testlar") bo'ladi. Turkumlar bir-biriga nisbatan QULFLANMAYDI —
+          bosqichning o'zi ochiq bo'lsa, ichidagi barcha turkumlar birdek ochiq turadi.
         </p>
         <div id="adminTestGroupsList" class="admin-list"></div>
         <form id="testGroupFormEl" class="admin-form">
           <input type="hidden" id="tg_id">
-          <label>Fan
-            <select id="tg_subject_card_id" required></select>
+          <label>Bosqich (Fan — Bosqich nomi)
+            <select id="tg_stage_id" required></select>
           </label>
-          <label>Guruh nomi (masalan: Mavzulashtirilgan testlar) <input id="tg_title" required></label>
+          <label>Turkum nomi (masalan: Mavzulashtirilgan testlar) <input id="tg_title" required></label>
           <label>Qo'shimcha matn (ixtiyoriy) <input id="tg_subtitle"></label>
           <label>Emoji <input id="tg_icon" value="📂"></label>
-          <label>Tartib raqami (ochilish ketma-ketligi) <input id="tg_order_num" type="number" value="0"></label>
+          <label>Tartib raqami <input id="tg_order_num" type="number" value="0"></label>
           <label>Faolmi?
             <select id="tg_is_active">
               <option value="1">Ha</option>
               <option value="0">Yo'q (yashirilgan)</option>
             </select>
           </label>
-          <button type="submit" class="gold-btn">Guruhni saqlash</button>
+          <button type="submit" class="gold-btn">Turkumni saqlash</button>
         </form>
       </div>
 

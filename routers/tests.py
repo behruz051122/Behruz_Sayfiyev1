@@ -19,19 +19,28 @@ def _ensure_control_test_access(test: dict, telegram_id: int):
 
 
 def _ensure_practice_group_unlocked(test: dict, telegram_id: int):
-    """Mavzuli test guruhlari KETMA-KET ochiladi (avvalgi guruhdagi barcha
-    testlar tugatilmaguncha keyingisi qulflangan). Frontend qulflangan
-    guruhga kirish tugmasini ko'rsatmaydi, lekin haqiqiy himoya shu yerda —
-    to'g'ridan-to'g'ri so'rov yuborilsa ham chetlab o'tib bo'lmaydi."""
+    """Mavzuli test BOSQICHLARI ('1-bo'lim', '2-bo'lim'...) KETMA-KET
+    ochiladi (avvalgi bosqichdagi barcha turkumlar/testlar tugatilmaguncha
+    keyingisi qulflangan). Bosqich ICHIDAGI turkumlar (masalan
+    "Mavzulashtirilgan testlar"/"Nazorat testlari") esa bir-biriga nisbatan
+    qulflanmaydi. Frontend qulflangan bosqichga kirish tugmasini
+    ko'rsatmaydi, lekin haqiqiy himoya shu yerda — to'g'ridan-to'g'ri so'rov
+    yuborilsa ham chetlab o'tib bo'lmaydi."""
     group_id = test.get("test_group_id")
     if not group_id:
         return  # eski/guruhsiz testlar cheklovsiz qoladi
     group = db.get_test_group(group_id)
     if not group:
         return
-    groups = db.compute_groups_with_unlock(telegram_id, group["subject_card_id"])
-    this_group = next((g for g in groups if g["id"] == group_id), None)
-    if this_group and not this_group["unlocked"]:
+    stage_id = group.get("stage_id")
+    if not stage_id:
+        return  # bosqichga hali bog'lanmagan guruh — cheklovsiz qoladi
+    stage = db.get_test_stage(stage_id)
+    if not stage:
+        return
+    stages = db.compute_stages_with_unlock(telegram_id, stage["subject_card_id"])
+    this_stage = next((s for s in stages if s["id"] == stage_id), None)
+    if this_stage and not this_stage["unlocked"]:
         raise HTTPException(status_code=403, detail="Bu bo'lim sizga hali ochilmagan — avvalgi bo'limdagi testlarni tugating")
 
 
@@ -40,9 +49,19 @@ def api_get_test_subject_cards():
     return {"cards": db.get_test_subject_cards(only_active=True)}
 
 
-@router.get("/test-subject-cards/{card_id}/groups")
-def api_get_test_groups(card_id: int, user=Depends(get_verified_telegram_user)):
-    groups = db.compute_groups_with_unlock(user["telegram_id"], card_id)
+@router.get("/test-subject-cards/{card_id}/stages")
+def api_get_test_stages(card_id: int, user=Depends(get_verified_telegram_user)):
+    """Fan ichidagi bosqichlar ('1-bo'lim', '2-bo'lim'...) — ketma-ket
+    ochiladi."""
+    stages = db.compute_stages_with_unlock(user["telegram_id"], card_id)
+    return {"stages": stages}
+
+
+@router.get("/test-stages/{stage_id}/groups")
+def api_get_stage_groups(stage_id: int, user=Depends(get_verified_telegram_user)):
+    """Bosqich ICHIDAGI turkumlar (masalan "Mavzulashtirilgan testlar",
+    "Nazorat testlari") — bir-biriga nisbatan qulflanmaydi."""
+    groups = db.get_groups_with_progress(user["telegram_id"], stage_id)
     return {"groups": groups}
 
 
