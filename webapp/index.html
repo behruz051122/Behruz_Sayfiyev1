@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Behruz Sayfiyev</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%93%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="logo_icon.svg">
+<link rel="apple-touch-icon" href="logo_icon.png">
 <link rel="stylesheet" href="style.css">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
@@ -13,10 +14,9 @@
   <!-- OCHILISH SPLASH EKRANI — Telegram initData tasdiqlanguncha ko'rinadi,
        so'ng avtomatik (fade) yo'qoladi (main.js -> hideAppSplash()). -->
   <div id="appSplash" class="app-splash">
-    <!-- Brend nishoni. Haqiqiy logotip qo'yish uchun: quyidagi "BS" matnini
-         <img src="logo.png" alt=""> bilan almashtiring — o'lchami va
-         burchaklari CSS'da allaqachon to'g'ri sozlangan. -->
-    <div class="app-splash-icon"><span class="app-splash-monogram">BS</span></div>
+    <!-- Brend nishoni: olti burchak (kimyo) + DNK spirali (biologiya).
+         Fayl: webapp/logo_glyph_dark.svg (gradient plitka ustida to'q rangda). -->
+    <div class="app-splash-icon"><img src="logo_glyph_dark.svg" alt="Behruz Sayfiyev"></div>
     <div class="app-splash-brand">BEHRUZ SAYFIYEV</div>
     <div class="app-splash-tagline">ONLINE TA'LIM PLATFORMASI</div>
     <div class="app-splash-spinner"></div>
@@ -30,7 +30,7 @@
 
   <header class="topbar">
     <div class="logo-block">
-      <div class="logo">BS</div>
+      <div class="logo"><img src="logo_glyph_dark.svg" alt="Behruz Sayfiyev"></div>
       <div>
         <div class="brand" id="brandName">Behruz Sayfiyev</div>
         <div class="brand-sub" id="brandSub">TALABA PANELI</div>
