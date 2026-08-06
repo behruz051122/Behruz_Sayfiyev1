@@ -15,7 +15,7 @@ import { loadProfile } from "./profile.js";
 import { loadAdminCourses, loadAdminTests, loadAdminAnalytics, loadAdminSimulators, loadAdminDashboardCards, loadAdminBookProducts, loadAdminFaq, loadAdminStudentResults, loadAdminObjections, loadAdminHomeworkSubjects, initAdminModule, initHomeworkAdminModule } from "./admin.js";
 import { loadDashboardCards } from "./home.js";
 import { loadBookShop } from "./bookshop.js";
-import { loadGameSubjects, initGamesModule } from "./games.js";
+import { loadGameSubjects, openChemHub, reopenChemPath, initChemGameModule } from "./chemGame.js";
 import { loadFaq } from "./faq.js";
 import { loadStudentResults } from "./studentResults.js";
 import { loadHomeworkSubjects, initHomeworkModule } from "./homework.js";
@@ -80,12 +80,16 @@ function handleNav(target) {
   } else if (target === "games") {
     loadGameSubjects();
     showScreen("games");
-  } else if (target === "game-battles") {
-    showScreen("game-battles");
-  } else if (target === "game-quiz") {
-    showScreen("game-quiz");
-  } else if (target === "game-result") {
-    showScreen("game-result");
+  } else if (target === "chem-hub") {
+    // Qayta yuklaymiz — o'yin o'ynalgandan keyin yulduzlar o'zgargan bo'lishi
+    // mumkin, eski holatni ko'rsatib qo'ymaslik uchun.
+    openChemHub();
+  } else if (target === "chem-path") {
+    reopenChemPath();
+  } else if (target === "chem-categories") {
+    showScreen("chem-categories");
+  } else if (target === "chem-dictionary") {
+    showScreen("chem-dictionary");
   } else if (target === "book-shop") {
     loadBookShop();
     showScreen("book-shop");
@@ -127,7 +131,7 @@ function bootstrap() {
   Tests.initTestsModule();
   initLeaderboardModule();
   initAdminModule();
-  initGamesModule();
+  initChemGameModule();
   initHomeworkModule();
   initHomeworkAdminModule();
 

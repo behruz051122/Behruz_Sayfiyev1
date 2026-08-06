@@ -1814,3 +1814,398 @@ html[data-theme="light"] .dashboard-card:hover::after { opacity: 0.24; }
 @media (prefers-reduced-motion: reduce) {
   .app-splash-icon, .app-splash-icon::after { animation: none; }
 }
+
+/* ==========================================================================
+   KIMYO O'YINI
+   ========================================================================== */
+
+/* ---------- O'yinlar: fan kartalari ---------- */
+.game-subject-card {
+  margin: 0 16px 14px; padding: 18px; border-radius: 20px;
+  background: var(--surface); border: 1px solid var(--border);
+  position: relative; overflow: hidden;
+}
+.game-subject-card.active {
+  background: linear-gradient(150deg, rgba(45,212,191,0.14), rgba(167,139,250,0.16)), var(--surface);
+  border-color: var(--border-glow); box-shadow: var(--glow-teal);
+}
+.game-subject-card.soon { opacity: 0.55; }
+.game-subject-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.game-subject-icon {
+  width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center;
+  font-size: 22px; background: var(--surface2); border: 1px solid var(--border);
+}
+.game-subject-badge {
+  font-size: 10px; font-weight: 800; letter-spacing: 0.6px; padding: 5px 10px;
+  border-radius: 20px; background: var(--accent-gradient); color: var(--on-accent);
+}
+.game-subject-badge.soon { background: var(--surface2); color: var(--text-dim); }
+.game-subject-title { font-size: 20px; font-weight: 900; margin-bottom: 4px; }
+.game-subject-desc { font-size: 12.5px; color: var(--text-dim); line-height: 1.5; }
+.game-subject-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.game-chip {
+  font-size: 10.5px; font-weight: 700; padding: 4px 10px; border-radius: 20px;
+  background: var(--surface2); border: 1px solid var(--border); color: var(--text-dim);
+}
+.game-subject-btn {
+  width: 100%; margin-top: 16px; padding: 13px; border: none; border-radius: 14px;
+  background: var(--accent-gradient); color: var(--on-accent);
+  font-size: 14.5px; font-weight: 800; cursor: pointer;
+  transition: transform 0.15s ease;
+}
+.game-subject-btn:active { transform: scale(0.98); }
+.games-foot-note {
+  margin: 18px 16px 0; text-align: center; font-size: 10.5px; font-weight: 700;
+  letter-spacing: 0.8px; color: var(--text-faint); text-transform: uppercase;
+}
+
+/* ---------- HUB ---------- */
+.chem-hub-stars {
+  margin: 0 16px 18px; padding: 20px; border-radius: 20px; text-align: center;
+  background: linear-gradient(150deg, rgba(45,212,191,0.12), rgba(167,139,250,0.14)), var(--surface);
+  border: 1px solid var(--border-glow);
+}
+.chem-hub-stars-value { font-size: 34px; font-weight: 900; line-height: 1; }
+.chem-hub-stars-value span { font-size: 18px; color: var(--text-dim); font-weight: 700; }
+.chem-hub-stars-label {
+  margin-top: 6px; font-size: 10px; font-weight: 800; letter-spacing: 1.4px; color: var(--text-faint);
+}
+.chem-hub-stars-bar {
+  margin-top: 14px; height: 7px; border-radius: 20px; background: var(--surface2); overflow: hidden;
+}
+.chem-hub-stars-fill {
+  height: 100%; border-radius: 20px; background: var(--accent-gradient);
+  transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.chem-hub-row, .chem-cat-row, .chem-dict-row, .chem-stage-row {
+  display: flex; align-items: center; gap: 12px; width: calc(100% - 32px);
+  margin: 0 16px 10px; padding: 14px; border-radius: 16px; text-align: left;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); cursor: pointer; font-family: inherit;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.chem-hub-row:active, .chem-cat-row:active, .chem-dict-row:active { transform: scale(0.985); }
+.chem-hub-row-icon, .chem-cat-icon, .chem-stage-icon {
+  width: 42px; height: 42px; flex: 0 0 42px; border-radius: 13px; display: grid;
+  place-items: center; font-size: 20px; background: var(--surface2); border: 1px solid var(--border);
+}
+.chem-hub-row-text, .chem-cat-text, .chem-stage-text { flex: 1; min-width: 0; }
+.chem-hub-row-title, .chem-cat-title, .chem-stage-title {
+  display: block; font-size: 14.5px; font-weight: 800; margin-bottom: 3px;
+}
+.chem-hub-row-sub, .chem-cat-sub, .chem-stage-sub {
+  display: block; font-size: 11.5px; color: var(--text-dim); line-height: 1.4;
+}
+.chem-hub-row-chev { font-size: 22px; color: var(--text-faint); }
+.chem-cat-stars {
+  font-size: 12px; font-weight: 800; color: var(--gold-light); white-space: nowrap;
+}
+.chem-cat-row.soon { opacity: 0.5; cursor: default; }
+.chem-cat-soon {
+  font-size: 9px; font-weight: 800; letter-spacing: 0.6px; padding: 4px 9px;
+  border-radius: 20px; background: var(--surface2); color: var(--text-dim); white-space: nowrap;
+}
+
+.chem-mode-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 16px 18px;
+}
+.chem-mode-card {
+  padding: 14px; border-radius: 16px; background: var(--surface);
+  border: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px;
+}
+.chem-mode-card.soon { opacity: 0.5; }
+.chem-mode-icon { font-size: 20px; margin-bottom: 4px; }
+.chem-mode-title { font-size: 13px; font-weight: 800; }
+.chem-mode-sub { font-size: 10.5px; color: var(--text-dim); }
+
+/* ---------- Level yo'lagi ---------- */
+.chem-path-summary {
+  margin: 0 16px 18px; padding: 16px; border-radius: 18px;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.chem-path-summary-title { font-size: 15px; font-weight: 800; margin-bottom: 4px; }
+.chem-path-summary-sub { font-size: 11.5px; color: var(--text-dim); }
+
+.chem-path { display: flex; flex-direction: column; align-items: center; padding: 0 16px 24px; }
+.chem-node-wrap { display: flex; flex-direction: column; align-items: center; width: 100%; }
+.chem-node-line { width: 3px; height: 26px; background: var(--border); border-radius: 3px; }
+.chem-node {
+  width: 62px; height: 62px; border-radius: 50%; border: none; cursor: pointer;
+  font-size: 22px; font-weight: 900; display: grid; place-items: center;
+  font-family: inherit; transition: transform 0.15s ease;
+}
+.chem-node:active:not(:disabled) { transform: scale(0.94); }
+.chem-node.open {
+  background: var(--accent-gradient); color: var(--on-accent); box-shadow: var(--glow-teal);
+}
+.chem-node.done {
+  background: linear-gradient(135deg, var(--teal-light), var(--teal)); color: var(--on-accent);
+}
+.chem-node.locked {
+  background: var(--surface2); color: var(--text-faint); border: 1px solid var(--border); cursor: default;
+}
+.chem-node-title {
+  margin-top: 8px; font-size: 12.5px; font-weight: 700; text-align: center; max-width: 260px;
+}
+.chem-node-title.muted { color: var(--text-faint); font-weight: 600; }
+.chem-node-count { color: var(--text-faint); font-weight: 600; }
+.chem-node-stars { margin-top: 4px; }
+.chem-star { font-size: 14px; color: var(--surface3); }
+.chem-star.filled { color: var(--warning); }
+
+/* ---------- Level ichi ---------- */
+.chem-level-hero {
+  margin: 0 16px 16px; padding: 22px 18px; border-radius: 20px; text-align: center;
+  background: linear-gradient(150deg, rgba(45,212,191,0.10), rgba(167,139,250,0.12)), var(--surface);
+  border: 1px solid var(--border-glow);
+}
+.chem-level-hero-icon {
+  width: 54px; height: 54px; margin: 0 auto 12px; border-radius: 16px; display: grid;
+  place-items: center; font-size: 26px; background: var(--surface2); border: 1px solid var(--border);
+}
+.chem-level-hero-title { font-size: 17px; font-weight: 900; margin-bottom: 6px; }
+.chem-level-hero-sub { font-size: 12px; color: var(--text-dim); }
+.chem-level-hero-chips {
+  display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 14px;
+}
+.chem-formula-chip {
+  font-size: 11.5px; font-weight: 800; padding: 5px 11px; border-radius: 10px;
+  background: var(--surface2); border: 1px solid var(--border); color: var(--gold-light);
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+}
+
+.chem-stage-row.done { border-color: rgba(52, 211, 153, 0.4); }
+.chem-stage-row.current {
+  border-color: var(--border-glow);
+  background: linear-gradient(150deg, rgba(45,212,191,0.10), transparent), var(--surface);
+}
+.chem-stage-row.locked { opacity: 0.45; cursor: default; }
+.chem-stage-badge {
+  font-size: 9px; font-weight: 800; letter-spacing: 0.6px; white-space: nowrap;
+  color: var(--text-dim);
+}
+.chem-stage-row.done .chem-stage-badge { color: var(--success); }
+.chem-stage-row.current .chem-stage-badge {
+  padding: 4px 9px; border-radius: 20px; background: var(--accent-gradient); color: var(--on-accent);
+}
+.chem-start-btn { width: calc(100% - 32px); margin: 8px 16px 20px; }
+.chem-level-done {
+  margin: 12px 16px 24px; padding: 16px; border-radius: 16px; text-align: center;
+  font-size: 12.5px; line-height: 1.6; color: var(--text-dim);
+  background: var(--surface); border: 1px solid var(--border);
+}
+
+/* ---------- O'yin ekrani ---------- */
+.chem-play-header {
+  display: flex; align-items: center; gap: 12px; padding: 14px 16px 10px;
+}
+.chem-play-label {
+  flex: 1; text-align: center; font-size: 10px; font-weight: 800;
+  letter-spacing: 1.4px; color: var(--text-faint);
+}
+#screen-chem-play .test-progress-bar { margin: 0 16px 14px; }
+.chem-play-hint { text-align: center; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+.chem-play-counter {
+  text-align: center; font-size: 11px; font-weight: 700; color: var(--text-faint);
+  letter-spacing: 0.4px; margin-bottom: 14px;
+}
+.chem-play-footer {
+  position: sticky; bottom: 0; display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  background: linear-gradient(to top, var(--bg) 65%, transparent);
+}
+.chem-next-btn { flex: 1; margin: 0; }
+.chem-retry-btn { flex: 0 0 auto; margin: 0; }
+.chem-back-mini {
+  width: 46px; height: 46px; flex: 0 0 46px; border-radius: 14px; cursor: pointer;
+  background: var(--surface2); border: 1px solid var(--border); color: var(--text-dim);
+  font-size: 18px; font-family: inherit;
+}
+
+/* 1-bosqich: kartochka */
+.chem-card {
+  margin: 0 16px; padding: 32px 20px; border-radius: 22px; text-align: center;
+  background: var(--surface); border: 1px solid var(--border); min-height: 220px;
+  display: flex; flex-direction: column; justify-content: center;
+  animation: chemCardIn 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes chemCardIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.chem-card-formula {
+  font-size: 40px; font-weight: 900; letter-spacing: 0.5px; margin-bottom: 12px;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  background: var(--accent-gradient); -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.chem-card-name { font-size: 19px; font-weight: 800; color: var(--warning); }
+.chem-card-extras {
+  margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.chem-card-extra { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px; }
+.chem-card-extra-label { color: var(--text-faint); font-weight: 700; }
+.chem-card-extra-value { color: var(--text); font-weight: 600; text-align: right; }
+
+/* 2/4-bosqich: savol */
+.chem-prompt {
+  margin: 0 16px 18px; padding: 22px 18px; border-radius: 20px; text-align: center;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.chem-prompt-label {
+  font-size: 9.5px; font-weight: 800; letter-spacing: 1.2px; color: var(--text-faint); margin-bottom: 8px;
+}
+.chem-prompt-value {
+  font-size: 26px; font-weight: 900; color: var(--warning); margin-bottom: 10px; line-height: 1.2;
+}
+.chem-prompt-question { font-size: 13px; font-weight: 700; color: var(--text-dim); }
+.chem-options { display: flex; flex-direction: column; gap: 9px; padding: 0 16px; }
+.chem-option {
+  width: 100%; padding: 15px 16px; border-radius: 14px; text-align: left; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  font-size: 15px; font-weight: 700; font-family: "SF Mono", Menlo, Consolas, monospace;
+  transition: transform 0.12s ease, background 0.2s ease, border-color 0.2s ease;
+}
+.chem-option:active:not(:disabled) { transform: scale(0.985); }
+.chem-option.correct {
+  background: rgba(52, 211, 153, 0.16); border-color: var(--success); color: var(--teal-light);
+}
+.chem-option.wrong {
+  background: rgba(248, 113, 113, 0.14); border-color: var(--danger); color: var(--danger);
+}
+.chem-answer-bar {
+  width: 100%; padding: 13px 16px; border-radius: 14px; text-align: center;
+  font-size: 13px; font-weight: 700;
+  background: rgba(248, 113, 113, 0.14); border: 1px solid var(--danger); color: var(--danger);
+}
+.chem-answer-bar.ok {
+  background: rgba(52, 211, 153, 0.16); border-color: var(--success); color: var(--teal-light);
+}
+
+/* 3-bosqich: moslashtirish */
+.chem-match { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; padding: 0 16px; }
+.chem-match-col { display: flex; flex-direction: column; gap: 9px; }
+.chem-match-item {
+  padding: 15px 10px; border-radius: 14px; cursor: pointer; text-align: center;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  font-size: 13.5px; font-weight: 700; font-family: inherit; min-height: 52px;
+  transition: transform 0.12s ease, background 0.2s ease, border-color 0.2s ease, opacity 0.3s ease;
+}
+.chem-match-item:active:not(.matched) { transform: scale(0.97); }
+.chem-match-item.selected {
+  background: rgba(45, 212, 191, 0.16); border-color: var(--gold); color: var(--gold-light);
+}
+.chem-match-item.matched {
+  background: rgba(52, 211, 153, 0.12); border-color: rgba(52, 211, 153, 0.4);
+  color: var(--text-faint); opacity: 0.45; cursor: default;
+}
+.chem-match-item.wrong {
+  background: rgba(248, 113, 113, 0.16); border-color: var(--danger); color: var(--danger);
+}
+
+/* 4-bosqich: yozish */
+.chem-write-box { padding: 0 16px; }
+.chem-write-input {
+  width: 100%; padding: 16px; border-radius: 14px; text-align: center;
+  background: var(--surface); border: 2px solid var(--border); color: var(--text);
+  font-size: 22px; font-weight: 800; font-family: "SF Mono", Menlo, Consolas, monospace;
+  outline: none; transition: border-color 0.2s ease;
+}
+.chem-write-input:focus { border-color: var(--gold); }
+.chem-write-input.correct { border-color: var(--success); color: var(--teal-light); }
+.chem-write-input.wrong { border-color: var(--danger); color: var(--danger); }
+.chem-write-hint {
+  margin-top: 10px; text-align: center; font-size: 11px; color: var(--text-faint); line-height: 1.5;
+}
+#chemWriteFeedback { padding: 14px 16px 0; }
+
+/* Natija */
+.chem-result-loading { text-align: center; padding: 60px 16px; color: var(--text-dim); font-size: 13px; }
+.chem-result {
+  margin: 0 16px; padding: 32px 20px; border-radius: 22px; text-align: center;
+  background: linear-gradient(160deg, rgba(45,212,191,0.10), rgba(167,139,250,0.12)), var(--surface);
+  border: 1px solid var(--border-glow);
+  animation: chemCardIn 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.chem-result-icon { font-size: 44px; margin-bottom: 12px; }
+.chem-result-title {
+  font-size: 24px; font-weight: 900; margin-bottom: 4px;
+  background: var(--accent-gradient); -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.chem-result-sub { font-size: 12.5px; color: var(--text-dim); margin-bottom: 16px; }
+.chem-result-stars { margin-bottom: 14px; }
+.chem-result-stars .chem-star { font-size: 30px; margin: 0 3px; }
+.chem-result-coins {
+  display: inline-block; padding: 7px 16px; border-radius: 20px; margin-bottom: 16px;
+  font-size: 13px; font-weight: 800;
+  background: rgba(251, 191, 36, 0.14); border: 1px solid rgba(251, 191, 36, 0.4); color: var(--warning);
+}
+.chem-result-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.chem-result-stat {
+  padding: 14px; border-radius: 14px; background: var(--surface2); border: 1px solid var(--border);
+}
+.chem-result-stat-value { font-size: 20px; font-weight: 900; margin-bottom: 3px; }
+.chem-result-stat-label { font-size: 9.5px; font-weight: 800; letter-spacing: 1px; color: var(--text-faint); }
+.chem-result-note {
+  margin-top: 16px; padding: 12px; border-radius: 12px; font-size: 12px; line-height: 1.5;
+  background: rgba(52, 211, 153, 0.10); border: 1px solid rgba(52, 211, 153, 0.3); color: var(--teal-light);
+}
+
+/* ---------- Lug'at ---------- */
+.chem-dict-chip {
+  width: 44px; height: 44px; flex: 0 0 44px; border-radius: 12px; display: grid;
+  place-items: center; font-size: 11px; font-weight: 800; overflow: hidden;
+  background: var(--surface2); border: 1px solid var(--border); color: var(--gold-light);
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+}
+.chem-dict-text { flex: 1; min-width: 0; }
+.chem-dict-formula {
+  display: block; font-size: 15px; font-weight: 800; margin-bottom: 2px;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+}
+.chem-dict-name { display: block; font-size: 12px; color: var(--text-dim); }
+
+/* ---------- Modda kartasi ---------- */
+.chem-sub-hero {
+  margin: 0 16px 14px; padding: 26px 18px; border-radius: 22px; text-align: center;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.chem-sub-formula {
+  font-size: 40px; font-weight: 900; margin-bottom: 8px;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  background: var(--accent-gradient); -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.chem-sub-name { font-size: 16px; font-weight: 800; color: var(--warning); }
+.chem-sub-historic { margin-top: 8px; font-size: 12.5px; color: var(--text-dim); }
+.chem-sub-chips { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 16px 14px; }
+.chem-sub-chip {
+  padding: 12px 8px; border-radius: 14px; text-align: center;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.chem-sub-chip-label {
+  font-size: 8.5px; font-weight: 800; letter-spacing: 0.8px; color: var(--text-faint); margin-bottom: 5px;
+}
+.chem-sub-chip-value { font-size: 12.5px; font-weight: 700; }
+.chem-sub-block {
+  margin: 0 16px 10px; padding: 14px; border-radius: 14px;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.chem-sub-block-label {
+  font-size: 9px; font-weight: 800; letter-spacing: 1px; color: var(--text-faint); margin-bottom: 7px;
+}
+.chem-sub-block-value { font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+
+/* ---------- Ochiq (light) mavzu tuzatishlari ---------- */
+/* Qorong'i palitrada yaxshi ko'ringan shaffof qatlamlar oq fonda juda
+   och bo'lib qolmasligi uchun bir nechta joyni kuchaytiramiz. */
+html[data-theme="light"] .chem-card-name,
+html[data-theme="light"] .chem-prompt-value,
+html[data-theme="light"] .chem-sub-name { color: #b45309; }
+html[data-theme="light"] .chem-star { color: #d8dfea; }
+html[data-theme="light"] .chem-formula-chip,
+html[data-theme="light"] .chem-dict-chip { color: var(--gold-deep); }
+
+@media (prefers-reduced-motion: reduce) {
+  .chem-card, .chem-result { animation: none; }
+}

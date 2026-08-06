@@ -73,43 +73,87 @@
       <div class="home-footnote">Behruz Sayfiyev · Premium ta'lim platformasi</div>
     </section>
 
-    <!-- GAMES (placeholder) -->
+    <!-- ============================================================
+         O'YINLAR — fan tanlash (landing)
+         ============================================================ -->
     <section id="screen-games" class="screen hidden">
       <div class="screen-header">
         <button class="back-btn" data-nav="home" aria-label="Orqaga">←</button>
         <h2>🕹️ O'yinlar</h2>
       </div>
-      <button id="myBattlesBtn" class="results-link-btn">⚔️ Mening janglarim ›</button>
-      <p class="simulator-intro">Fan tanlang va "Jang qiling" tugmasini bosing — tizim sizga raqib topadi (agar hozir hech kim kutmasa, birinchi bo'lib savollarga javob berasiz, keyin qo'shiladigan raqib bilan taqqoslanadi).</p>
-      <div id="gameSubjectsList" class="admin-list"></div>
+      <p class="simulator-intro">Levellar, battle va lug'at orqali fanni o'ynab o'rganing.</p>
+      <div id="gameSubjectsList"></div>
+      <p class="games-foot-note">Haftalik g'oliblar reytingda alohida belgilanadi</p>
     </section>
 
-    <!-- MENING JANGLARIM -->
-    <section id="screen-game-battles" class="screen hidden">
+    <!-- KIMYO O'YINI — markaziy ekran (HUB) -->
+    <section id="screen-chem-hub" class="screen hidden">
       <div class="screen-header">
         <button class="back-btn" data-nav="games" aria-label="Orqaga">←</button>
-        <h2>⚔️ Mening janglarim</h2>
+        <h2>🧪 Kimyo o'yini</h2>
       </div>
-      <div id="gameBattlesList" class="admin-list"></div>
+      <div id="chemHubContent"></div>
     </section>
 
-    <!-- BATTLE SAVOLLARI -->
-    <section id="screen-game-quiz" class="screen hidden">
-      <div class="test-taking-header">
-        <button id="exitGameQuizBtn" class="exit-test-btn" aria-label="Chiqish">✕</button>
-        <div class="test-progress-bar"><div id="gameQuizProgressFill" class="test-progress-fill"></div></div>
-        <div id="gameQuizTimer" class="test-timer">0:00</div>
-      </div>
-      <div id="gameQuizContent"></div>
-    </section>
-
-    <!-- BATTLE NATIJASI / KUTISH -->
-    <section id="screen-game-result" class="screen hidden">
+    <!-- LEVELLAR BILAN O'RGANISH — kategoriya tanlash -->
+    <section id="screen-chem-categories" class="screen hidden">
       <div class="screen-header">
-        <button class="back-btn" data-nav="games" aria-label="Orqaga">←</button>
-        <h2>⚔️ Jang natijasi</h2>
+        <button class="back-btn" data-nav="chem-hub" aria-label="Orqaga">←</button>
+        <h2>Levellar bilan o'rganish</h2>
       </div>
-      <div id="gameResultContent"></div>
+      <p class="simulator-intro">Kategoriya tanlang — har birida oson bosqichdan qiyiniga qarab levellar bor. Level yakunlansa keyingisi ochiladi.</p>
+      <div id="chemCategoryList"></div>
+    </section>
+
+    <!-- LEVEL YO'LAGI -->
+    <section id="screen-chem-path" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="chem-categories" aria-label="Orqaga">←</button>
+        <h2 id="chemPathTitle">Levellar</h2>
+      </div>
+      <div id="chemPathContent"></div>
+    </section>
+
+    <!-- LEVEL ICHI — 4 bosqich -->
+    <section id="screen-chem-level" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="chem-path" aria-label="Orqaga">←</button>
+        <h2 id="chemLevelHeading">Level</h2>
+      </div>
+      <div id="chemLevelContent"></div>
+    </section>
+
+    <!-- O'YIN EKRANI — 4 bosqich uchun umumiy -->
+    <section id="screen-chem-play" class="screen hidden">
+      <div class="chem-play-header">
+        <button id="chemPlayExitBtn" class="exit-test-btn" aria-label="Chiqish">✕</button>
+        <div class="chem-play-label" id="chemPlayLabel"></div>
+      </div>
+      <div class="test-progress-bar"><div id="chemPlayProgress" class="test-progress-fill"></div></div>
+      <div id="chemPlayContent"></div>
+      <div id="chemPlayFooter" class="chem-play-footer"></div>
+    </section>
+
+    <!-- MODDALAR LUG'ATI -->
+    <section id="screen-chem-dictionary" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="chem-categories" aria-label="Orqaga">←</button>
+        <h2>📖 Moddalar lug'ati</h2>
+      </div>
+      <div class="search-box">
+        <span class="search-icon" aria-hidden="true">🔍</span>
+        <input type="search" id="chemDictSearch" class="search-input" placeholder="Formula yoki nom bo'yicha qidirish...">
+      </div>
+      <div id="chemDictList"></div>
+    </section>
+
+    <!-- MODDA KARTASI -->
+    <section id="screen-chem-substance" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="chem-dictionary" aria-label="Orqaga">←</button>
+        <h2>Modda</h2>
+      </div>
+      <div id="chemSubstanceContent"></div>
     </section>
 
     <!-- KURSLAR: FAN TANLASH (landing) -->
