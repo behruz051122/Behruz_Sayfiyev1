@@ -939,9 +939,38 @@ def init_db():
             )
         """)
 
+        # Har bir o'quvchi uchun BOSHLANISH paragrafi.
+        #
+        # NEGA KERAK: o'qituvchi tizimni joriy qilganda o'quvchilar allaqachon,
+        # masalan, 60-paragrafgacha vazifalarni qo'lda topshirib bo'lgan
+        # bo'lishi mumkin. Ularni hammasini qaytadan yuklashga majburlash —
+        # juda ko'p vaqt talab qiladi. Shuning uchun o'qituvchi "hozirgi
+        # o'quvchilar 60-dan davom etsin" deb belgilay oladi: o'sha paytda
+        # kursda bo'lgan har bir o'quvchiga shaxsiy boshlanish nuqtasi
+        # yoziladi. KEYIN qo'shilgan yangi o'quvchilar esa avtomatik
+        # 1-paragrafdan boshlaydi (ularda bu yozuv bo'lmaydi).
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS homework_student_start (
+                subject_id INTEGER NOT NULL,
+                telegram_id INTEGER NOT NULL,
+                start_paragraph INTEGER NOT NULL DEFAULT 1,
+                set_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (subject_id, telegram_id),
+                FOREIGN KEY (subject_id) REFERENCES homework_subjects (id) ON DELETE CASCADE
+            )
+        """)
+
         cur.execute("CREATE INDEX IF NOT EXISTS idx_hw_sub_user ON homework_submissions (telegram_id, subject_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_hw_photos_sub ON homework_photos (submission_id)")
         conn.commit()
+
+        # Fan darajasidagi standart boshlanish nuqtasi (shaxsiy yozuvi
+        # bo'lmagan o'quvchilar uchun; odatda 1 bo'lib qoladi).
+        try:
+            cur.execute("ALTER TABLE homework_subjects ADD COLUMN default_start_paragraph INTEGER DEFAULT 1")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
 
         # Kechikkanlarga ogohlantirish YUBORILGANINI belgilash — bir xil
         # eslatma qayta-qayta yuborilmasligi uchun.
@@ -4266,12 +4295,13 @@ def create_homework_subject(data: dict) -> int:
 
 
 def update_homework_subject(subject_id: int, data: dict):
-    numeric = {"paragraph_count": 0, "deadline_days": 7, "order_num": 0, "is_active": 1}
+    numeric = {"paragraph_count": 0, "deadline_days": 7, "order_num": 0, "is_active": 1,
+               "default_start_paragraph": 1}
     with get_connection() as conn:
         cur = conn.cursor()
         fields, values = [], []
         for key in ["title", "subtitle", "icon", "color_key", "paragraph_count",
-                    "deadline_days", "order_num", "is_active"]:
+                    "deadline_days", "order_num", "is_active", "default_start_paragraph"]:
             if key in data:
                 fields.append(f"{key} = ?")
                 values.append(safe_int(data[key], numeric[key]) if key in numeric else data[key])
@@ -4358,27 +4388,121 @@ def _homework_submissions_map(subject_id: int, telegram_id: int):
         return {r["paragraph_number"]: dict(r) for r in cur.fetchall()}
 
 
+def get_homework_start_paragraph(telegram_id: int, subject_id: int) -> int:
+    """O'quvchi shu fanda NECHANCHI paragrafdan boshlashi kerak.
+
+    Avval shaxsiy yozuv qidiriladi (o'qituvchi "hozirgi o'quvchilarga
+    qo'llash" tugmasi orqali yozgan bo'lishi mumkin). Topilmasa —
+    fanning standart qiymati, u ham bo'lmasa 1."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT start_paragraph FROM homework_student_start
+            WHERE subject_id = ? AND telegram_id = ?
+        """, (subject_id, telegram_id))
+        row = cur.fetchone()
+    if row:
+        return max(1, safe_int(row["start_paragraph"], 1))
+    subject = get_homework_subject(subject_id)
+    return max(1, safe_int((subject or {}).get("default_start_paragraph"), 1))
+
+
+def set_homework_student_start(subject_id: int, telegram_id: int, start_paragraph: int):
+    """Bitta o'quvchi uchun boshlanish paragrafini belgilaydi."""
+    value = max(1, safe_int(start_paragraph, 1))
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO homework_student_start (subject_id, telegram_id, start_paragraph)
+            VALUES (?, ?, ?)
+            ON CONFLICT(subject_id, telegram_id)
+            DO UPDATE SET start_paragraph = excluded.start_paragraph, set_at = CURRENT_TIMESTAMP
+        """, (subject_id, telegram_id, value))
+        conn.commit()
+    return {"ok": True, "start_paragraph": value}
+
+
+def clear_homework_student_start(subject_id: int, telegram_id: int):
+    """Shaxsiy boshlanish nuqtasini bekor qiladi — o'quvchi yana fanning
+    standart nuqtasidan (odatda 1-paragrafdan) boshlaydi."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM homework_student_start WHERE subject_id = ? AND telegram_id = ?",
+                    (subject_id, telegram_id))
+        conn.commit()
+    return {"ok": True}
+
+
+def apply_homework_start_to_current_students(subject_id: int, start_paragraph: int):
+    """AYNAN SHU PAYTDA fanga kirish huquqiga ega bo'lgan har bir
+    o'quvchiga shaxsiy boshlanish nuqtasini yozadi.
+
+    Shundan KEYIN qo'shilgan yangi o'quvchilarda bu yozuv bo'lmaydi va
+    ular 1-paragrafdan boshlaydi — o'qituvchi aynan shuni xohlaydi:
+    "hozirgilar 60-dan davom etsin, yangilari boshidan kelaversin"."""
+    value = max(1, safe_int(start_paragraph, 1))
+    course_ids = get_homework_subject_course_ids(subject_id)
+
+    telegram_ids = set()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        if course_ids:
+            placeholders = ",".join("?" for _ in course_ids)
+            cur.execute(f"SELECT DISTINCT telegram_id FROM enrollments WHERE course_id IN ({placeholders})",
+                        course_ids)
+        else:
+            # Fan hech qaysi kursga bog'lanmagan (hammaga ochiq) —
+            # botdan foydalangan barcha o'quvchilar hisobga olinadi.
+            cur.execute("SELECT telegram_id FROM users")
+        telegram_ids = {r["telegram_id"] for r in cur.fetchall()}
+
+    for tid in telegram_ids:
+        set_homework_student_start(subject_id, tid, value)
+    return {"ok": True, "applied_to": len(telegram_ids), "start_paragraph": value}
+
+
+def get_homework_student_starts(subject_id: int):
+    """Fan bo'yicha kim qaysi paragrafdan boshlagani (admin ro'yxati uchun)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT s.telegram_id, s.start_paragraph, s.set_at,
+                   u.first_name, u.username
+            FROM homework_student_start s
+            LEFT JOIN users u ON u.telegram_id = s.telegram_id
+            WHERE s.subject_id = ?
+            ORDER BY s.start_paragraph DESC, u.first_name ASC
+        """, (subject_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
 def compute_homework_paragraphs(telegram_id: int, subject_id: int):
-    """Fandagi barcha paragraflar ro'yxatini, har birining HOLATI va
-    QULF holati bilan qaytaradi.
+    """Fandagi paragraflar ro'yxatini, har birining HOLATI va QULF
+    holati bilan qaytaradi.
 
-    KETMA-KET OCHILISH QOIDASI: 1-paragraf doim ochiq. N-paragraf esa
-    faqat (N-1) o'quvchi tomonidan "Vazifalar to'liq yuklandi" deb
-    YAKUNLANGAN bo'lsa ochiladi. Ya'ni o'quvchi 2-ni tashlamay turib
-    3-ga o'tolmaydi — vazifalar tartib bilan bajarib boriladi.
+    BOSHLANISH NUQTASI: ro'yxat o'quvchining shaxsiy boshlanish
+    paragrafidan boshlanadi (masalan 60-dan). Undan OLDINGILARI umuman
+    qaytarilmaydi — o'quvchi ularni ko'rmaydi ham, chunki u mavzularni
+    allaqachon (tizimdan tashqarida) topshirib bo'lgan.
 
-    O'qituvchi qayta ishlashga qaytargan (rejected) topshiriq
-    YAKUNLANGAN hisoblanmaydi — keyingisi yopiladi va o'quvchi avval
-    o'shani tuzatishi kerak."""
+    KETMA-KET OCHILISH QOIDASI O'ZGARMAYDI: boshlanish paragrafi doim
+    ochiq, undan keyingisi esa faqat oldingisi "Vazifalar to'liq
+    yuklandi" deb YAKUNLANGANDA ochiladi. O'qituvchi qayta ishlashga
+    qaytargan (rejected) topshiriq yakunlangan hisoblanmaydi —
+    keyingisi yopiladi."""
     subject = get_homework_subject(subject_id)
     if not subject:
         return []
     total = safe_int(subject.get("paragraph_count"), 0)
+    start = get_homework_start_paragraph(telegram_id, subject_id)
+    if start > total:
+        return []
+
     subs = _homework_submissions_map(subject_id, telegram_id)
 
     result = []
-    prev_done = True  # 1-paragraf uchun
-    for n in range(1, total + 1):
+    prev_done = True  # boshlanish paragrafi doim ochiq
+    for n in range(start, total + 1):
         sub = subs.get(n)
         status = sub["status"] if sub else "empty"
         is_done = status in ("submitted", "graded")
@@ -4413,8 +4537,14 @@ def _ensure_homework_submission(subject_id: int, telegram_id: int, paragraph_num
 
 def is_homework_paragraph_unlocked(telegram_id: int, subject_id: int, paragraph_number: int) -> bool:
     """Serverda ham qulfni tekshiramiz — frontend chetlab o'tilsa ham
-    o'quvchi tartibni buzib, oldinga o'tib ketolmaydi."""
-    if paragraph_number <= 1:
+    o'quvchi tartibni buzib, oldinga o'tib ketolmaydi.
+
+    Boshlanish nuqtasidan OLDINGI paragraflar ham yopiq hisoblanadi
+    (ular o'quvchiga umuman ko'rsatilmaydi)."""
+    start = get_homework_start_paragraph(telegram_id, subject_id)
+    if paragraph_number < start:
+        return False
+    if paragraph_number == start:
         return True
     prev = get_homework_submission(subject_id, telegram_id, paragraph_number - 1)
     return bool(prev and prev["status"] in ("submitted", "graded"))

@@ -1291,6 +1291,26 @@
           <div id="hwsCourseCheckboxList" class="course-checkbox-list"></div>
           <button type="submit" class="gold-btn">Fanni saqlash</button>
         </form>
+
+        <div class="hw-start-box" id="hwStartBox">
+          <div class="hw-start-title">🎯 Nechanchi paragrafdan boshlansin?</div>
+          <p class="hw-start-text">
+            Agar o'quvchilaringiz vazifalarni allaqachon, masalan, 60-paragrafgacha
+            topshirib bo'lgan bo'lsa — bu yerga <b>60</b> yozib tugmani bosing.
+            <b>Hozirgi</b> o'quvchilar 60-paragrafdan davom etadi (1–59 ularga umuman
+            ko'rinmaydi), keyin qo'shiladigan <b>yangi</b> o'quvchilar esa 1-paragrafdan
+            boshlaydi. Ketma-ket ochilish qoidasi o'zgarmaydi.
+          </p>
+          <div class="hw-start-row">
+            <input id="hws_apply_start" type="number" min="1" placeholder="60">
+            <button type="button" class="gold-btn small" id="hwApplyStartBtn">✅ Hozirgi o'quvchilarga qo'llash</button>
+          </div>
+          <div class="hw-start-status" id="hwApplyStartStatus"></div>
+          <button type="button" class="secondary-btn small" id="hwShowStartsBtn" style="margin-top:10px;">
+            👥 Kim qaysi paragrafdan boshlagan?
+          </button>
+          <div id="hwStartsList" class="admin-list" style="margin-top:10px;"></div>
+        </div>
       </div>
 
       <div id="adminHwReviewPanel" class="admin-section hidden">

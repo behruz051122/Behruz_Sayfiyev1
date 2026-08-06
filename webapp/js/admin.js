@@ -2329,6 +2329,14 @@ function openHwSubjectForm(subject) {
   document.getElementById("hws_order_num").value = subject ? subject.order_num : 0;
   document.getElementById("hws_is_active").value = subject ? String(subject.is_active) : "1";
   populateHwCourseCheckboxes(subject ? subject.course_ids : []);
+
+  // Boshlanish paragrafi qutisi faqat SAQLANGAN fan uchun mavjud
+  // (yangi fanni avval saqlash kerak — o'quvchilar ro'yxati shundan keyin aniq).
+  const startBox = document.getElementById("hwStartBox");
+  document.getElementById("hwApplyStartStatus").textContent = "";
+  document.getElementById("hwStartsList").innerHTML = "";
+  document.getElementById("hws_apply_start").value = "";
+  if (startBox) startBox.classList.toggle("hidden", !subject);
 }
 
 // ---------- Baholash navbati ----------
@@ -2523,6 +2531,50 @@ export function initHomeworkAdminModule() {
     if (ok) { showToast("📨 Ogohlantirishlar yuborildi"); openHwLate(); }
   });
 
+  document.getElementById("hwApplyStartBtn").addEventListener("click", async () => {
+    const id = document.getElementById("hws_id").value;
+    if (!id) {
+      const msg = "Avval fanni saqlang.";
+      tg.showAlert ? tg.showAlert(msg) : alert(msg);
+      return;
+    }
+    const start = intVal("hws_apply_start", 0);
+    if (start < 1) {
+      const msg = "Boshlanish paragrafi raqamini yozing (masalan 60).";
+      tg.showAlert ? tg.showAlert(msg) : alert(msg);
+      return;
+    }
+    if (!confirm(
+      `Hozirgi o'quvchilar ${start}-paragrafdan boshlaydigan qilinsinmi?\n\n` +
+      `Ular uchun 1-${start - 1} paragraflar umuman ko'rinmaydi.\n` +
+      `Keyin qo'shiladigan yangi o'quvchilar 1-paragrafdan boshlaydi.`
+    )) return;
+
+    const statusEl = document.getElementById("hwApplyStartStatus");
+    statusEl.textContent = "⏳ Qo'llanmoqda...";
+    try {
+      const res = await apiFetch(`/api/admin/homework/subjects/${id}/apply-start`, {
+        method: "POST", body: JSON.stringify({ start_paragraph: start }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Qo'llab bo'lmadi");
+      }
+      const data = await res.json();
+      statusEl.innerHTML = `<span class="hw-start-ok">✅ ${data.applied_to} ta o'quvchi endi ${data.start_paragraph}-paragrafdan boshlaydi</span>`;
+      showToast("✅ Qo'llandi");
+      loadHwStudentStarts(id);
+    } catch (e) {
+      console.error(e);
+      statusEl.innerHTML = `<span class="hw-start-err">❌ ${e.message || "Xatolik"}</span>`;
+    }
+  });
+
+  document.getElementById("hwShowStartsBtn").addEventListener("click", () => {
+    const id = document.getElementById("hws_id").value;
+    if (id) loadHwStudentStarts(id);
+  });
+
   document.getElementById("hwSubjectFormEl").addEventListener("submit", async (e) => {
     e.preventDefault();
     const id = document.getElementById("hws_id").value;
@@ -2552,4 +2604,58 @@ export function initHomeworkAdminModule() {
     document.getElementById("adminHwSubjectForm").classList.add("hidden");
     loadAdminHomeworkSubjects();
   });
+}
+
+
+async function loadHwStudentStarts(subjectId) {
+  const box = document.getElementById("hwStartsList");
+  box.innerHTML = loadingHtml();
+  try {
+    const res = await apiFetch(`/api/admin/homework/subjects/${subjectId}/starts`);
+    const data = await res.json();
+    const rows = data.starts || [];
+    box.innerHTML = "";
+    if (!rows.length) {
+      box.innerHTML = emptyHtml("Hech kimga shaxsiy boshlanish nuqtasi qo'yilmagan — hamma 1-paragrafdan boshlaydi");
+      return;
+    }
+    rows.forEach(s => {
+      const row = document.createElement("div");
+      row.className = "admin-row";
+      const uname = s.username ? `@${s.username}` : `ID ${s.telegram_id}`;
+      row.innerHTML = `
+        <div class="info">
+          <div class="t">${s.first_name || "Foydalanuvchi"} <span style="font-weight:600;color:var(--text-dim);font-size:12px;">${uname}</span></div>
+          <div class="s">${s.start_paragraph}-paragrafdan boshlaydi</div>
+        </div>
+        <div class="row-actions">
+          <button data-a="edit">O'zgartirish</button>
+          <button data-a="clear" class="danger">1-dan</button>
+        </div>
+      `;
+      row.querySelector('[data-a="edit"]').onclick = async () => {
+        const val = prompt(`${s.first_name} uchun boshlanish paragrafi:`, s.start_paragraph);
+        if (val === null) return;
+        const n = parseInt(val, 10);
+        if (Number.isNaN(n) || n < 1) {
+          const msg = "1 dan katta son kiriting.";
+          tg.showAlert ? tg.showAlert(msg) : alert(msg);
+          return;
+        }
+        const ok = await saveOrAlert(`/api/admin/homework/subjects/${subjectId}/starts/${s.telegram_id}`,
+          { method: "PUT", body: JSON.stringify({ start_paragraph: n }) }, "O'zgartirib bo'lmadi");
+        if (ok) loadHwStudentStarts(subjectId);
+      };
+      row.querySelector('[data-a="clear"]').onclick = async () => {
+        if (!confirm(`${s.first_name} yana 1-paragrafdan boshlasinmi?`)) return;
+        const ok = await saveOrAlert(`/api/admin/homework/subjects/${subjectId}/starts/${s.telegram_id}`,
+          { method: "DELETE" }, "Bekor qilib bo'lmadi");
+        if (ok) loadHwStudentStarts(subjectId);
+      };
+      box.appendChild(row);
+    });
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml();
+  }
 }

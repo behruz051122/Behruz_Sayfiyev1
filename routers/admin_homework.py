@@ -44,6 +44,45 @@ def admin_delete_subject(subject_id: int, admin=Depends(require_admin)):
     return {"ok": True}
 
 
+# ---------- Boshlanish paragrafi (nechanchidan boshlansin) ----------
+
+@router.post("/subjects/{subject_id}/apply-start")
+def admin_apply_start_paragraph(subject_id: int, data: dict = Body(...), admin=Depends(require_admin)):
+    """"Hozirgi o'quvchilarga qo'llash" — aynan shu paytda kursda bo'lgan
+    har bir o'quvchiga boshlanish paragrafini yozadi.
+
+    Masalan o'qituvchi 60 ni belgilasa: hozirgi o'quvchilar 60-paragrafdan
+    davom etadi (1–59 ularga umuman ko'rinmaydi), keyin qo'shiladigan
+    YANGI o'quvchilar esa 1-paragrafdan boshlaydi."""
+    subject = db.get_homework_subject(subject_id)
+    if not subject:
+        raise HTTPException(status_code=404, detail="Fan topilmadi")
+    start = int(data.get("start_paragraph") or 1)
+    total = int(subject.get("paragraph_count") or 0)
+    if start < 1 or (total and start > total):
+        raise HTTPException(status_code=400, detail=f"1 dan {total} gacha son kiriting")
+    return db.apply_homework_start_to_current_students(subject_id, start)
+
+
+@router.get("/subjects/{subject_id}/starts")
+def admin_list_student_starts(subject_id: int, admin=Depends(require_admin)):
+    """Kim qaysi paragrafdan boshlagani ro'yxati."""
+    return {"starts": db.get_homework_student_starts(subject_id)}
+
+
+@router.put("/subjects/{subject_id}/starts/{telegram_id}")
+def admin_set_student_start(subject_id: int, telegram_id: int, data: dict = Body(...),
+                            admin=Depends(require_admin)):
+    """Bitta o'quvchining boshlanish paragrafini alohida o'zgartirish."""
+    return db.set_homework_student_start(subject_id, telegram_id, int(data.get("start_paragraph") or 1))
+
+
+@router.delete("/subjects/{subject_id}/starts/{telegram_id}")
+def admin_clear_student_start(subject_id: int, telegram_id: int, admin=Depends(require_admin)):
+    """Shaxsiy nuqtani bekor qilish — o'quvchi yana 1-paragrafdan boshlaydi."""
+    return db.clear_homework_student_start(subject_id, telegram_id)
+
+
 # ---------- Baholash navbati ----------
 
 @router.get("/pending")
