@@ -53,6 +53,7 @@ from routers import (
     admin_chem,
     bio_game,
     admin_bio,
+    admin_access,
     certificates,
     faq,
     admin_faq,
@@ -127,6 +128,8 @@ async def startup():
     asyncio.create_task(bot_module.cleanup_old_homework_photos_loop())
     # Kimyo o'yini: kutayotgan janglarni bot bilan yakunlash + natija xabari
     asyncio.create_task(bot_module.chem_battle_maintenance_loop())
+    # Pullik guruh a'zoligini fon rejimida yangilash (chiqib ketganlarni yopish)
+    asyncio.create_task(bot_module.membership_refresh_loop())
 
 
 @app.on_event("shutdown")
@@ -163,6 +166,7 @@ app.include_router(chem_tournament.router)
 app.include_router(admin_chem.router)
 app.include_router(bio_game.router)
 app.include_router(admin_bio.router)
+app.include_router(admin_access.router)
 app.include_router(certificates.router)
 app.include_router(faq.router)
 app.include_router(admin_faq.router)

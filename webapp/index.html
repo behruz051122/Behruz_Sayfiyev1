@@ -804,6 +804,58 @@ PbS | qo'rg'oshin sulfid | qo'rg'oshin yaltirog'i | qora | - | qora"></textarea>
       </div>
 
       <!-- ============================================================
+           PULLIK GURUH ORQALI AVTOMATIK KIRISH
+           ============================================================ -->
+      <div class="admin-section">
+        <div class="admin-section-head">
+          <h3>🔐 Pullik guruhlar (avtomatik kirish)</h3>
+          <button class="secondary-btn small" id="accGroupAddBtn" type="button">+ Guruh</button>
+        </div>
+        <p class="admin-hint">
+          O'quvchilarni qo'lda qo'shish shart emas: yopiq guruhingizda bo'lgan
+          har kim bog'langan kurs va testlarga <b>avtomatik</b> kirish oladi.
+          Guruhdan chiqib ketsa — <b id="accTtlText">10</b> daqiqada yopiladi.<br>
+          <b>Muhim:</b> bot guruhingizda <b>admin</b> bo'lishi shart.
+          Qo'shgandan keyin «Tekshirish» tugmasini bosing.
+        </p>
+        <div id="accGroupList" class="admin-list"></div>
+      </div>
+
+      <div id="accGroupForm" class="admin-section hidden">
+        <div class="admin-section-head"><h3 id="accGroupFormTitle">Yangi guruh</h3></div>
+        <label class="admin-label">Guruh nomi *</label>
+        <input type="text" id="accGroupTitle" placeholder="Kimyo pullik guruh">
+        <label class="admin-label">
+          chat_id *
+          <span class="admin-label-note">— yopiq guruh ID si, -100 bilan boshlanadi</span>
+        </label>
+        <input type="text" id="accGroupChatId" placeholder="-1001234567890">
+        <label class="admin-label">
+          Taklif havolasi
+          <span class="admin-label-note">— o'quvchiga "qo'shilish" tugmasi shu havolani ochadi</span>
+        </label>
+        <input type="text" id="accGroupInvite" placeholder="https://t.me/+AbCdEf...">
+        <div class="admin-form-actions">
+          <button class="primary-btn" id="accGroupSaveBtn" type="button">Saqlash</button>
+          <button class="secondary-btn" id="accGroupCancelBtn" type="button">Bekor</button>
+        </div>
+        <div id="accGroupFormResult"></div>
+      </div>
+
+      <div id="accLinksBox" class="admin-section hidden">
+        <div class="admin-section-head"><h3>Qaysi kontent qaysi guruhga tegishli</h3></div>
+        <p class="admin-hint">
+          Belgilangan kurs/bosqich <b>faqat</b> shu guruh a'zolariga ochiladi.
+          Hech qaysi guruh belgilanmasa — eski tartib saqlanadi (qo'lda biriktirish).
+        </p>
+        <div class="tab-row" id="accLinkTabs">
+          <button class="filter-chip active" type="button" data-acctab="course">Kurslar</button>
+          <button class="filter-chip" type="button" data-acctab="test_stage">Test bosqichlari</button>
+        </div>
+        <div id="accLinkList" class="admin-list"></div>
+      </div>
+
+      <!-- ============================================================
            BIOLOGIYA O'YINI — baza
            ============================================================ -->
       <div class="admin-section">

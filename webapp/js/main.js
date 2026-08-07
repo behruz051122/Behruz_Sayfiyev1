@@ -22,6 +22,7 @@ import { loadHomeworkSubjects, initHomeworkModule } from "./homework.js";
 import { loadAdminChemCategories, loadAdminTournaments, initAdminChemModule } from "./adminChem.js";
 import { openBioHub, reopenBioPath, initBioGameModule } from "./bioGame.js";
 import { loadAdminBioTopics, initAdminBioModule } from "./adminBio.js";
+import { loadAdminAccessGroups, initAdminAccessModule } from "./adminAccess.js";
 
 function handleNav(target) {
   if (target === "home") {
@@ -82,6 +83,7 @@ function handleNav(target) {
     loadAdminChemCategories();
     loadAdminTournaments();
     loadAdminBioTopics();
+    loadAdminAccessGroups();
     showScreen("admin");
   } else if (target === "games") {
     loadGameSubjects();
@@ -151,6 +153,7 @@ function bootstrap() {
   initAdminChemModule();
   initBioGameModule();
   initAdminBioModule();
+  initAdminAccessModule();
 
   loadBrand();
   loadUser().finally(hideAppSplash);

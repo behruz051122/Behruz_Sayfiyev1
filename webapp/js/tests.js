@@ -239,7 +239,12 @@ function renderPracticeStageList() {
     `;
     row.addEventListener("click", () => {
       if (!s.unlocked) {
-        tg.showAlert ? tg.showAlert("🔒 Bu bo'lim hali ochilmagan — avvalgi bo'limdagi barcha testlarni tugating") : alert("Bu bo'lim hali ochilmagan");
+        const msg = s.needs_group
+          ? `🔐 Bu testlar pullik bo'lim uchun. Ishlash uchun "${
+              (s.access_groups || []).map(g => g.title).join(" yoki ") || "pullik"
+            }" guruhiga qo'shiling.`
+          : "🔒 Bu bo'lim hali ochilmagan — avvalgi bo'limdagi barcha testlarni tugating";
+        tg.showAlert ? tg.showAlert(msg) : alert(msg);
         return;
       }
       openPracticeGroupsForStage(s);
@@ -249,12 +254,22 @@ function renderPracticeStageList() {
     // Qulflangan bosqich ostiga — nega qulf ekanini tushuntiruvchi, chiroyli
     // alohida izoh qatori (foydalanuvchi so'ragan "pastiga izoh" ko'rinishi).
     if (!s.unlocked) {
-      const prevStage = practiceStages[i - 1];
       const hint = document.createElement("div");
       hint.className = "group-lock-hint";
-      hint.innerHTML = prevStage
-        ? `🔒 Avval <strong>"${prevStage.title}"</strong> bo'limidagi barcha testlarni tugating`
-        : `🔒 Bu bo'lim hali ochilmagan`;
+      if (s.needs_group) {
+        // Pullik guruh qulfi — o'quvchiga TO'G'RIDAN-TO'G'RI qo'shilish
+        // havolasi beriladi, "kim bilan bog'lanay?" degan savol qolmaydi.
+        const g = (s.access_groups || [])[0];
+        hint.classList.add("need-group");
+        hint.innerHTML = g && g.invite_link
+          ? `🔐 Pullik bo'lim — <a href="${g.invite_link}" target="_blank" rel="noopener">"${g.title}" guruhiga qo'shiling</a>`
+          : `🔐 Bu testlar pullik bo'lim uchun — ustoz bilan bog'laning`;
+      } else {
+        const prevStage = practiceStages[i - 1];
+        hint.innerHTML = prevStage
+          ? `🔒 Avval <strong>"${prevStage.title}"</strong> bo'limidagi barcha testlarni tugating`
+          : `🔒 Bu bo'lim hali ochilmagan`;
+      }
       box.appendChild(hint);
     }
   });

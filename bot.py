@@ -19,6 +19,7 @@ from database import (
     resolve_stale_chem_battles, get_unnotified_chem_battles, mark_chem_battle_notified,
     get_startable_chem_tournaments, start_chem_tournament, get_chem_tournament,
     get_chem_substances_by_category, TOURNAMENT_QUESTION_COUNT,
+    get_access_groups, get_users_needing_membership_refresh,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -563,3 +564,43 @@ async def chem_battle_maintenance_loop():
             logging.error(f"[KIMYO] Xabarlar siklida xato: {e}")
 
         await asyncio.sleep(CHEM_BATTLE_CHECK_INTERVAL_SECONDS)
+
+
+# ==========================================================================
+#  PULLIK GURUH A'ZOLIGINI FON REJIMIDA YANGILASH
+# ==========================================================================
+
+MEMBERSHIP_REFRESH_INTERVAL_SECONDS = 5 * 60   # har 5 daqiqada
+
+
+async def membership_refresh_loop():
+    """Faol o'quvchilarning guruh a'zoligini fon rejimida yangilab turadi.
+
+    NEGA KERAK: a'zolik ilova ochilganda ham tekshiriladi, lekin o'quvchi
+    ilovani ochmasdan turib guruhdan chiqib ketishi mumkin. Bu sikl
+    tufayli u keyingi safar ilovani ochganida kesh allaqachon yangilangan
+    bo'ladi va qulf DARHOL ishlaydi — "bir marta ochilgan, keyin
+    bepul ko'raveradi" holati bo'lmaydi.
+
+    Telegram limitiga urmaslik uchun: har aylanishda ko'pi bilan 200 ta
+    foydalanuvchi va har biri uchun faqat KESHI ESKIRGAN guruhlar.
+    """
+    import access_control
+
+    while True:
+        try:
+            if get_access_groups(only_active=True):
+                user_ids = get_users_needing_membership_refresh(limit=200)
+                for tid in user_ids:
+                    try:
+                        await access_control.refresh_user_memberships(bot, tid)
+                    except Exception as e:
+                        logging.warning(f"[KIRISH] {tid} uchun yangilashda xato: {e}")
+                    # Telegram limitiga urmaslik uchun kichik pauza
+                    await asyncio.sleep(0.15)
+                if user_ids:
+                    logging.info(f"[KIRISH] {len(user_ids)} ta o'quvchining a'zoligi yangilandi")
+        except Exception as e:
+            logging.error(f"[KIRISH] A'zolik siklida xato: {e}")
+
+        await asyncio.sleep(MEMBERSHIP_REFRESH_INTERVAL_SECONDS)

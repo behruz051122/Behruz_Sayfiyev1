@@ -554,7 +554,12 @@ export async function openCourseDetail(courseId) {
 
     html += buildModuleList(course);
 
-    if (!course.unlocked) {
+    if (!course.unlocked && course.reason === "need_group") {
+      // PULLIK GURUH QULFI — bu yerda narx paketlari ko'rsatilmaydi, chunki
+      // o'quvchi to'lovni allaqachon guruhga qo'shilish orqali amalga
+      // oshiradi. Unga faqat bitta aniq harakat kerak: guruhga qo'shilish.
+      html += buildGroupLockedBox(course.access_groups);
+    } else if (!course.unlocked) {
       const reasonText = course.reason === "expired"
         ? "Obuna muddatingiz tugagan. Davom ettirish uchun obunani yangilang."
         : course.required_referrals > 0
@@ -606,6 +611,8 @@ export async function openCourseDetail(courseId) {
         if (firstPreview) openParagraph(firstPreview.id);
       });
     }
+
+    wireGroupLockButtons();
 
     const referralBtn = document.getElementById("lockedReferralBtn");
     if (referralBtn) referralBtn.addEventListener("click", () => navigateTo("referral"));
@@ -938,3 +945,64 @@ function stopLessonVideo() {
 document.addEventListener("app:screenchanged", (e) => {
   if (e.detail && e.detail.name !== "lesson") stopLessonVideo();
 });
+
+
+// ==========================================================================
+//  PULLIK GURUH QULFI
+// ==========================================================================
+// O'quvchi kursni ochish uchun o'qituvchining yopiq guruhida bo'lishi kerak.
+// Bu yerda unga IKKI TUGMA beriladi:
+//   1) guruhga qo'shilish (taklif havolasi)
+//   2) "Men qo'shildim — tekshirish" — a'zolikni darhol qayta tekshiradi,
+//      shunda 10 daqiqa kutib o'tirmaydi.
+
+function escapeHtml(str) {
+  const d = document.createElement("div");
+  d.textContent = str == null ? "" : String(str);
+  return d.innerHTML;
+}
+
+function buildGroupLockedBox(groups) {
+  const list = groups || [];
+  const names = list.map(g => g.title).join(" yoki ");
+  const withLink = list.filter(g => g.invite_link);
+
+  return `
+    <div class="group-locked-box">
+      <div class="group-locked-icon">🔐</div>
+      <h3>Bu dars pullik bo'lim uchun</h3>
+      <p>
+        Darsni ko'rish uchun ${names ? `<b>${escapeHtml(names)}</b>` : "pullik"} guruhiga
+        qo'shilishingiz kerak. Guruhga qo'shilganingizdan so'ng barcha darslar
+        <b>avtomatik ochiladi</b> — hech kimga murojaat qilish shart emas.
+      </p>
+      ${withLink.map(g => `
+        <a class="gold-btn group-join-btn" href="${escapeHtml(g.invite_link)}"
+           target="_blank" rel="noopener">➕ ${escapeHtml(g.title)} guruhiga qo'shilish</a>
+      `).join("")}
+      ${withLink.length === 0
+        ? `<button class="gold-btn" id="lockedContactBtn">Admin bilan bog'lanish</button>`
+        : ""}
+      <button class="secondary-btn group-recheck-btn" id="groupRecheckBtn" type="button">
+        ✅ Men qo'shildim — tekshirish
+      </button>
+    </div>`;
+}
+
+function wireGroupLockButtons() {
+  const btn = document.getElementById("groupRecheckBtn");
+  if (!btn) return;
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    btn.textContent = "Tekshirilmoqda...";
+    try {
+      await apiFetch(`/api/access/refresh`, { method: "POST" });
+      // Kursni qayta ochamiz — endi ochilgan bo'lishi kerak.
+      openCourseDetail(currentCourse.id);
+    } catch (e) {
+      console.error(e);
+      btn.disabled = false;
+      btn.textContent = "✅ Men qo'shildim — tekshirish";
+    }
+  });
+}

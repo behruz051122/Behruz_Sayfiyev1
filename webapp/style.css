@@ -2912,3 +2912,64 @@ html[data-theme="light"] .bio-theme .bio-term-group { color: #047857; }
 }
 .bio-img-label-name { flex: 1; font-size: 12.5px; font-weight: 700; }
 .bio-img-label-pos { font-size: 10px; color: var(--text-faint); }
+
+/* ==========================================================================
+   PULLIK GURUH ORQALI AVTOMATIK KIRISH
+   ========================================================================== */
+
+/* ---------- Talaba: qulf ekrani ---------- */
+.group-locked-box {
+  margin: 16px; padding: 26px 20px; border-radius: 20px; text-align: center;
+  background: linear-gradient(160deg, rgba(251,191,36,0.10), rgba(167,139,250,0.10)), var(--surface);
+  border: 1px solid rgba(251,191,36,0.35);
+}
+.group-locked-icon { font-size: 40px; margin-bottom: 12px; }
+.group-locked-box h3 { font-size: 18px; font-weight: 900; margin-bottom: 10px; }
+.group-locked-box p {
+  font-size: 13px; line-height: 1.65; color: var(--text-dim); margin-bottom: 18px;
+}
+.group-join-btn { display: block; text-decoration: none; margin-bottom: 10px; }
+.group-recheck-btn { width: 100%; margin: 0; }
+.group-lock-hint.need-group {
+  border-left: 3px solid var(--warning);
+  background: rgba(251,191,36,0.08);
+}
+.group-lock-hint.need-group a { color: var(--warning); font-weight: 700; }
+
+/* ---------- Admin: guruhlar ---------- */
+.admin-item.acc-group.off { opacity: 0.55; }
+.acc-group-error {
+  margin-top: 6px; font-size: 10.5px; line-height: 1.5; color: var(--danger);
+}
+.admin-item-sub code {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+  padding: 1px 5px; font-size: 10px; font-family: "SF Mono", Menlo, Consolas, monospace;
+}
+.acc-help {
+  margin-top: 14px; padding: 12px; border-radius: 12px; font-size: 11.5px; line-height: 1.8;
+  background: var(--surface2); border: 1px solid var(--border); color: var(--text-dim);
+}
+.acc-help code {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+  padding: 1px 5px; font-family: "SF Mono", Menlo, Consolas, monospace;
+}
+#accGroupForm input {
+  width: 100%; background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); padding: 10px; border-radius: 8px; font-size: 13px; font-family: inherit;
+}
+.acc-link-item { align-items: flex-start; }
+.acc-free-tag {
+  font-size: 9px; font-weight: 800; padding: 2px 7px; border-radius: 20px;
+  background: rgba(52,211,153,0.14); color: var(--success); margin-left: 6px;
+}
+.acc-chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.acc-chip {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  font-size: 11px; font-weight: 700; padding: 5px 10px; border-radius: 20px;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text-dim);
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+.acc-chip.on {
+  background: rgba(251,191,36,0.14); border-color: rgba(251,191,36,0.45); color: var(--warning);
+}
+.acc-chip input { width: 14px; height: 14px; accent-color: var(--warning); margin: 0; }

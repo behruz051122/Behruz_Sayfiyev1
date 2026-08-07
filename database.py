@@ -1566,6 +1566,72 @@ def init_db():
             conn.commit()
             _set_flag("chem_categories_seeded")
 
+        # ================================================================
+        #  PULLIK GURUH ORQALI AVTOMATIK KIRISH
+        # ================================================================
+        # MUAMMO: o'qituvchi har bir o'quvchini qo'lda kursga biriktirishga
+        # majbur edi. O'quvchi ko'p bo'lganda bu real emas.
+        #
+        # YECHIM: o'quvchining Telegram ID si o'qituvchining YOPIQ (pullik)
+        # guruhida bor-yo'qligi avtomatik tekshiriladi. Guruhda bo'lsa —
+        # unga bog'langan kurslar va testlar o'z-o'zidan ochiladi.
+        #
+        # MUHIM: eski usul (qo'lda biriktirish) SAQLANADI. Kirish ikkalasidan
+        # BIRI bo'lsa beriladi — shuning uchun o'qituvchi istisno holatlarda
+        # (masalan guruhga qo'shilmagan, lekin to'lagan o'quvchiga) qo'lda
+        # ham bera oladi.
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS access_groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                chat_id TEXT NOT NULL,
+                invite_link TEXT,
+                is_active INTEGER DEFAULT 1,
+                last_error TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Qaysi kontent qaysi guruhga bog'langan.
+        # content_type: 'course' | 'test_stage'
+        # Bitta kontentni bir nechta guruhga bog'lash mumkin — masalan
+        # "Kimyo pullik" va "Umumiy VIP" guruhlaridan BIRIDA bo'lsa yetarli.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS content_access_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                content_type TEXT NOT NULL,
+                content_id INTEGER NOT NULL,
+                group_id INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(content_type, content_id, group_id)
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_content_access_links
+            ON content_access_links(content_type, content_id)
+        """)
+
+        # A'zolik KESHI.
+        # NEGA KESH KERAK: har bir dars ochilganda Telegram API ga so'rov
+        # yuborish ilovani sekinlashtiradi va Telegram limitiga urib qoladi.
+        # Shuning uchun natija saqlanadi va TTL (10 daqiqa) o'tgach yangilanadi.
+        # Shu sababli guruhdan chiqib ketgan o'quvchi ~10 daqiqada qulflanadi.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS group_membership_cache (
+                telegram_id INTEGER NOT NULL,
+                group_id INTEGER NOT NULL,
+                is_member INTEGER DEFAULT 0,
+                status TEXT,
+                checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (telegram_id, group_id)
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_membership_checked
+            ON group_membership_cache(checked_at)
+        """)
+
         # ---------- Sertifikatlar (kurs 100% tugallanganda) ----------
         cur.execute("""
             CREATE TABLE IF NOT EXISTS certificates (
@@ -2829,36 +2895,90 @@ def get_analytics_summary():
 GRACE_PERIOD_DAYS = 2
 
 
-def compute_course_access(telegram_id: int, course: dict):
+def compute_course_access(telegram_id: int, course: dict, member_group_ids=None):
     """Kurs uchun kirish holatini hisoblaydi.
-    Qaytaradi: {'unlocked': bool, 'reason': 'free'|'referral'|'enrolled'|'grace'|'expired'|'locked',
-                'expiry_date': str|None, 'days_left': int|None}
+
+    Qaytaradi: {'unlocked': bool,
+                'reason': 'free'|'referral'|'group'|'enrolled'|'grace'|'expired'|'locked',
+                'expiry_date': str|None, 'days_left': int|None,
+                'access_groups': [...]}   # qulf bo'lsa — qaysi guruhga qo'shilish kerak
+
+    KIRISH YO'LLARI (biri yetarli):
+      1) kurs bepul
+      2) yetarli referal
+      3) PULLIK GURUH A'ZOLIGI — o'quvchining Telegram ID si o'qituvchining
+         yopiq guruhida bo'lsa, kurs avtomatik ochiladi
+      4) qo'lda biriktirish (eski usul — saqlangan)
+
+    3-yo'l 4-dan OLDIN tekshiriladi, chunki u tezroq va muddatsiz.
     """
+    gate = access_state_for(telegram_id, "course", course["id"], member_group_ids)
+
     if course["is_free"]:
-        return {"unlocked": True, "reason": "free", "expiry_date": None, "days_left": None}
+        return {"unlocked": True, "reason": "free", "expiry_date": None,
+                "days_left": None, "access_groups": []}
 
     if course.get("required_referrals", 0) > 0:
         refs = get_confirmed_referral_count(telegram_id)
         if refs >= course["required_referrals"]:
-            return {"unlocked": True, "reason": "referral", "expiry_date": None, "days_left": None}
+            return {"unlocked": True, "reason": "referral", "expiry_date": None,
+                    "days_left": None, "access_groups": []}
 
+    # Pullik guruh a'zoligi — asosiy yangi yo'l
+    if gate["granted"]:
+        return {"unlocked": True, "reason": "group", "expiry_date": None,
+                "days_left": None, "access_groups": gate["groups"]}
+
+    # Qo'lda biriktirish — ESKI USUL, saqlanadi. O'qituvchi istisno
+    # holatlarda (guruhga qo'shilmagan, lekin to'lagan o'quvchi) qo'lda
+    # ham kirish bera oladi.
     if course.get("price", 0) > 0:
         enrollment = get_enrollment(telegram_id, course["id"])
         if enrollment:
             if enrollment["expiry_date"] is None:
-                return {"unlocked": True, "reason": "enrolled", "expiry_date": None, "days_left": None}
+                return {"unlocked": True, "reason": "enrolled", "expiry_date": None,
+                        "days_left": None, "access_groups": []}
             expiry = datetime.datetime.fromisoformat(enrollment["expiry_date"])
             now = datetime.datetime.utcnow()
             grace_end = expiry + datetime.timedelta(days=GRACE_PERIOD_DAYS)
             days_left = (expiry - now).days
             if now <= expiry:
-                return {"unlocked": True, "reason": "enrolled", "expiry_date": enrollment["expiry_date"], "days_left": days_left}
+                return {"unlocked": True, "reason": "enrolled",
+                        "expiry_date": enrollment["expiry_date"],
+                        "days_left": days_left, "access_groups": []}
             elif now <= grace_end:
-                return {"unlocked": True, "reason": "grace", "expiry_date": enrollment["expiry_date"], "days_left": days_left}
+                return {"unlocked": True, "reason": "grace",
+                        "expiry_date": enrollment["expiry_date"],
+                        "days_left": days_left, "access_groups": []}
             else:
-                return {"unlocked": False, "reason": "expired", "expiry_date": enrollment["expiry_date"], "days_left": days_left}
+                return {"unlocked": False, "reason": "expired",
+                        "expiry_date": enrollment["expiry_date"],
+                        "days_left": days_left, "access_groups": gate["groups"]}
 
-    return {"unlocked": False, "reason": "locked", "expiry_date": None, "days_left": None}
+    # Qulf. Agar kurs guruhga bog'langan bo'lsa — sababi "guruhga qo'shilmagan",
+    # aks holda odatdagi "yopiq" (admin bilan bog'lanish kerak).
+    return {"unlocked": False,
+            "reason": "need_group" if gate["gated"] else "locked",
+            "expiry_date": None, "days_left": None,
+            "access_groups": gate["groups"]}
+
+
+def access_state_for(telegram_id: int, content_type: str, content_id: int,
+                     member_group_ids=None):
+    """Kontentning guruh orqali kirish holati.
+
+    access_control.py dagi bir xil funksiyaning DB qatlamidagi nusxasi —
+    aylanma import (database <-> access_control) bo'lmasligi uchun shu
+    yerda takrorlangan. Mantiq bitta joyda: has_group_access().
+    """
+    granted, groups = has_group_access(telegram_id, content_type, content_id,
+                                       member_group_ids)
+    return {
+        "gated": bool(groups),
+        "granted": granted,
+        "groups": [{"id": g["id"], "title": g["title"],
+                    "invite_link": g["invite_link"]} for g in groups],
+    }
 
 
 # ---------- LEADERBOARD ----------
@@ -7310,3 +7430,229 @@ def get_bio_level_detail(telegram_id: int, level_id: int):
         "next_stage": next_stage,
         "all_done": bool(stage_keys) and next_stage is None,
     }
+
+
+# ==========================================================================
+#  PULLIK GURUH ORQALI AVTOMATIK KIRISH
+# ==========================================================================
+
+# A'zolik natijasi shuncha daqiqa "yangi" hisoblanadi. O'tgach qayta
+# tekshiriladi — shu sababli guruhdan chiqqan o'quvchi taxminan shu
+# vaqt ichida qulflanadi.
+MEMBERSHIP_TTL_MINUTES = 10
+
+# Telegram'da a'zo hisoblanadigan holatlar. 'restricted' ataylab
+# kiritilgan: guruhda ovozi o'chirilgan bo'lsa ham u A'ZO — darsni
+# ko'rish huquqi saqlanishi kerak.
+TELEGRAM_MEMBER_STATUSES = ("creator", "administrator", "member", "restricted")
+
+
+# ---------- Guruhlar ----------
+
+def get_access_groups(only_active: bool = False):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        sql = "SELECT * FROM access_groups"
+        if only_active:
+            sql += " WHERE is_active = 1"
+        sql += " ORDER BY id"
+        cur.execute(sql)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_access_group(group_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM access_groups WHERE id = ?", (group_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def create_access_group(title: str, chat_id: str, invite_link: str = None):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO access_groups (title, chat_id, invite_link) VALUES (?, ?, ?)
+        """, (title.strip(), str(chat_id).strip(), (invite_link or "").strip() or None))
+        conn.commit()
+        return cur.lastrowid
+
+
+def update_access_group(group_id: int, **fields):
+    allowed = ("title", "chat_id", "invite_link", "is_active", "last_error")
+    sets, vals = [], []
+    for k in allowed:
+        if k in fields:
+            sets.append(f"{k} = ?")
+            vals.append(safe_int(fields[k]) if k == "is_active" else fields[k])
+    if not sets:
+        return False
+    vals.append(group_id)
+    with get_connection() as conn:
+        conn.cursor().execute(f"UPDATE access_groups SET {', '.join(sets)} WHERE id = ?", vals)
+        conn.commit()
+    return True
+
+
+def delete_access_group(group_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM content_access_links WHERE group_id = ?", (group_id,))
+        cur.execute("DELETE FROM group_membership_cache WHERE group_id = ?", (group_id,))
+        cur.execute("DELETE FROM access_groups WHERE id = ?", (group_id,))
+        conn.commit()
+    return True
+
+
+# ---------- Kontentni guruhga bog'lash ----------
+
+def get_content_groups(content_type: str, content_id: int):
+    """Shu kontent qaysi guruhlarga bog'langan (faqat faollari)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT g.* FROM content_access_links l
+            JOIN access_groups g ON g.id = l.group_id
+            WHERE l.content_type = ? AND l.content_id = ? AND g.is_active = 1
+            ORDER BY g.id
+        """, (content_type, content_id))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def set_content_groups(content_type: str, content_id: int, group_ids):
+    """Kontentning guruh bog'lanishlarini to'liq almashtiradi."""
+    ids = [safe_int(g) for g in (group_ids or []) if safe_int(g)]
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM content_access_links WHERE content_type = ? AND content_id = ?",
+                    (content_type, content_id))
+        for gid in ids:
+            cur.execute("""
+                INSERT OR IGNORE INTO content_access_links (content_type, content_id, group_id)
+                VALUES (?, ?, ?)
+            """, (content_type, content_id, gid))
+        conn.commit()
+    return True
+
+
+def get_all_content_links(content_type: str = None):
+    """Admin paneli uchun — qaysi kontent qaysi guruhga bog'langan."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        if content_type:
+            cur.execute("""SELECT * FROM content_access_links WHERE content_type = ?""",
+                        (content_type,))
+        else:
+            cur.execute("SELECT * FROM content_access_links")
+        out = {}
+        for r in cur.fetchall():
+            out.setdefault((r["content_type"], r["content_id"]), []).append(r["group_id"])
+        return out
+
+
+# ---------- A'zolik keshi ----------
+
+def save_membership(telegram_id: int, group_id: int, is_member: bool, status: str = None):
+    with get_connection() as conn:
+        conn.cursor().execute("""
+            INSERT INTO group_membership_cache (telegram_id, group_id, is_member, status, checked_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(telegram_id, group_id) DO UPDATE SET
+                is_member = excluded.is_member,
+                status = excluded.status,
+                checked_at = CURRENT_TIMESTAMP
+        """, (telegram_id, group_id, 1 if is_member else 0, status))
+        conn.commit()
+
+
+def get_member_group_ids(telegram_id: int):
+    """O'quvchi HOZIR a'zo bo'lgan guruhlar (keshi hali eskirmaganlari).
+
+    Eskirgan yozuv HISOBGA OLINMAYDI — ya'ni tekshiruv o'tkazilmagan
+    bo'lsa, kirish berilmaydi. Bu ataylab shunday: "ishonchsiz holatda
+    yopiq" tamoyili, aks holda kesh eskirganda hamma narsa ochilib
+    ketardi.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"""
+            SELECT c.group_id FROM group_membership_cache c
+            JOIN access_groups g ON g.id = c.group_id
+            WHERE c.telegram_id = ? AND c.is_member = 1 AND g.is_active = 1
+              AND c.checked_at >= datetime('now', '-{int(MEMBERSHIP_TTL_MINUTES)} minutes')
+        """, (telegram_id,))
+        return {r["group_id"] for r in cur.fetchall()}
+
+
+def get_stale_membership_groups(telegram_id: int):
+    """Shu o'quvchi uchun QAYTA TEKSHIRISH kerak bo'lgan guruhlar.
+
+    Yangi tekshirilgan (TTL ichidagi) guruhlar ro'yxatga kirmaydi —
+    keraksiz Telegram so'rovlari yuborilmaydi.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"""
+            SELECT g.* FROM access_groups g
+            WHERE g.is_active = 1 AND g.id NOT IN (
+                SELECT c.group_id FROM group_membership_cache c
+                WHERE c.telegram_id = ?
+                  AND c.checked_at >= datetime('now', '-{int(MEMBERSHIP_TTL_MINUTES)} minutes')
+            )
+        """, (telegram_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_group_member_count(group_id: int):
+    """Keshdagi a'zolar soni — admin panelida ko'rsatiladi."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COUNT(*) AS c FROM group_membership_cache
+            WHERE group_id = ? AND is_member = 1
+        """, (group_id,))
+        return cur.fetchone()["c"] or 0
+
+
+def get_users_needing_membership_refresh(limit: int = 200):
+    """Fon vazifasi uchun: keshi eskirgan FAOL foydalanuvchilar.
+
+    "Faol" — oxirgi 30 kunda ilovaga kirgan. Butun bazani tekshirish
+    Telegram limitiga urib qo'yadi, shuning uchun faqat haqiqatan
+    kerak bo'lganlar yangilanadi.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"""
+            SELECT DISTINCT u.telegram_id FROM users u
+            WHERE EXISTS (SELECT 1 FROM access_groups g WHERE g.is_active = 1)
+              AND (
+                u.telegram_id IN (
+                    SELECT telegram_id FROM group_membership_cache
+                    WHERE checked_at < datetime('now', '-{int(MEMBERSHIP_TTL_MINUTES)} minutes')
+                )
+                OR u.telegram_id NOT IN (SELECT telegram_id FROM group_membership_cache)
+              )
+            ORDER BY u.id DESC LIMIT ?
+        """, (limit,))
+        return [r["telegram_id"] for r in cur.fetchall()]
+
+
+# ---------- Kirish tekshiruvi ----------
+
+def has_group_access(telegram_id: int, content_type: str, content_id: int,
+                     member_group_ids=None):
+    """Kontent guruh orqali ochilganmi?
+
+    Qaytaradi: (ochiqmi, bog'langan_guruhlar)
+      - Kontent hech qaysi guruhga bog'lanmagan bo'lsa -> (False, [])
+        ya'ni bu tizim bu kontentga umuman ta'sir qilmaydi.
+      - Bog'langan bo'lsa va o'quvchi shu guruhlardan BIRIDA bo'lsa -> (True, ...)
+    """
+    groups = get_content_groups(content_type, content_id)
+    if not groups:
+        return False, []
+    if member_group_ids is None:
+        member_group_ids = get_member_group_ids(telegram_id)
+    ok = any(g["id"] in member_group_ids for g in groups)
+    return ok, groups

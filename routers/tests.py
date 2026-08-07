@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Body
 
 from routers.deps import get_verified_telegram_user
 import database as db
+import access_control
 
 router = APIRouter(prefix="/api", tags=["tests"])
 
@@ -45,17 +46,55 @@ def _ensure_practice_group_unlocked(test: dict, telegram_id: int):
     if this_stage and not this_stage["unlocked"]:
         raise HTTPException(status_code=403, detail="Bu bo'lim sizga hali ochilmagan — avvalgi bo'limdagi testlarni tugating")
 
+    # PULLIK GURUH qulfi — mijozdagi qulfni chetlab o'tib to'g'ridan-to'g'ri
+    # so'rov yuborilsa ham shu yerda to'xtatiladi.
+    gate = db.access_state_for(telegram_id, "test_stage", stage_id)
+    if gate["gated"] and not gate["granted"]:
+        names = ", ".join(g["title"] for g in gate["groups"]) or "pullik guruh"
+        raise HTTPException(
+            status_code=403,
+            detail=f"Bu testlar pullik bo'lim uchun. Ishlash uchun \"{names}\" guruhiga qo'shiling.")
+
 
 @router.get("/test-subject-cards")
 def api_get_test_subject_cards():
     return {"cards": db.get_test_subject_cards(only_active=True)}
 
 
+async def _member_groups(telegram_id: int):
+    """O'quvchi a'zo bo'lgan pullik guruhlar (keshdan, kerak bo'lsa yangilab)."""
+    if not db.get_access_groups(only_active=True):
+        return set()
+    try:
+        import bot as bot_module
+        return await access_control.refresh_user_memberships(bot_module.bot, telegram_id)
+    except Exception:
+        return db.get_member_group_ids(telegram_id)
+
+
 @router.get("/test-subject-cards/{card_id}/stages")
-def api_get_test_stages(card_id: int, user=Depends(get_verified_telegram_user)):
-    """Fan ichidagi bosqichlar ('1-bo'lim', '2-bo'lim'...) — ketma-ket
-    ochiladi."""
-    stages = db.compute_stages_with_unlock(user["telegram_id"], card_id)
+async def api_get_test_stages(card_id: int, user=Depends(get_verified_telegram_user)):
+    """Fan ichidagi bosqichlar ('1-bo'lim', '2-bo'lim'...).
+
+    Ikki xil qulf bor va ikkalasi ham ishlaydi:
+      1) KETMA-KET qulf — avvalgi bosqich tugamaguncha keyingisi yopiq
+      2) PULLIK GURUH qulfi — bosqich pullik guruhga bog'langan bo'lsa,
+         o'quvchi shu guruhda bo'lishi kerak
+
+    Guruh qulfi kuchliroq: ketma-ketlik bo'yicha ochilgan bo'lsa ham,
+    guruhga a'zo bo'lmasa yopiq qoladi.
+    """
+    telegram_id = user["telegram_id"]
+    stages = db.compute_stages_with_unlock(telegram_id, card_id)
+    member_groups = await _member_groups(telegram_id)
+
+    for st in stages:
+        gate = db.access_state_for(telegram_id, "test_stage", st["id"], member_groups)
+        st["access_groups"] = gate["groups"]
+        st["needs_group"] = gate["gated"] and not gate["granted"]
+        if st["needs_group"]:
+            st["unlocked"] = False
+            st["lock_reason"] = "need_group"
     return {"stages": stages}
 
 
