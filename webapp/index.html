@@ -194,6 +194,39 @@
       <div id="chemRatingContent"></div>
     </section>
 
+    <!-- CHEMPIONATLAR -->
+    <section id="screen-chem-tournaments" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="chem-hub" aria-label="Orqaga">←</button>
+        <h2>🏆 Chempionat</h2>
+      </div>
+      <div id="chemTournamentList"></div>
+      <div id="chemTournamentCreate" class="admin-section hidden">
+        <div class="admin-section-head"><h3>Yangi chempionat</h3></div>
+        <p class="admin-hint">
+          Sovrin yo'q — faqat <b>ELO raqobati</b>. Yaratish bepul.
+          ELO qatnashchilar soni 8 tadan kam bo'lmasa hisoblanadi.
+        </p>
+        <label class="admin-label">Chempionat nomi</label>
+        <input type="text" id="chemTitleInput" placeholder="Masalan: 11-A sinf kubogi" maxlength="60">
+        <label class="admin-label">Necha kishi yig'ilganda boshlansin?</label>
+        <input type="number" id="chemStartCount" value="8" min="4" max="64">
+        <div class="admin-form-actions">
+          <button class="primary-btn" id="chemTournamentSaveBtn" type="button">Yaratish</button>
+          <button class="secondary-btn" id="chemTournamentCancelBtn" type="button">Bekor qilish</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- CHEMPIONAT DETALI -->
+    <section id="screen-chem-tournament" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="chem-tournaments" aria-label="Orqaga">←</button>
+        <h2 id="chemTournamentTitle">Chempionat</h2>
+      </div>
+      <div id="chemTournamentDetail"></div>
+    </section>
+
     <!-- MENING JANGLARIM -->
     <section id="screen-chem-history" class="screen hidden">
       <div class="screen-header">

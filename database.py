@@ -1296,6 +1296,84 @@ def init_db():
             ON chem_battles(invite_code)
         """)
 
+        # ---------- Chempionat ----------
+        # FORMAT: saralash -> setka (chiqib ketish) -> final + 3-o'rin.
+        #
+        #   1) SARALASH — barcha qatnashchilar AYNAN BIR XIL savollarga
+        #      javob beradi. Ball (keyin vaqt) bo'yicha saralanadi.
+        #   2) SETKA — yuqoridagi yarmi (2 ning darajasiga yaxlitlangan)
+        #      o'tadi va juft-juft o'ynaydi. Har juftlik ham bir xil
+        #      savollarga javob beradi — bu ASINXRON bo'lishiga imkon beradi
+        #      (ikkalasi bir vaqtda onlayn bo'lishi shart emas).
+        #   3) FINAL va 3-O'RIN o'yini.
+        #
+        # is_official=1 — o'qituvchi e'lon qilgan, sovrinli chempionat.
+        # is_official=0 — o'quvchi yaratgan, faqat ELO uchun.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS chem_tournaments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                created_by INTEGER,
+                is_official INTEGER DEFAULT 0,
+                prize_text TEXT,
+                start_mode TEXT DEFAULT 'count',
+                start_count INTEGER DEFAULT 8,
+                start_at TIMESTAMP,
+                status TEXT DEFAULT 'open',
+                qual_questions TEXT,
+                round_no INTEGER DEFAULT 0,
+                winner_telegram_id INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                started_at TIMESTAMP,
+                finished_at TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_chem_tournaments_status
+            ON chem_tournaments(status, created_at)
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS chem_tournament_players (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tournament_id INTEGER NOT NULL,
+                telegram_id INTEGER NOT NULL,
+                qual_score INTEGER,
+                qual_time_ms INTEGER,
+                qual_done INTEGER DEFAULT 0,
+                seed INTEGER,
+                eliminated_round INTEGER,
+                place INTEGER,
+                joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(tournament_id, telegram_id)
+            )
+        """)
+
+        # Setkadagi bitta juftlik. Ikkala o'yinchi bir xil savollarga
+        # javob beradi, shuning uchun `questions` shu yerda saqlanadi.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS chem_tournament_matches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tournament_id INTEGER NOT NULL,
+                round_no INTEGER NOT NULL,
+                slot INTEGER NOT NULL,
+                kind TEXT DEFAULT 'bracket',
+                questions TEXT NOT NULL,
+                p1_telegram_id INTEGER,
+                p1_score INTEGER, p1_time_ms INTEGER, p1_done INTEGER DEFAULT 0,
+                p2_telegram_id INTEGER,
+                p2_score INTEGER, p2_time_ms INTEGER, p2_done INTEGER DEFAULT 0,
+                winner_telegram_id INTEGER,
+                status TEXT DEFAULT 'playing',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_chem_tmatches
+            ON chem_tournament_matches(tournament_id, round_no)
+        """)
+
         # ---------- ELO reytingi ----------
         cur.execute("""
             CREATE TABLE IF NOT EXISTS chem_ratings (
@@ -6052,3 +6130,421 @@ def get_chem_daily_mission(telegram_id: int, target: int = 3):
         """, (telegram_id, telegram_id))
         done = cur.fetchone()["c"] or 0
     return {"done": min(done, target), "target": target, "completed": done >= target}
+
+
+# ==========================================================================
+#  KIMYO O'YINI — CHEMPIONAT (saralash -> setka -> final)
+# ==========================================================================
+
+TOURNAMENT_MIN_PLAYERS = 4          # shundan kam bo'lsa setka yasab bo'lmaydi
+TOURNAMENT_ELO_MIN_PLAYERS = 8      # ELO faqat shundan ko'p bo'lsa hisoblanadi
+TOURNAMENT_QUESTION_COUNT = 10
+
+
+def _pow2_floor(n: int) -> int:
+    """n dan katta bo'lmagan eng katta 2 ning darajasi (4, 8, 16, ...)."""
+    p = 1
+    while p * 2 <= n:
+        p *= 2
+    return p
+
+
+def create_chem_tournament(category_id: int, title: str, created_by: int,
+                           start_mode: str = "count", start_count: int = 8,
+                           start_at=None, is_official: int = 0, prize_text: str = None):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO chem_tournaments
+                (category_id, title, created_by, is_official, prize_text,
+                 start_mode, start_count, start_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (category_id, title, created_by, safe_int(is_official), prize_text,
+              start_mode, max(TOURNAMENT_MIN_PLAYERS, safe_int(start_count, 8)), start_at))
+        conn.commit()
+        return cur.lastrowid
+
+
+def get_chem_tournament(tournament_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM chem_tournaments WHERE id = ?", (tournament_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        t = dict(row)
+        cur.execute("""
+            SELECT p.*, u.first_name FROM chem_tournament_players p
+            LEFT JOIN users u ON u.telegram_id = p.telegram_id
+            WHERE p.tournament_id = ?
+            ORDER BY p.seed IS NULL, p.seed, p.qual_score DESC, p.qual_time_ms
+        """, (tournament_id,))
+        t["players"] = [dict(r) for r in cur.fetchall()]
+        t["player_count"] = len(t["players"])
+        return t
+
+
+def list_chem_tournaments(limit: int = 30):
+    """Ochiq va davom etayotgan chempionatlar — rasmiylari birinchi."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT t.*, u.first_name AS creator_name,
+                   (SELECT COUNT(*) FROM chem_tournament_players p
+                    WHERE p.tournament_id = t.id) AS player_count
+            FROM chem_tournaments t
+            LEFT JOIN users u ON u.telegram_id = t.created_by
+            WHERE t.status != 'finished'
+            ORDER BY t.is_official DESC, t.created_at ASC
+            LIMIT ?
+        """, (limit,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def join_chem_tournament(tournament_id: int, telegram_id: int):
+    t = get_chem_tournament(tournament_id)
+    if not t:
+        return {"ok": False, "error": "Chempionat topilmadi"}
+    if t["status"] != "open":
+        return {"ok": False, "error": "Ro'yxatga olish yopilgan — chempionat boshlanib bo'lgan"}
+    if any(p["telegram_id"] == telegram_id for p in t["players"]):
+        return {"ok": True, "already": True}
+
+    with get_connection() as conn:
+        conn.cursor().execute("""
+            INSERT OR IGNORE INTO chem_tournament_players (tournament_id, telegram_id)
+            VALUES (?, ?)
+        """, (tournament_id, telegram_id))
+        conn.commit()
+    return {"ok": True, "already": False}
+
+
+def start_chem_tournament(tournament_id: int, questions: list):
+    """Saralash bosqichini boshlaydi — barchaga BIR XIL savollar beriladi."""
+    t = get_chem_tournament(tournament_id)
+    if not t or t["status"] != "open":
+        return None
+    if t["player_count"] < TOURNAMENT_MIN_PLAYERS:
+        return None
+    with get_connection() as conn:
+        conn.cursor().execute("""
+            UPDATE chem_tournaments
+            SET status = 'qualifying', qual_questions = ?, round_no = 0,
+                started_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (json.dumps(questions, ensure_ascii=False), tournament_id))
+        conn.commit()
+    return get_chem_tournament(tournament_id)
+
+
+def save_chem_qual_result(tournament_id: int, telegram_id: int, score: int, time_ms: int):
+    with get_connection() as conn:
+        conn.cursor().execute("""
+            UPDATE chem_tournament_players
+            SET qual_score = ?, qual_time_ms = ?, qual_done = 1
+            WHERE tournament_id = ? AND telegram_id = ?
+        """, (score, time_ms, tournament_id, telegram_id))
+        conn.commit()
+    return maybe_advance_chem_tournament(tournament_id)
+
+
+def maybe_advance_chem_tournament(tournament_id: int):
+    """Bosqich tugagan bo'lsa keyingisini yasaydi.
+
+    Bu funksiya har bir natija saqlangandan keyin chaqiriladi — shu sababli
+    chempionat "o'z-o'zidan" oldinga siljiydi va hech kim qo'lda
+    boshqarishi shart emas.
+    """
+    t = get_chem_tournament(tournament_id)
+    if not t:
+        return None
+
+    if t["status"] == "qualifying":
+        if not all(p["qual_done"] for p in t["players"]):
+            return t
+        return _build_bracket(tournament_id)
+
+    if t["status"] == "bracket":
+        matches = get_chem_tournament_matches(tournament_id, t["round_no"])
+        if not matches or any(m["status"] != "finished" for m in matches):
+            return t
+        return _next_bracket_round(tournament_id)
+
+    return t
+
+
+def _build_bracket(tournament_id: int):
+    """Saralashdan keyin setkani yasaydi: eng yaxshi 2^k o'yinchi o'tadi.
+
+    Juftlash klassik: 1-o'rin oxirgi o'tgan bilan, 2-o'rin oxirgidan
+    oldingisi bilan... Shunday qilib kuchli o'yinchilar finalgacha
+    uchrashmaydi — musobaqa qiziqroq bo'ladi.
+    """
+    t = get_chem_tournament(tournament_id)
+    ranked = sorted(
+        [p for p in t["players"] if p["qual_done"]],
+        key=lambda p: (-(p["qual_score"] or 0), p["qual_time_ms"] or 10 ** 9))
+
+    size = _pow2_floor(len(ranked))
+    if size < 2:
+        with get_connection() as conn:
+            conn.cursor().execute("""
+                UPDATE chem_tournaments SET status = 'finished', finished_at = CURRENT_TIMESTAMP
+                WHERE id = ?""", (tournament_id,))
+            conn.commit()
+        return get_chem_tournament(tournament_id)
+
+    advancing = ranked[:size]
+    eliminated = ranked[size:]
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        for i, p in enumerate(advancing, start=1):
+            cur.execute("UPDATE chem_tournament_players SET seed = ? WHERE id = ?", (i, p["id"]))
+        for p in eliminated:
+            cur.execute("""
+                UPDATE chem_tournament_players SET eliminated_round = 0 WHERE id = ?
+            """, (p["id"],))
+        cur.execute("""
+            UPDATE chem_tournaments SET status = 'bracket', round_no = 1 WHERE id = ?
+        """, (tournament_id,))
+        conn.commit()
+
+    pairs = [(advancing[i], advancing[size - 1 - i]) for i in range(size // 2)]
+    _create_matches(tournament_id, 1, pairs, t["category_id"])
+    return get_chem_tournament(tournament_id)
+
+
+def _create_matches(tournament_id: int, round_no: int, pairs, category_id: int,
+                    kind: str = "bracket"):
+    """Juftliklar uchun o'yin yozuvlarini yaratadi (savollar bilan)."""
+    import chem_questions as cq
+    pool = get_chem_substances_by_category(category_id)
+    with get_connection() as conn:
+        cur = conn.cursor()
+        for slot, (a, b) in enumerate(pairs, start=1):
+            qs = cq.build_battle_questions(pool, count=TOURNAMENT_QUESTION_COUNT)
+            cur.execute("""
+                INSERT INTO chem_tournament_matches
+                    (tournament_id, round_no, slot, kind, questions,
+                     p1_telegram_id, p2_telegram_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (tournament_id, round_no, slot, kind,
+                  json.dumps(qs, ensure_ascii=False),
+                  a["telegram_id"] if a else None,
+                  b["telegram_id"] if b else None))
+        conn.commit()
+
+
+def get_chem_tournament_matches(tournament_id: int, round_no: int = None):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        if round_no is None:
+            cur.execute("""
+                SELECT * FROM chem_tournament_matches
+                WHERE tournament_id = ? ORDER BY round_no, slot
+            """, (tournament_id,))
+        else:
+            cur.execute("""
+                SELECT * FROM chem_tournament_matches
+                WHERE tournament_id = ? AND round_no = ? ORDER BY slot
+            """, (tournament_id, round_no))
+        out = []
+        for r in cur.fetchall():
+            m = dict(r)
+            m["questions"] = json.loads(m["questions"])
+            out.append(m)
+        return out
+
+
+def get_chem_match(match_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM chem_tournament_matches WHERE id = ?", (match_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        m = dict(row)
+        m["questions"] = json.loads(m["questions"])
+        return m
+
+
+def save_chem_match_result(match_id: int, telegram_id: int, score: int, time_ms: int):
+    m = get_chem_match(match_id)
+    if not m:
+        return None
+    col = "p1" if m["p1_telegram_id"] == telegram_id else "p2"
+    with get_connection() as conn:
+        conn.cursor().execute(f"""
+            UPDATE chem_tournament_matches
+            SET {col}_score = ?, {col}_time_ms = ?, {col}_done = 1
+            WHERE id = ?
+        """, (score, time_ms, match_id))
+        conn.commit()
+
+    m = get_chem_match(match_id)
+    # Raqib bo'sh bo'lsa (toq son) — avtomatik o'tadi.
+    both = (m["p1_done"] and m["p2_done"]) or \
+           (m["p1_done"] and not m["p2_telegram_id"]) or \
+           (m["p2_done"] and not m["p1_telegram_id"])
+    if both and m["status"] != "finished":
+        _finish_chem_match(match_id)
+        maybe_advance_chem_tournament(m["tournament_id"])
+    return get_chem_match(match_id)
+
+
+def _finish_chem_match(match_id: int):
+    m = get_chem_match(match_id)
+    p1, p2 = m["p1_telegram_id"], m["p2_telegram_id"]
+    if not p2:
+        winner = p1
+    elif not p1:
+        winner = p2
+    else:
+        s1, s2 = m["p1_score"] or 0, m["p2_score"] or 0
+        t1, t2 = m["p1_time_ms"] or 10 ** 9, m["p2_time_ms"] or 10 ** 9
+        # Tenglikda TEZROQ javob bergan o'tadi — chempionatda durang bo'lmaydi.
+        winner = p1 if (s1 > s2 or (s1 == s2 and t1 <= t2)) else p2
+
+    with get_connection() as conn:
+        conn.cursor().execute("""
+            UPDATE chem_tournament_matches
+            SET winner_telegram_id = ?, status = 'finished' WHERE id = ?
+        """, (winner, match_id))
+        conn.commit()
+
+    loser = p2 if winner == p1 else p1
+    if loser:
+        with get_connection() as conn:
+            conn.cursor().execute("""
+                UPDATE chem_tournament_players SET eliminated_round = ?
+                WHERE tournament_id = ? AND telegram_id = ?
+            """, (m["round_no"], m["tournament_id"], loser))
+            conn.commit()
+
+
+def _next_bracket_round(tournament_id: int):
+    """Joriy bosqich tugadi — keyingisini yasaydi yoki chempionatni yakunlaydi."""
+    t = get_chem_tournament(tournament_id)
+    matches = get_chem_tournament_matches(tournament_id, t["round_no"])
+
+    # Final tugadi (bitta o'yin qolgan edi) -> chempion aniqlandi.
+    bracket_matches = [m for m in matches if m["kind"] == "bracket"]
+    if len(bracket_matches) == 1:
+        final = bracket_matches[0]
+        champ = final["winner_telegram_id"]
+        runner = final["p2_telegram_id"] if champ == final["p1_telegram_id"] \
+            else final["p1_telegram_id"]
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE chem_tournaments
+                SET status = 'finished', winner_telegram_id = ?, finished_at = CURRENT_TIMESTAMP
+                WHERE id = ?""", (champ, tournament_id))
+            cur.execute("""UPDATE chem_tournament_players SET place = 1
+                           WHERE tournament_id = ? AND telegram_id = ?""", (tournament_id, champ))
+            if runner:
+                cur.execute("""UPDATE chem_tournament_players SET place = 2
+                               WHERE tournament_id = ? AND telegram_id = ?""", (tournament_id, runner))
+            # 3-o'rin: shu bosqichda chiqib ketganlardan tezrog'i
+            cur.execute("""
+                SELECT telegram_id FROM chem_tournament_players
+                WHERE tournament_id = ? AND eliminated_round = ?
+                ORDER BY qual_score DESC, qual_time_ms LIMIT 1
+            """, (tournament_id, t["round_no"] - 1))
+            row = cur.fetchone()
+            if row:
+                cur.execute("""UPDATE chem_tournament_players SET place = 3
+                               WHERE tournament_id = ? AND telegram_id = ?""",
+                            (tournament_id, row["telegram_id"]))
+            conn.commit()
+        _award_tournament_elo(tournament_id)
+        return get_chem_tournament(tournament_id)
+
+    winners = [m["winner_telegram_id"] for m in bracket_matches if m["winner_telegram_id"]]
+    if len(winners) < 2:
+        with get_connection() as conn:
+            conn.cursor().execute("""
+                UPDATE chem_tournaments SET status = 'finished',
+                       winner_telegram_id = ?, finished_at = CURRENT_TIMESTAMP
+                WHERE id = ?""", (winners[0] if winners else None, tournament_id))
+            conn.commit()
+        return get_chem_tournament(tournament_id)
+
+    next_round = t["round_no"] + 1
+    pairs = [({"telegram_id": winners[i]}, {"telegram_id": winners[i + 1]})
+             for i in range(0, len(winners) - 1, 2)]
+    with get_connection() as conn:
+        conn.cursor().execute("UPDATE chem_tournaments SET round_no = ? WHERE id = ?",
+                              (next_round, tournament_id))
+        conn.commit()
+    _create_matches(tournament_id, next_round, pairs, t["category_id"])
+    return get_chem_tournament(tournament_id)
+
+
+def _award_tournament_elo(tournament_id: int):
+    """Chempionat yakunida ELO beradi.
+
+    QOIDA: qatnashchi TOURNAMENT_ELO_MIN_PLAYERS dan kam bo'lsa ELO
+    o'zgarmaydi — aks holda 4 kishilik "uy chempionati" bilan reytingni
+    sun'iy ko'tarib olish mumkin bo'lardi.
+    """
+    t = get_chem_tournament(tournament_id)
+    if not t or t["player_count"] < TOURNAMENT_ELO_MIN_PLAYERS:
+        return
+    bonus = {1: 40, 2: 25, 3: 15}
+    for p in t["players"]:
+        delta = bonus.get(p["place"], 0)
+        if not delta and p["eliminated_round"] is not None:
+            delta = 5 if p["eliminated_round"] > 0 else 0   # setkaga chiqqanga kichik bonus
+        if delta:
+            _apply_rating(p["telegram_id"], delta, "win" if p["place"] == 1 else "draw")
+
+
+def get_my_chem_match(tournament_id: int, telegram_id: int):
+    """O'quvchining SHU BOSQICHDAGI o'yini (bo'lsa)."""
+    t = get_chem_tournament(tournament_id)
+    if not t or t["status"] != "bracket":
+        return None
+    for m in get_chem_tournament_matches(tournament_id, t["round_no"]):
+        if telegram_id in (m["p1_telegram_id"], m["p2_telegram_id"]):
+            return m
+    return None
+
+
+def get_startable_chem_tournaments():
+    """Boshlanish sharti bajarilgan chempionatlar (fon vazifasi uchun)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT t.*, (SELECT COUNT(*) FROM chem_tournament_players p
+                         WHERE p.tournament_id = t.id) AS player_count
+            FROM chem_tournaments t
+            WHERE t.status = 'open'
+        """)
+        rows = [dict(r) for r in cur.fetchall()]
+
+    out = []
+    for t in rows:
+        if t["player_count"] < TOURNAMENT_MIN_PLAYERS:
+            continue
+        if t["start_mode"] == "count" and t["player_count"] >= t["start_count"]:
+            out.append(t)
+        elif t["start_mode"] == "time" and t["start_at"]:
+            with get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT datetime('now') <= ? AS future", (t["start_at"],))
+                if not cur.fetchone()["future"]:
+                    out.append(t)
+    return out
+
+
+def count_todays_tournaments_by(telegram_id: int) -> int:
+    """Bugun shu o'quvchi nechta chempionat yaratgan (kuniga 1 ta chegara)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COUNT(*) AS c FROM chem_tournaments
+            WHERE created_by = ? AND DATE(created_at) = DATE('now')
+        """, (telegram_id,))
+        return cur.fetchone()["c"] or 0

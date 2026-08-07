@@ -17,6 +17,8 @@ from database import (
     get_confirmed_referral_count, get_enrollments_needing_reminder, mark_reminder_sent,
     get_battles_needing_notification, mark_battle_notified,
     resolve_stale_chem_battles, get_unnotified_chem_battles, mark_chem_battle_notified,
+    get_startable_chem_tournaments, start_chem_tournament, get_chem_tournament,
+    get_chem_substances_by_category, TOURNAMENT_QUESTION_COUNT,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -505,6 +507,24 @@ async def chem_battle_maintenance_loop():
             resolved = resolve_stale_chem_battles()
             if resolved:
                 logging.info(f"[KIMYO] {len(resolved)} ta kutayotgan jang bot bilan yakunlandi")
+
+            # Boshlanish sharti (odam soni yoki vaqt) bajarilgan chempionatlar
+            import chem_questions as _cq
+            for t in get_startable_chem_tournaments():
+                pool = get_chem_substances_by_category(t["category_id"])
+                qs = _cq.build_battle_questions(pool, count=TOURNAMENT_QUESTION_COUNT)
+                if qs and start_chem_tournament(t["id"], qs):
+                    logging.info(f"[KIMYO] Chempionat boshlandi: {t['title']} ({t['player_count']} kishi)")
+                    for p in get_chem_tournament(t["id"])["players"]:
+                        try:
+                            await bot.send_message(
+                                p["telegram_id"],
+                                f"🏆 <b>{t['title']}</b> chempionati boshlandi!\n\n"
+                                f"Saralash bosqichi ochiq — ilovadagi <b>O'yinlar → Chempionat</b> "
+                                f"bo'limiga kirib savollarga javob bering.",
+                                parse_mode="HTML")
+                        except Exception as e:
+                            logging.warning(f"[KIMYO] Chempionat xabari yuborilmadi: {e}")
         except Exception as e:
             logging.error(f"[KIMYO] Kutayotgan janglarni yakunlashda xato: {e}")
 

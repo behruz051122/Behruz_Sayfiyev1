@@ -49,6 +49,7 @@ from routers import (
     games,
     chem_game,
     chem_battle,
+    chem_tournament,
     admin_chem,
     certificates,
     faq,
@@ -156,6 +157,7 @@ app.include_router(admin_bookshop.router)
 app.include_router(games.router)
 app.include_router(chem_game.router)
 app.include_router(chem_battle.router)
+app.include_router(chem_tournament.router)
 app.include_router(admin_chem.router)
 app.include_router(certificates.router)
 app.include_router(faq.router)

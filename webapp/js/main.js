@@ -15,7 +15,7 @@ import { loadProfile } from "./profile.js";
 import { loadAdminCourses, loadAdminTests, loadAdminAnalytics, loadAdminSimulators, loadAdminDashboardCards, loadAdminBookProducts, loadAdminFaq, loadAdminStudentResults, loadAdminObjections, loadAdminHomeworkSubjects, initAdminModule, initHomeworkAdminModule } from "./admin.js";
 import { loadDashboardCards } from "./home.js";
 import { loadBookShop } from "./bookshop.js";
-import { loadGameSubjects, openChemHub, reopenChemPath, initChemGameModule } from "./chemGame.js";
+import { loadGameSubjects, openChemHub, reopenChemPath, openTournamentsScreen, initChemGameModule } from "./chemGame.js";
 import { loadFaq } from "./faq.js";
 import { loadStudentResults } from "./studentResults.js";
 import { loadHomeworkSubjects, initHomeworkModule } from "./homework.js";
@@ -92,6 +92,8 @@ function handleNav(target) {
     showScreen("chem-categories");
   } else if (target === "chem-dictionary") {
     showScreen("chem-dictionary");
+  } else if (target === "chem-tournaments") {
+    openTournamentsScreen();
   } else if (target === "book-shop") {
     loadBookShop();
     showScreen("book-shop");

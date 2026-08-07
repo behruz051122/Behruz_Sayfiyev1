@@ -174,7 +174,10 @@ export async function openChemHub() {
         <button class="chem-mode-card" id="chemModeBot" type="button"><span class="chem-mode-icon">🤖</span>
           <span class="chem-mode-title">Bot bilan mashq</span>
           <span class="chem-mode-sub">ELO'siz, darhol</span></button>
-        <button class="chem-mode-card" id="chemModeHistory" type="button"><span class="chem-mode-icon">📜</span>
+        <button class="chem-mode-card" id="chemModeTournament" type="button"><span class="chem-mode-icon">🏆</span>
+          <span class="chem-mode-title">Chempionat</span>
+          <span class="chem-mode-sub">Saralash → setka → final</span></button>
+        <button class="chem-mode-card wide" id="chemModeHistory" type="button"><span class="chem-mode-icon">📜</span>
           <span class="chem-mode-title">Mening janglarim</span>
           <span class="chem-mode-sub">Natijalar tarixi</span></button>
       </div>`;
@@ -188,6 +191,7 @@ export async function openChemHub() {
     document.getElementById("chemModeRanked").addEventListener("click", () => startBattle("ranked"));
     document.getElementById("chemModeBot").addEventListener("click", () => startBattle("bot"));
     document.getElementById("chemModeInvite").addEventListener("click", openChemInvite);
+    document.getElementById("chemModeTournament").addEventListener("click", openChemTournaments);
     document.getElementById("chemModeHistory").addEventListener("click", openChemHistory);
   } catch (e) {
     console.error(e);
@@ -782,7 +786,10 @@ async function openSubstance(id) {
 //  8. BATTLE (1v1 / bot / do'st)
 // ==========================================================================
 
-let battle = null;   // {id, total, index, myScore, oppName, oppElo, mode, busy}
+// Bitta o'yin holati. `api` — qaysi endpointlar ishlatilishi: shu tufayli
+// AYNAN SHU ekran battle uchun ham, chempionat saralashi va setka o'yini
+// uchun ham qayta ishlatiladi (kod takrorlanmaydi).
+let battle = null;
 
 async function startBattle(mode) {
   showScreen("chem-battle");
@@ -808,10 +815,18 @@ async function startBattle(mode) {
 }
 
 function enterBattle(d) {
+  const id = d.battle_id;
   battle = {
-    id: d.battle_id, total: d.total, index: 0, myScore: 0,
+    id, total: d.total, index: 0, myScore: 0,
     oppName: d.opponent_name, oppElo: d.opponent_elo,
     myElo: d.my_elo, mode: d.mode, busy: false,
+    api: {
+      question: `/api/chem/battle/${id}/question`,
+      answer: `/api/chem/battle/${id}/answer`,
+      finish: `/api/chem/battle/${id}/finish`,
+    },
+    onFinish: showBattleResult,
+    retry: () => startBattle(d.mode === "bot" ? "bot" : "ranked"),
   };
   document.getElementById("chemBattleLabel").textContent =
     d.mode === "bot" ? "MASHQ · KIMYOBOT" : "BATTLE 1v1";
@@ -840,7 +855,7 @@ function renderBattleScore(mine, theirs) {
 async function nextBattleQuestion() {
   const content = document.getElementById("chemBattleContent");
   try {
-    const d = await (await apiFetch(`/api/chem/battle/${battle.id}/question`)).json();
+    const d = await (await apiFetch(battle.api.question)).json();
     if (d.finished) return finishBattle();
 
     battle.index = d.index;
@@ -882,7 +897,7 @@ async function answerBattle(btn) {
   document.querySelectorAll(".chem-option").forEach(b => b.disabled = true);
 
   try {
-    const d = await (await apiFetch(`/api/chem/battle/${battle.id}/answer`, {
+    const d = await (await apiFetch(battle.api.answer, {
       method: "POST", body: JSON.stringify({ answer: btn.dataset.a }),
     })).json();
 
@@ -912,8 +927,8 @@ async function finishBattle() {
   document.getElementById("chemBattleContent").innerHTML =
     `<div class="chem-result-loading">Natija hisoblanmoqda...</div>`;
   try {
-    const d = await (await apiFetch(`/api/chem/battle/${battle.id}/finish`, { method: "POST" })).json();
-    showBattleResult(d);
+    const d = await (await apiFetch(battle.api.finish, { method: "POST" })).json();
+    battle.onFinish(d);
   } catch (e) {
     console.error(e);
     document.getElementById("chemBattleContent").innerHTML =
@@ -1103,6 +1118,248 @@ async function openChemHistory() {
 }
 
 // ==========================================================================
+//  9. CHEMPIONAT
+// ==========================================================================
+
+let tournamentId = null;
+
+async function openChemTournaments() {
+  showScreen("chem-tournaments");
+  document.getElementById("chemTournamentCreate").classList.add("hidden");
+  const box = document.getElementById("chemTournamentList");
+  box.innerHTML = skeletonCards(3);
+  try {
+    const d = await (await apiFetch(`/api/chem/tournament/list`)).json();
+    const official = d.tournaments.filter(t => t.is_official);
+    const student = d.tournaments.filter(t => !t.is_official);
+
+    const card = t => {
+      const startText = t.status !== "open"
+        ? (t.status === "qualifying" ? "Saralash ketmoqda" : "Setka ketmoqda")
+        : (t.start_mode === "count"
+            ? `${t.player_count}/${t.start_count} kishi yig'ilganda boshlanadi`
+            : `Boshlanish: ${esc(t.start_at || "")}`);
+      return `
+        <div class="chem-tour-card${t.is_official ? " official" : ""}">
+          <div class="chem-tour-top">
+            <span class="chem-tour-icon">🏆</span>
+            <span class="chem-tour-text">
+              <span class="chem-tour-title">${esc(t.title)}</span>
+              <span class="chem-tour-sub">${t.creator_name ? esc(t.creator_name) + " yaratgan · " : ""}Aralash savollar</span>
+            </span>
+            <span class="chem-tour-badge${t.elo_counts ? "" : " off"}">${t.elo_counts ? "ELO" : "ELO YO'Q"}</span>
+          </div>
+          ${t.prize_text ? `<div class="chem-tour-prize">🎁 ${esc(t.prize_text)}</div>` : ""}
+          <div class="chem-tour-meta">${t.player_count} kishi · ${startText}</div>
+          <button class="primary-btn chem-tour-btn" type="button" data-tour="${t.id}">
+            ${t.joined ? "Ochish →" : "Qatnashish — bepul"}
+          </button>
+        </div>`;
+    };
+
+    box.innerHTML = `
+      <div class="section-label">RASMIY CHEMPIONATLAR · SOVRINLI</div>
+      ${official.length ? official.map(card).join("") : `
+        <div class="chem-tour-empty">
+          Hozircha rasmiy chempionat yo'q.<br>
+          <span>Sovrinli chempionat e'lon qilinganda shu yerda, eng tepada paydo bo'ladi.</span>
+        </div>`}
+
+      <div class="section-label">O'QUVCHILAR CHEMPIONATLARI · FAQAT ELO</div>
+      ${student.length ? student.map(card).join("") : `
+        <div class="chem-tour-empty">Hozircha yo'q — birinchi bo'lib yarating!</div>`}
+
+      <button class="chem-hub-row" id="chemTourCreateBtn" type="button" ${d.can_create ? "" : "disabled"}>
+        <span class="chem-hub-row-icon">＋</span>
+        <span class="chem-hub-row-text">
+          <span class="chem-hub-row-title">Chempionat yaratish</span>
+          <span class="chem-hub-row-sub">${d.can_create
+            ? "Bepul, sovrinsiz — faqat ELO raqobati"
+            : "Bugun allaqachon yaratgansiz — ertaga urinib ko'ring"}</span>
+        </span>
+      </button>
+
+      <p class="games-foot-note">
+        Format: saralash (teng yarmi o'tadi) → setka → final.
+        ELO faqat 8 va undan ko'p qatnashchi bo'lsa hisoblanadi.
+      </p>`;
+
+    box.querySelectorAll("[data-tour]").forEach(btn => {
+      btn.addEventListener("click", () => openTournament(parseInt(btn.dataset.tour, 10)));
+    });
+    const createBtn = document.getElementById("chemTourCreateBtn");
+    if (createBtn && d.can_create) {
+      createBtn.addEventListener("click", () => {
+        document.getElementById("chemTournamentCreate").classList.remove("hidden");
+        document.getElementById("chemTournamentCreate").scrollIntoView({ behavior: "smooth" });
+      });
+    }
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml("Chempionatlarni yuklab bo'lmadi.");
+  }
+}
+
+async function openTournament(id) {
+  tournamentId = id;
+  showScreen("chem-tournament");
+  const box = document.getElementById("chemTournamentDetail");
+  box.innerHTML = skeletonCards(3);
+  try {
+    const res = await apiFetch(`/api/chem/tournament/${id}`);
+    if (!res.ok) { box.innerHTML = errorHtml((await res.json()).detail || "Ochib bo'lmadi."); return; }
+    renderTournament(await res.json());
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml("Chempionatni yuklab bo'lmadi.");
+  }
+}
+
+function renderTournament(d) {
+  const t = d.tournament;
+  document.getElementById("chemTournamentTitle").textContent = t.title;
+  const box = document.getElementById("chemTournamentDetail");
+
+  const statusText = {
+    open: "Ro'yxatga olish ochiq",
+    qualifying: "Saralash bosqichi",
+    bracket: `Setka · ${t.round_no}-bosqich`,
+    finished: "Yakunlandi",
+  }[t.status] || t.status;
+
+  // "Hozir nima qilishim kerak?" — bitta aniq harakat.
+  const actions = {
+    join: ["Qatnashish — bepul", "join"],
+    qualify: ["▶ Saralashni boshlash", "qualify"],
+    play_match: ["⚔️ O'yinni boshlash", "match"],
+  };
+  const act = actions[d.my_action];
+  const waitMsg = {
+    wait_opponent: "Siz javob berdingiz — raqib javobini kutmoqdamiz.",
+    wait_round: "Bu bosqichda o'yiningiz yo'q — keyingi bosqichni kuting.",
+    eliminated: "Siz chempionatdan chiqib ketdingiz. Keyingi safar omad!",
+  }[d.my_action];
+
+  const podium = t.status === "finished"
+    ? d.players.filter(p => p.place).sort((a, b) => a.place - b.place)
+    : [];
+
+  box.innerHTML = `
+    <div class="chem-tour-hero">
+      <div class="chem-tour-hero-status">${statusText}</div>
+      <div class="chem-tour-hero-meta">
+        ${t.player_count} qatnashchi ·
+        ${t.elo_counts ? "ELO hisoblanadi" : "ELO hisoblanmaydi (8 kishidan kam)"}
+      </div>
+    </div>
+
+    ${podium.length ? `
+      <div class="chem-podium">
+        ${podium.map(p => `
+          <div class="chem-podium-row place-${p.place}">
+            <span class="chem-podium-medal">${["🥇","🥈","🥉"][p.place - 1] || "🏅"}</span>
+            <span class="chem-podium-name">${esc(p.name)}${p.is_me ? " (siz)" : ""}</span>
+          </div>`).join("")}
+      </div>` : ""}
+
+    ${act ? `<button class="primary-btn chem-start-btn" id="chemTourActionBtn"
+              data-act="${act[1]}">${act[0]}</button>` : ""}
+    ${waitMsg ? `<div class="chem-tour-wait">${waitMsg}</div>` : ""}
+
+    ${d.bracket.length ? `
+      <div class="section-label">SETKA</div>
+      ${d.bracket.map(r => `
+        <div class="chem-bracket-round">
+          <div class="chem-bracket-round-label">${r.round_no}-bosqich</div>
+          ${r.matches.map(m => `
+            <div class="chem-bracket-match${m.status === "finished" ? " done" : ""}">
+              <span class="chem-bracket-p${m.winner && m.winner === m.p1 ? " win" : ""}">
+                ${esc(m.p1 || "—")}<b>${m.p1_score ?? ""}</b></span>
+              <span class="chem-bracket-vs">vs</span>
+              <span class="chem-bracket-p${m.winner && m.winner === m.p2 ? " win" : ""}">
+                ${esc(m.p2 || "—")}<b>${m.p2_score ?? ""}</b></span>
+            </div>`).join("")}
+        </div>`).join("")}` : ""}
+
+    <div class="section-label">QATNASHCHILAR</div>
+    ${d.players.map((p, i) => `
+      <div class="chem-rank-row${p.is_me ? " me" : ""}">
+        <span class="chem-rank-num">${p.seed ? "#" + p.seed : i + 1}</span>
+        <span class="chem-rank-avatar">${esc((p.name || "?").slice(0, 1).toUpperCase())}</span>
+        <span class="chem-rank-text">
+          <span class="chem-rank-name">${esc(p.name)}${p.is_me ? " (siz)" : ""}</span>
+          <span class="chem-rank-sub">${
+            p.place ? `${p.place}-o'rin`
+            : p.eliminated_round !== null && p.eliminated_round !== undefined
+              ? "chiqib ketdi"
+              : p.qual_done ? `saralash: ${p.qual_score}/10` : "hali o'ynamagan"
+          }</span>
+        </span>
+      </div>`).join("")}`;
+
+  const btn = document.getElementById("chemTourActionBtn");
+  if (btn) btn.addEventListener("click", () => runTournamentAction(btn.dataset.act, d));
+}
+
+async function runTournamentAction(kind, d) {
+  if (kind === "join") {
+    const res = await apiFetch(`/api/chem/tournament/${tournamentId}/join`, { method: "POST" });
+    if (!res.ok) {
+      const j = await res.json();
+      if (tg.showAlert) tg.showAlert(j.detail || "Qo'shilib bo'lmadi."); else alert(j.detail);
+      return;
+    }
+    openTournament(tournamentId);
+    return;
+  }
+
+  // Saralash yoki setka o'yini — battle ekranini qayta ishlatamiz.
+  const base = kind === "qualify"
+    ? `/api/chem/tournament/${tournamentId}/qual`
+    : `/api/chem/tournament/match/${d.my_match_id}`;
+
+  showScreen("chem-battle");
+  document.getElementById("chemBattleScore").innerHTML = "";
+  document.getElementById("chemBattleProgress").style.width = "0%";
+  document.getElementById("chemBattleContent").innerHTML = "";
+  document.getElementById("chemBattleLabel").textContent =
+    kind === "qualify" ? "CHEMPIONAT · SARALASH"
+                       : `CHEMPIONAT · ${d.tournament.round_no}-BOSQICH`;
+
+  battle = {
+    id: tournamentId, total: 10, index: 0, myScore: 0,
+    oppName: kind === "qualify" ? "Barcha qatnashchilar" : "Raqib",
+    oppElo: null, myElo: null, mode: "tournament", busy: false,
+    api: { question: `${base}/question`, answer: `${base}/answer`, finish: `${base}/finish` },
+    onFinish: () => openTournament(tournamentId),
+    retry: () => openTournament(tournamentId),
+  };
+  renderBattleScore(0, null);
+  nextBattleQuestion();
+}
+
+async function createTournament() {
+  const title = document.getElementById("chemTitleInput").value.trim();
+  if (!title) {
+    if (tg.showAlert) tg.showAlert("Chempionat nomini kiriting."); else alert("Nom kiriting.");
+    return;
+  }
+  const count = parseInt(document.getElementById("chemStartCount").value, 10) || 8;
+  const res = await apiFetch(`/api/chem/tournament/create`, {
+    method: "POST",
+    body: JSON.stringify({ title, start_mode: "count", start_count: count }),
+  });
+  const j = await res.json();
+  if (!res.ok) {
+    if (tg.showAlert) tg.showAlert(j.detail || "Yaratib bo'lmadi."); else alert(j.detail);
+    return;
+  }
+  document.getElementById("chemTitleInput").value = "";
+  document.getElementById("chemTournamentCreate").classList.add("hidden");
+  openTournament(j.id);
+}
+
+// ==========================================================================
 //  Ishga tushirish
 // ==========================================================================
 
@@ -1124,6 +1381,13 @@ export function initChemGameModule() {
     else if (confirm(msg)) openChemHub();
   });
 
+  // Chempionat yaratish formasi
+  const tSave = document.getElementById("chemTournamentSaveBtn");
+  if (tSave) tSave.addEventListener("click", createTournament);
+  const tCancel = document.getElementById("chemTournamentCancelBtn");
+  if (tCancel) tCancel.addEventListener("click", () =>
+    document.getElementById("chemTournamentCreate").classList.add("hidden"));
+
   // Lug'at qidiruvi — har harfda so'rov yubormaslik uchun kechiktiriladi.
   const search = document.getElementById("chemDictSearch");
   search.addEventListener("input", () => {
@@ -1132,6 +1396,9 @@ export function initChemGameModule() {
   });
 
 }
+
+/** Chempionatlar ro'yxatini ochadi (main.js navigatsiyasi uchun). */
+export function openTournamentsScreen() { openChemTournaments(); }
 
 /** "Orqaga" bosilganda level yo'lagini JORIY kategoriya bilan qayta ochadi. */
 export function reopenChemPath() {
