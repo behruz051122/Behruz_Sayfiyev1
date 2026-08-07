@@ -615,6 +615,94 @@
         <div id="analyticsTopLists" class="analytics-top-lists"></div>
       </div>
 
+      <!-- ============================================================
+           KIMYO O'YINI — moddalar bazasi
+           O'qituvchi SAVOL YOZMAYDI, faqat MODDA kiritadi. Savollar
+           (kartochka, test, moslashtirish, yozish, battle) shu bazadan
+           avtomatik yasaladi.
+           ============================================================ -->
+      <div class="admin-section">
+        <div class="admin-section-head">
+          <h3>🧪 Kimyo o'yini — moddalar bazasi</h3>
+        </div>
+        <p class="admin-hint">
+          Siz faqat <b>modda</b> kiritasiz — savollarni tizim o'zi yasaydi.
+          Kategoriyani tanlang, ichiga level qo'shing, levelga moddalarni yuklang.
+        </p>
+        <div id="adminChemCategoryList" class="admin-list"></div>
+      </div>
+
+      <!-- Tanlangan kategoriyaning levellari -->
+      <div id="adminChemLevelsBox" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3 id="adminChemLevelsTitle">Levellar</h3>
+          <button class="secondary-btn small" id="adminChemLevelAddBtn" type="button">+ Level</button>
+        </div>
+        <div id="adminChemLevelList" class="admin-list"></div>
+      </div>
+
+      <!-- Tanlangan levelning moddalari -->
+      <div id="adminChemSubstancesBox" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3 id="adminChemSubstancesTitle">Moddalar</h3>
+          <button class="secondary-btn small" id="adminChemBulkBtn" type="button">⬆ Ommaviy yuklash</button>
+        </div>
+        <div id="adminChemSubstanceList" class="admin-list"></div>
+        <button class="secondary-btn" id="adminChemSubstanceAddBtn" type="button">+ Modda qo'shish</button>
+      </div>
+
+      <!-- Modda formasi -->
+      <div id="adminChemSubstanceForm" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3 id="adminChemSubstanceFormTitle">Yangi modda</h3>
+        </div>
+        <label class="admin-label">Formula *</label>
+        <input type="text" id="chemFormula" placeholder="H2SO4">
+        <label class="admin-label">Nomi *</label>
+        <input type="text" id="chemName" placeholder="sulfat kislota">
+        <label class="admin-label">Tarixiy nomi</label>
+        <input type="text" id="chemHistoric" placeholder="kuporos moyi">
+        <label class="admin-label">Sof holdagi rangi</label>
+        <input type="text" id="chemColorPure" placeholder="rangsiz">
+        <label class="admin-label">Eritmadagi rangi</label>
+        <input type="text" id="chemColorSolution" placeholder="rangsiz">
+        <label class="admin-label">Cho'kma rangi</label>
+        <input type="text" id="chemColorPrecipitate" placeholder="oq">
+        <label class="admin-label">Reaksiyalari</label>
+        <textarea id="chemReactions" rows="3" placeholder="H2SO4 + BaCl2 → BaSO4↓ + 2HCl"></textarea>
+        <label class="admin-label">Qo'llanilishi</label>
+        <textarea id="chemUsage" rows="2" placeholder="Akkumulyator, o'g'it ishlab chiqarish"></textarea>
+        <div class="admin-form-actions">
+          <button class="primary-btn" id="chemSubstanceSaveBtn" type="button">Saqlash</button>
+          <button class="secondary-btn" id="chemSubstanceCancelBtn" type="button">Bekor qilish</button>
+        </div>
+      </div>
+
+      <!-- Ommaviy yuklash -->
+      <div id="adminChemBulkForm" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3>⬆ Moddalarni ommaviy yuklash</h3>
+        </div>
+        <p class="admin-hint">
+          Har qatorda bitta modda. Ustunlar <code>|</code> yoki tabulyatsiya bilan ajratiladi
+          (Excel jadvalidan nusxa ko'chirsangiz ham ishlaydi):<br>
+          <code>formula | nomi | tarixiy nomi | sof rang | eritma rangi | cho'kma rangi</code><br>
+          Faqat dastlabki ikkitasi majburiy; qolganini keyin to'ldirsangiz ham bo'ladi.
+        </p>
+        <textarea id="chemBulkText" rows="10" placeholder="HF | ftorid kislota
+HCl | xlorid kislota | tuz kislotasi
+PbS | qo'rg'oshin sulfid | qo'rg'oshin yaltirog'i | qora | - | qora"></textarea>
+        <label class="admin-check">
+          <input type="checkbox" id="chemBulkReplace">
+          <span>Levelning eski moddalarini o'chirib, o'rniga yuklansin</span>
+        </label>
+        <div class="admin-form-actions">
+          <button class="primary-btn" id="chemBulkSaveBtn" type="button">Yuklash</button>
+          <button class="secondary-btn" id="chemBulkCancelBtn" type="button">Bekor qilish</button>
+        </div>
+        <div id="chemBulkResult"></div>
+      </div>
+
       <div class="admin-section">
         <div class="admin-section-head">
           <h3>🏠 Bosh sahifa kartalari</h3>

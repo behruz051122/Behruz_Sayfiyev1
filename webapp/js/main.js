@@ -19,6 +19,7 @@ import { loadGameSubjects, openChemHub, reopenChemPath, initChemGameModule } fro
 import { loadFaq } from "./faq.js";
 import { loadStudentResults } from "./studentResults.js";
 import { loadHomeworkSubjects, initHomeworkModule } from "./homework.js";
+import { loadAdminChemCategories, initAdminChemModule } from "./adminChem.js";
 
 function handleNav(target) {
   if (target === "home") {
@@ -76,6 +77,7 @@ function handleNav(target) {
     loadAdminStudentResults();
     loadAdminObjections();
     loadAdminHomeworkSubjects();
+    loadAdminChemCategories();
     showScreen("admin");
   } else if (target === "games") {
     loadGameSubjects();
@@ -134,6 +136,7 @@ function bootstrap() {
   initChemGameModule();
   initHomeworkModule();
   initHomeworkAdminModule();
+  initAdminChemModule();
 
   loadBrand();
   loadUser().finally(hideAppSplash);

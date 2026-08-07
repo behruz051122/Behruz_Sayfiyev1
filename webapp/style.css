@@ -2371,3 +2371,63 @@ html[data-theme="light"] .chem-dict-chip { color: var(--gold-deep); }
 .chem-history-elo { font-size: 12px; font-weight: 800; }
 .chem-history-elo.up { color: var(--success); }
 .chem-history-elo.down { color: var(--danger); }
+
+/* ---------- Admin: kimyo moddalar bazasi ---------- */
+.admin-hint {
+  font-size: 11.5px; line-height: 1.6; color: var(--text-dim); margin-bottom: 12px;
+}
+.admin-hint code {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 5px;
+  padding: 1px 5px; font-size: 10.5px; font-family: "SF Mono", Menlo, Consolas, monospace;
+}
+.admin-item {
+  display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px;
+  background: var(--surface2); border: 1px solid var(--border);
+}
+.admin-item.selected { border-color: var(--border-glow); background: rgba(45,212,191,0.10); }
+.admin-item-main { flex: 1; min-width: 0; cursor: pointer; }
+.admin-item-title {
+  font-size: 12.5px; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.admin-item-sub { font-size: 10.5px; color: var(--text-dim); margin-top: 2px; }
+.chem-admin-formula { font-family: "SF Mono", Menlo, Consolas, monospace; color: var(--gold-light); }
+.admin-mini-btn {
+  flex: 0 0 auto; background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); padding: 6px 9px; border-radius: 8px; font-size: 12px;
+  cursor: pointer; font-family: inherit;
+}
+.admin-mini-btn.danger { color: var(--danger); }
+.admin-empty { font-size: 11.5px; color: var(--text-faint); padding: 10px 2px; }
+
+/* Kimyo admin formalari — inputlar `.admin-form` ichida emas, shuning uchun
+   uslub shu yerda alohida beriladi. */
+.admin-label {
+  display: block; font-size: 11px; color: var(--text-dim);
+  margin: 10px 0 5px; font-weight: 700;
+}
+#adminChemSubstanceForm input,
+#adminChemSubstanceForm textarea,
+#adminChemBulkForm textarea {
+  width: 100%; background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); padding: 10px; border-radius: 8px;
+  font-size: 13px; font-family: inherit; resize: vertical;
+}
+#adminChemBulkForm textarea {
+  font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12px; line-height: 1.6;
+}
+.admin-check {
+  display: flex; align-items: flex-start; gap: 9px; margin-top: 12px; cursor: pointer;
+}
+.admin-check input { width: 17px; height: 17px; flex-shrink: 0; accent-color: var(--gold); }
+.admin-check span { font-size: 11.5px; color: var(--text); line-height: 1.4; }
+.admin-form-actions { display: flex; gap: 8px; margin-top: 14px; }
+.admin-form-actions button { flex: 1; margin: 0; }
+.chem-bulk-result {
+  margin-top: 14px; padding: 12px; border-radius: 12px; font-size: 12px; line-height: 1.6;
+  background: rgba(52,211,153,0.10); border: 1px solid rgba(52,211,153,0.3);
+}
+.chem-bulk-skipped {
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--warning);
+}
