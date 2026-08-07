@@ -73,21 +73,37 @@ export async function loadGameSubjects() {
         <button class="game-subject-btn" type="button">O'ynash →</button>
       </div>
 
-      <div class="game-subject-card soon">
+      <div class="game-subject-card bio" id="bioSubjectCard">
         <div class="game-subject-top">
           <div class="game-subject-icon">🧬</div>
-          <div class="game-subject-badge soon">TEZ KUNDA</div>
+          <div class="game-subject-badge" id="bioStarsBadge">0 / 0 ★</div>
         </div>
         <div class="game-subject-title">Biologiya</div>
-        <div class="game-subject-desc">Organlar, tizimlar, genetika — tayyorlanmoqda</div>
+        <div class="game-subject-desc">Hujayra, organ tizimlari, genetika, botanika</div>
+        <div class="game-subject-chips">
+          <span class="game-chip">Ketma-ketlik</span>
+          <span class="game-chip">Guruhlash</span>
+          <span class="game-chip">Kim men?</span>
+        </div>
+        <button class="game-subject-btn" type="button">O'ynash →</button>
       </div>`;
 
     if (totalSub === 0) {
-      box.querySelector(".game-subject-desc").textContent =
+      box.querySelector("#chemSubjectCard .game-subject-desc").textContent =
         "O'qituvchi moddalar bazasini to'ldirgach shu yerda levellar paydo bo'ladi.";
     }
     box.querySelector("#chemSubjectCard .game-subject-btn")
        .addEventListener("click", openChemHub);
+    box.querySelector("#bioSubjectCard .game-subject-btn")
+       .addEventListener("click", () => document.dispatchEvent(
+         new CustomEvent("app:navigate", { detail: { target: "bio-hub" } })));
+
+    // Biologiya yulduzlarini alohida so'rov bilan to'ldiramiz — kimyo
+    // kartasi darhol ko'rinsin, biologiya biroz keyin yangilansin.
+    apiFetch(`/api/bio/hub`).then(r => r.json()).then(b => {
+      const badge = document.getElementById("bioStarsBadge");
+      if (badge) badge.textContent = `${b.earned_stars || 0} / ${b.total_stars || 0} ★`;
+    }).catch(() => {});
   } catch (e) {
     console.error(e);
     box.innerHTML = errorHtml("O'yinlarni yuklab bo'lmadi.");

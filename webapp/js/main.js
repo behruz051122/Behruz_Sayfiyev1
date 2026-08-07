@@ -20,6 +20,8 @@ import { loadFaq } from "./faq.js";
 import { loadStudentResults } from "./studentResults.js";
 import { loadHomeworkSubjects, initHomeworkModule } from "./homework.js";
 import { loadAdminChemCategories, loadAdminTournaments, initAdminChemModule } from "./adminChem.js";
+import { openBioHub, reopenBioPath, initBioGameModule } from "./bioGame.js";
+import { loadAdminBioTopics, initAdminBioModule } from "./adminBio.js";
 
 function handleNav(target) {
   if (target === "home") {
@@ -79,6 +81,7 @@ function handleNav(target) {
     loadAdminHomeworkSubjects();
     loadAdminChemCategories();
     loadAdminTournaments();
+    loadAdminBioTopics();
     showScreen("admin");
   } else if (target === "games") {
     loadGameSubjects();
@@ -95,6 +98,12 @@ function handleNav(target) {
     showScreen("chem-dictionary");
   } else if (target === "chem-tournaments") {
     openTournamentsScreen();
+  } else if (target === "bio-hub") {
+    openBioHub();
+  } else if (target === "bio-path") {
+    reopenBioPath();
+  } else if (target === "bio-dictionary") {
+    showScreen("bio-dictionary");
   } else if (target === "book-shop") {
     loadBookShop();
     showScreen("book-shop");
@@ -140,6 +149,8 @@ function bootstrap() {
   initHomeworkModule();
   initHomeworkAdminModule();
   initAdminChemModule();
+  initBioGameModule();
+  initAdminBioModule();
 
   loadBrand();
   loadUser().finally(hideAppSplash);

@@ -156,6 +156,65 @@
       <div id="chemSubstanceContent"></div>
     </section>
 
+    <!-- ============================================================
+         BIOLOGIYA O'YINI
+         ============================================================ -->
+    <section id="screen-bio-hub" class="screen hidden bio-theme">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="games" aria-label="Orqaga">←</button>
+        <h2>🧬 Biologiya o'yini</h2>
+      </div>
+      <div id="bioHubContent"></div>
+    </section>
+
+    <section id="screen-bio-path" class="screen hidden bio-theme">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="bio-hub" aria-label="Orqaga">←</button>
+        <h2 id="bioPathTitle">Levellar</h2>
+      </div>
+      <div id="bioPathContent"></div>
+    </section>
+
+    <section id="screen-bio-level" class="screen hidden bio-theme">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="bio-path" aria-label="Orqaga">←</button>
+        <h2 id="bioLevelHeading">Level</h2>
+      </div>
+      <div id="bioLevelContent"></div>
+    </section>
+
+    <!-- O'yin ekrani — 7 bosqich uchun umumiy -->
+    <section id="screen-bio-play" class="screen hidden bio-theme">
+      <div class="chem-play-header">
+        <button id="bioPlayExitBtn" class="exit-test-btn" aria-label="Chiqish">✕</button>
+        <div class="chem-play-label" id="bioPlayLabel"></div>
+      </div>
+      <div class="test-progress-bar"><div id="bioPlayProgress" class="test-progress-fill"></div></div>
+      <div id="bioPlayContent"></div>
+      <div id="bioPlayFooter" class="chem-play-footer"></div>
+    </section>
+
+    <!-- Biologiya lug'ati -->
+    <section id="screen-bio-dictionary" class="screen hidden bio-theme">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="bio-hub" aria-label="Orqaga">←</button>
+        <h2>📖 Biologiya lug'ati</h2>
+      </div>
+      <div class="search-box">
+        <span class="search-icon" aria-hidden="true">🔍</span>
+        <input type="search" id="bioDictSearch" class="search-input" placeholder="Termin yoki ta'rif bo'yicha qidirish...">
+      </div>
+      <div id="bioDictList"></div>
+    </section>
+
+    <section id="screen-bio-term" class="screen hidden bio-theme">
+      <div class="screen-header">
+        <button class="back-btn" data-nav="bio-dictionary" aria-label="Orqaga">←</button>
+        <h2>Termin</h2>
+      </div>
+      <div id="bioTermContent"></div>
+    </section>
+
     <!-- BATTLE — o'yin ekrani -->
     <section id="screen-chem-battle" class="screen hidden">
       <div class="chem-play-header">
@@ -742,6 +801,140 @@ PbS | qo'rg'oshin sulfid | qo'rg'oshin yaltirog'i | qora | - | qora"></textarea>
           <button class="secondary-btn" id="chemBulkCancelBtn" type="button">Bekor qilish</button>
         </div>
         <div id="chemBulkResult"></div>
+      </div>
+
+      <!-- ============================================================
+           BIOLOGIYA O'YINI — baza
+           ============================================================ -->
+      <div class="admin-section">
+        <div class="admin-section-head">
+          <h3>🧬 Biologiya o'yini — baza</h3>
+        </div>
+        <p class="admin-hint">
+          Siz uch xil ma'lumot kiritasiz: <b>termin</b>, <b>ketma-ketlik</b> (jarayon
+          bosqichlari) va <b>rasm</b>. Levelda qaysi ma'lumot bo'lsa — o'quvchida
+          <b>shu o'yinlar</b> paydo bo'ladi.
+        </p>
+        <div id="adminBioTopicList" class="admin-list"></div>
+        <div id="adminBioSeedBox" class="chem-seed-box hidden">
+          <div class="chem-seed-title">🚀 Tez boshlash</div>
+          <div class="chem-seed-text" id="bioSeedText"></div>
+          <button class="secondary-btn" id="bioSeedBtn" type="button">Namuna terminlarni yuklash</button>
+          <div id="bioSeedResult"></div>
+        </div>
+      </div>
+
+      <div id="adminBioLevelsBox" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3 id="adminBioLevelsTitle">Levellar</h3>
+          <button class="secondary-btn small" id="adminBioLevelAddBtn" type="button">+ Level</button>
+        </div>
+        <div id="adminBioLevelList" class="admin-list"></div>
+      </div>
+
+      <div id="adminBioContentBox" class="admin-section hidden">
+        <div class="admin-section-head">
+          <h3 id="adminBioContentTitle">Level mazmuni</h3>
+        </div>
+        <div class="tab-row" id="bioContentTabs">
+          <button class="filter-chip active" type="button" data-biotab="terms">Terminlar</button>
+          <button class="filter-chip" type="button" data-biotab="sequences">Ketma-ketliklar</button>
+          <button class="filter-chip" type="button" data-biotab="images">Rasmlar</button>
+        </div>
+        <div id="adminBioItemList" class="admin-list"></div>
+        <div class="admin-form-actions">
+          <button class="secondary-btn" id="adminBioAddBtn" type="button">+ Qo'shish</button>
+          <button class="secondary-btn" id="adminBioBulkBtn" type="button">⬆ Ommaviy</button>
+        </div>
+      </div>
+
+      <!-- Termin formasi -->
+      <div id="adminBioTermForm" class="admin-section hidden">
+        <div class="admin-section-head"><h3 id="bioTermFormTitle">Yangi termin</h3></div>
+        <label class="admin-label">Termin *</label>
+        <input type="text" id="bioTermName" placeholder="Mitoxondriya">
+        <label class="admin-label">Ta'rifi</label>
+        <input type="text" id="bioTermDef" placeholder="Hujayraning energiya stansiyasi">
+        <label class="admin-label">Vazifasi</label>
+        <input type="text" id="bioTermFunc" placeholder="ATP sintez qiladi">
+        <label class="admin-label">Guruhi <span class="admin-label-note">— "Guruhlash" o'yini uchun</span></label>
+        <input type="text" id="bioTermGroup" placeholder="Eukariot">
+        <label class="admin-label">Ipuchalar <span class="admin-label-note">— "Kim men?" uchun, har biri alohida qatorda, umumiydan aniqqa</span></label>
+        <textarea id="bioTermClues" rows="3" placeholder="Menda ikki qavatli membrana bor
+Ichki membranam kristalar hosil qiladi
+Men ATP ishlab chiqaraman"></textarea>
+        <label class="admin-label">Qiziqarli fakt</label>
+        <input type="text" id="bioTermFact" placeholder="O'z DNK siga ega">
+        <div class="admin-form-actions">
+          <button class="primary-btn" id="bioTermSaveBtn" type="button">Saqlash</button>
+          <button class="secondary-btn" id="bioTermCancelBtn" type="button">Bekor</button>
+        </div>
+      </div>
+
+      <!-- Ketma-ketlik formasi -->
+      <div id="adminBioSeqForm" class="admin-section hidden">
+        <div class="admin-section-head"><h3>Yangi ketma-ketlik</h3></div>
+        <p class="admin-hint">
+          Bosqichlarni <b>to'g'ri tartibda</b> yozing — o'quvchiga aralashtirilgan holda
+          ko'rsatiladi va u tartibga solishi kerak bo'ladi.
+        </p>
+        <label class="admin-label">Jarayon nomi *</label>
+        <input type="text" id="bioSeqTitle" placeholder="Mitoz bosqichlari">
+        <label class="admin-label">Izoh</label>
+        <input type="text" id="bioSeqDesc" placeholder="Hujayra qanday tartibda bo'linadi?">
+        <label class="admin-label">Bosqichlar * <span class="admin-label-note">— har biri alohida qatorda</span></label>
+        <textarea id="bioSeqSteps" rows="6" placeholder="Interfaza
+Profaza
+Metafaza
+Anafaza
+Telofaza"></textarea>
+        <div class="admin-form-actions">
+          <button class="primary-btn" id="bioSeqSaveBtn" type="button">Saqlash</button>
+          <button class="secondary-btn" id="bioSeqCancelBtn" type="button">Bekor</button>
+        </div>
+      </div>
+
+      <!-- Rasm topshirig'i formasi -->
+      <div id="adminBioImgForm" class="admin-section hidden">
+        <div class="admin-section-head"><h3>Yangi rasm topshirig'i</h3></div>
+        <p class="admin-hint">
+          Rasmni yuklang, so'ng rasm ustida <b>nuqta qo'ymoqchi bo'lgan joyni bosing</b> va
+          uning nomini yozing. O'quvchi shu nuqtalarni topishi kerak bo'ladi.
+        </p>
+        <label class="admin-label">Sarlavha *</label>
+        <input type="text" id="bioImgTitle" placeholder="Hujayra tuzilishi">
+        <label class="admin-label">Rasm *</label>
+        <input type="file" id="bioImgFile" accept="image/*">
+        <div id="bioImgEditor" class="bio-img-editor hidden">
+          <div class="bio-img-editor-hint">Nuqta qo'yish uchun rasmni bosing</div>
+          <div class="bio-img-editor-wrap" id="bioImgWrap"></div>
+          <div id="bioImgLabels" class="bio-img-labels"></div>
+        </div>
+        <div class="admin-form-actions">
+          <button class="primary-btn" id="bioImgSaveBtn" type="button">Saqlash</button>
+          <button class="secondary-btn" id="bioImgCancelBtn" type="button">Bekor</button>
+        </div>
+      </div>
+
+      <!-- Ommaviy yuklash (terminlar) -->
+      <div id="adminBioBulkForm" class="admin-section hidden">
+        <div class="admin-section-head"><h3>⬆ Terminlarni ommaviy yuklash</h3></div>
+        <p class="admin-hint">
+          Har qatorda bitta termin. Ustunlar <code>|</code> yoki tabulyatsiya bilan:<br>
+          <code>termin | ta'rifi | vazifasi | guruhi | qiziqarli fakt</code><br>
+          Ipuchalar bu yerda kiritilmaydi — ularni termin formasidan qo'shasiz.
+        </p>
+        <textarea id="bioBulkText" rows="9" placeholder="Yadro | Irsiy axborot markazi | DNK ni saqlaydi | Eukariot
+Ribosoma | Oqsil sintezi joyi | Oqsil yig'adi | Umumiy"></textarea>
+        <label class="admin-check">
+          <input type="checkbox" id="bioBulkReplace">
+          <span>Levelning eski terminlarini o'chirib, o'rniga yuklansin</span>
+        </label>
+        <div class="admin-form-actions">
+          <button class="primary-btn" id="bioBulkSaveBtn" type="button">Yuklash</button>
+          <button class="secondary-btn" id="bioBulkCancelBtn" type="button">Bekor</button>
+        </div>
+        <div id="bioBulkResult"></div>
       </div>
 
       <!-- Rasmiy (sovrinli) chempionat -->

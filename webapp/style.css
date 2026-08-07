@@ -2543,3 +2543,370 @@ html[data-theme="light"] .chem-dict-chip { color: var(--gold-deep); }
   width: 100%; background: var(--surface2); border: 1px solid var(--border);
   color: var(--text); padding: 10px; border-radius: 8px; font-size: 13px; font-family: inherit;
 }
+
+/* ==========================================================================
+   BIOLOGIYA O'YINI
+   ==========================================================================
+   O'ziga xos rang tizimi: ZUMRAD -> SIYAN (kimyoda firuza -> binafsha).
+   O'quvchi qaysi fanda ekanini rangdan darhol bilib turadi.
+   `.bio-theme` ekran ichidagi barcha "chem-*" sinflar ham shu rangga
+   o'tadi — kod takrorlanmasligi uchun ataylab shunday qilingan. */
+
+.bio-theme {
+  --gold: #34d399;
+  --gold-light: #6ee7b7;
+  --gold-deep: #047857;
+  --purple: #22d3ee;
+  --purple-deep: #0891b2;
+  --accent-gradient: linear-gradient(135deg, #34d399, #22d3ee);
+  --border-glow: rgba(52, 211, 153, 0.38);
+  --glow-teal: 0 0 24px rgba(52, 211, 153, 0.25);
+}
+
+/* O'yinlar ekranidagi biologiya kartasi */
+.game-subject-card.bio {
+  background: linear-gradient(150deg, rgba(52,211,153,0.14), rgba(34,211,238,0.16)), var(--surface);
+  border-color: rgba(52,211,153,0.38);
+  box-shadow: 0 0 24px rgba(52,211,153,0.18);
+}
+.game-subject-card.bio .game-subject-badge {
+  background: linear-gradient(135deg, #34d399, #22d3ee); color: var(--on-accent);
+}
+.game-subject-card.bio .game-subject-btn {
+  background: linear-gradient(135deg, #34d399, #22d3ee); color: var(--on-accent);
+}
+
+/* ---------- HUB ---------- */
+.bio-hero {
+  display: flex; align-items: center; gap: 16px; margin: 0 16px 18px;
+  padding: 18px; border-radius: 20px;
+  background: linear-gradient(150deg, rgba(52,211,153,0.12), rgba(34,211,238,0.14)), var(--surface);
+  border: 1px solid var(--border-glow);
+}
+.bio-hero-ring {
+  flex: 0 0 84px; width: 84px; height: 84px; border-radius: 50%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: var(--surface2); border: 3px solid transparent;
+  background-image: linear-gradient(var(--surface2), var(--surface2)),
+                    linear-gradient(135deg, #34d399, #22d3ee);
+  background-origin: border-box; background-clip: padding-box, border-box;
+}
+.bio-hero-value { font-size: 26px; font-weight: 900; line-height: 1; }
+.bio-hero-max { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+.bio-hero-text { flex: 1; min-width: 0; }
+.bio-hero-title { font-size: 15px; font-weight: 800; margin-bottom: 3px; }
+.bio-hero-sub { font-size: 11.5px; color: var(--text-dim); margin-bottom: 10px; }
+.bio-hero-bar { height: 6px; border-radius: 20px; background: var(--surface2); overflow: hidden; }
+.bio-hero-fill {
+  height: 100%; border-radius: 20px;
+  background: linear-gradient(90deg, #34d399, #22d3ee);
+  transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.bio-topic-card {
+  display: flex; align-items: center; gap: 12px; width: calc(100% - 32px);
+  margin: 0 16px 10px; padding: 14px; border-radius: 16px; text-align: left;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); cursor: pointer; font-family: inherit;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.bio-topic-card:active:not(.soon) { transform: scale(0.985); }
+.bio-topic-card.soon { opacity: 0.5; cursor: default; }
+.bio-topic-icon {
+  flex: 0 0 44px; width: 44px; height: 44px; border-radius: 14px; display: grid;
+  place-items: center; font-size: 21px;
+  background: rgba(52,211,153,0.12); border: 1px solid rgba(52,211,153,0.28);
+}
+.bio-topic-text { flex: 1; min-width: 0; }
+.bio-topic-title { display: block; font-size: 14.5px; font-weight: 800; margin-bottom: 3px; }
+.bio-topic-sub { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 7px; }
+.bio-topic-bar {
+  display: block; height: 4px; border-radius: 20px; background: var(--surface2); overflow: hidden;
+}
+.bio-topic-fill {
+  display: block; height: 100%; border-radius: 20px;
+  background: linear-gradient(90deg, #34d399, #22d3ee);
+}
+.bio-topic-stars {
+  font-size: 12px; font-weight: 800; color: #6ee7b7; white-space: nowrap;
+}
+
+.bio-modes { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 16px 8px; }
+.bio-mode-pill {
+  font-size: 11px; font-weight: 700; padding: 6px 11px; border-radius: 20px;
+  background: rgba(52,211,153,0.10); border: 1px solid rgba(52,211,153,0.25);
+  color: #6ee7b7;
+}
+.bio-modes-note {
+  margin: 0 16px 18px; font-size: 11px; line-height: 1.6; color: var(--text-faint);
+}
+
+/* ---------- Level ---------- */
+.bio-level-hero {
+  margin: 0 16px 16px; padding: 22px 18px; border-radius: 20px; text-align: center;
+  background: linear-gradient(150deg, rgba(52,211,153,0.10), rgba(34,211,238,0.12)), var(--surface);
+  border: 1px solid var(--border-glow);
+}
+.bio-level-hero-icon {
+  width: 54px; height: 54px; margin: 0 auto 12px; border-radius: 16px; display: grid;
+  place-items: center; font-size: 26px;
+  background: rgba(52,211,153,0.12); border: 1px solid rgba(52,211,153,0.3);
+}
+.bio-level-hero-title { font-size: 17px; font-weight: 900; margin-bottom: 6px; }
+.bio-level-hero-sub { font-size: 12px; color: var(--text-dim); }
+.bio-term-chip {
+  font-size: 11.5px; font-weight: 700; padding: 5px 11px; border-radius: 10px;
+  background: rgba(52,211,153,0.10); border: 1px solid rgba(52,211,153,0.25);
+  color: #6ee7b7;
+}
+.bio-node-badge { font-size: 11px; margin-left: 2px; }
+
+/* ---------- Kartochka ---------- */
+.bio-card {
+  margin: 0 16px; padding: 30px 20px; border-radius: 22px; text-align: center;
+  background: var(--surface); border: 1px solid var(--border); min-height: 210px;
+  display: flex; flex-direction: column; justify-content: center;
+  animation: chemCardIn 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.bio-card-term {
+  font-size: 27px; font-weight: 900; margin-bottom: 12px; line-height: 1.25;
+  background: linear-gradient(135deg, #34d399, #22d3ee);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.bio-card-def { font-size: 15px; line-height: 1.6; color: var(--text); }
+
+/* ---------- Savol ---------- */
+.bio-prompt {
+  margin: 0 16px 18px; padding: 22px 18px; border-radius: 20px; text-align: center;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.bio-prompt-value {
+  font-size: 19px; font-weight: 900; margin-bottom: 10px; line-height: 1.35;
+  color: #6ee7b7;
+}
+.chem-option.bio { font-family: inherit; font-size: 14px; line-height: 1.45; }
+.chem-option.bio.correct { background: rgba(52,211,153,0.18); border-color: #34d399; color: #6ee7b7; }
+
+/* ---------- Juftlash ---------- */
+.bio-match { display: grid; grid-template-columns: 1fr 1.25fr; gap: 8px; padding: 0 16px; }
+.bio-match .chem-match-item { font-size: 12px; line-height: 1.4; padding: 13px 9px; }
+.chem-match-item.bio-term { font-weight: 800; }
+.chem-match-item.selected { background: rgba(52,211,153,0.16); border-color: #34d399; color: #6ee7b7; }
+
+/* ---------- Ketma-ketlik ---------- */
+.bio-seq-head {
+  margin: 0 16px 14px; padding: 16px; border-radius: 16px; text-align: center;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.bio-seq-title { font-size: 16px; font-weight: 900; margin-bottom: 5px; }
+.bio-seq-desc { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; }
+.bio-seq-hint { font-size: 11px; color: var(--text-faint); }
+.bio-seq-list { display: flex; flex-direction: column; gap: 8px; padding: 0 16px; }
+.bio-seq-item {
+  display: flex; align-items: center; gap: 10px; padding: 12px;
+  border-radius: 14px; background: var(--surface); border: 1px solid var(--border);
+  transition: background 0.25s ease, border-color 0.25s ease, transform 0.2s ease;
+}
+.bio-seq-item.ok { background: rgba(52,211,153,0.14); border-color: #34d399; }
+.bio-seq-item.bad { background: rgba(248,113,113,0.12); border-color: var(--danger); }
+.bio-seq-num {
+  flex: 0 0 26px; width: 26px; height: 26px; border-radius: 8px; display: grid;
+  place-items: center; font-size: 12px; font-weight: 800;
+  background: linear-gradient(135deg, #34d399, #22d3ee); color: var(--on-accent);
+}
+.bio-seq-text { flex: 1; min-width: 0; font-size: 13px; line-height: 1.4; }
+.bio-seq-arrows { display: flex; flex-direction: column; gap: 3px; }
+.bio-seq-arrow {
+  width: 30px; height: 22px; border-radius: 6px; cursor: pointer; font-size: 10px;
+  background: var(--surface2); border: 1px solid var(--border); color: var(--text-dim);
+  font-family: inherit;
+}
+.bio-seq-arrow:disabled { opacity: 0.3; cursor: default; }
+.bio-seq-arrow:active:not(:disabled) { background: var(--surface3); }
+.bio-seq-answer {
+  margin-top: 12px; padding: 14px; border-radius: 14px; font-size: 12.5px; line-height: 1.8;
+  background: rgba(52,211,153,0.08); border: 1px solid rgba(52,211,153,0.28);
+}
+.bio-seq-answer-label {
+  font-size: 9px; font-weight: 800; letter-spacing: 1px; color: var(--text-faint); margin-bottom: 6px;
+}
+#bioSeqFeedback { padding: 14px 16px 0; }
+
+/* ---------- Guruhlash ---------- */
+.bio-group-card {
+  margin: 0 16px 18px; padding: 26px 18px; border-radius: 20px; text-align: center;
+  background: linear-gradient(150deg, rgba(52,211,153,0.10), rgba(34,211,238,0.12)), var(--surface);
+  border: 1px solid var(--border-glow);
+  animation: chemCardIn 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.bio-group-label {
+  font-size: 9.5px; font-weight: 800; letter-spacing: 1.2px; color: var(--text-faint); margin-bottom: 10px;
+}
+.bio-group-term { font-size: 22px; font-weight: 900; line-height: 1.3; }
+.bio-group-baskets {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 16px;
+}
+.bio-basket {
+  padding: 18px 12px; border-radius: 16px; cursor: pointer; text-align: center;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  font-family: inherit; transition: transform 0.12s ease, background 0.2s ease, border-color 0.2s ease;
+}
+.bio-basket:active:not(:disabled) { transform: scale(0.97); }
+.bio-basket.correct { background: rgba(52,211,153,0.18); border-color: #34d399; color: #6ee7b7; }
+.bio-basket.wrong { background: rgba(248,113,113,0.14); border-color: var(--danger); color: var(--danger); }
+.bio-basket-icon { display: block; font-size: 20px; margin-bottom: 6px; }
+.bio-basket-name { display: block; font-size: 13px; font-weight: 800; line-height: 1.3; }
+#bioGroupFeedback { padding: 14px 16px 0; }
+
+/* ---------- Kim men? ---------- */
+.bio-whoami-head { text-align: center; margin-bottom: 14px; padding: 0 16px; }
+.bio-whoami-title { font-size: 18px; font-weight: 900; margin-bottom: 4px; }
+.bio-whoami-points { font-size: 12px; color: var(--text-dim); }
+.bio-whoami-points b { color: var(--warning); font-size: 14px; }
+.bio-clues { display: flex; flex-direction: column; gap: 8px; padding: 0 16px; margin-bottom: 12px; }
+.bio-clue {
+  display: flex; align-items: flex-start; gap: 10px; padding: 13px;
+  border-radius: 14px; font-size: 13.5px; line-height: 1.5;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.bio-clue.new {
+  border-color: var(--border-glow); background: rgba(52,211,153,0.08);
+  animation: bioClueIn 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes bioClueIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+.bio-clue-num {
+  flex: 0 0 22px; width: 22px; height: 22px; border-radius: 7px; display: grid;
+  place-items: center; font-size: 11px; font-weight: 800;
+  background: linear-gradient(135deg, #34d399, #22d3ee); color: var(--on-accent);
+}
+.bio-clue-more { width: calc(100% - 32px); margin: 0 16px 14px; }
+#bioWhoFeedback { padding: 14px 16px 0; }
+
+/* ---------- Rasm bo'yicha ---------- */
+.bio-image-wrap {
+  position: relative; margin: 0 16px 12px; border-radius: 16px; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.bio-image { display: block; width: 100%; height: auto; }
+.bio-point {
+  position: absolute; transform: translate(-50%, -50%);
+  width: 30px; height: 30px; border-radius: 50%; cursor: pointer;
+  font-size: 13px; font-weight: 800; font-family: inherit;
+  background: rgba(10, 15, 28, 0.82); color: #fff;
+  border: 2px solid #34d399; box-shadow: 0 0 12px rgba(52,211,153,0.5);
+  transition: transform 0.15s ease;
+}
+.bio-point.active { transform: translate(-50%, -50%) scale(1.25); border-color: #22d3ee; }
+.bio-point.solved {
+  background: #34d399; color: var(--on-accent); border-color: #34d399; cursor: default;
+}
+.bio-image-hint {
+  text-align: center; font-size: 11.5px; color: var(--text-dim); margin-bottom: 10px;
+}
+.bio-name-list { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 16px; }
+.bio-name {
+  padding: 10px 14px; border-radius: 12px; cursor: pointer; font-size: 12.5px; font-weight: 700;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: inherit;
+}
+.bio-name.correct { background: rgba(52,211,153,0.18); border-color: #34d399; color: #6ee7b7; }
+.bio-name.wrong { background: rgba(248,113,113,0.14); border-color: var(--danger); color: var(--danger); }
+
+/* ---------- Natija ---------- */
+.bio-result {
+  margin: 0 16px; padding: 32px 20px; border-radius: 22px; text-align: center;
+  background: linear-gradient(160deg, rgba(52,211,153,0.10), rgba(34,211,238,0.12)), var(--surface);
+  border: 1px solid var(--border-glow);
+  animation: chemCardIn 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.bio-result-title {
+  font-size: 24px; font-weight: 900; margin-bottom: 4px;
+  background: linear-gradient(135deg, #34d399, #22d3ee);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.bio-result-points {
+  display: inline-block; padding: 7px 16px; border-radius: 20px; margin-bottom: 14px;
+  font-size: 13px; background: rgba(52,211,153,0.12);
+  border: 1px solid rgba(52,211,153,0.32); color: #6ee7b7;
+}
+
+/* ---------- Lug'at ---------- */
+.bio-dict-chip {
+  width: 44px; height: 44px; flex: 0 0 44px; border-radius: 12px; display: grid;
+  place-items: center; font-size: 15px; font-weight: 800;
+  background: rgba(52,211,153,0.12); border: 1px solid rgba(52,211,153,0.28); color: #6ee7b7;
+}
+.bio-dict-term { display: block; font-size: 14.5px; font-weight: 800; margin-bottom: 2px; }
+.bio-term-hero {
+  margin: 0 16px 14px; padding: 26px 18px; border-radius: 22px; text-align: center;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.bio-term-name {
+  font-size: 26px; font-weight: 900; line-height: 1.25;
+  background: linear-gradient(135deg, #34d399, #22d3ee);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.bio-term-group {
+  display: inline-block; margin-top: 10px; padding: 5px 12px; border-radius: 20px;
+  font-size: 11.5px; font-weight: 700;
+  background: rgba(52,211,153,0.12); border: 1px solid rgba(52,211,153,0.28); color: #6ee7b7;
+}
+
+/* ---------- Ochiq mavzu tuzatishlari ---------- */
+html[data-theme="light"] .bio-theme .bio-prompt-value,
+html[data-theme="light"] .bio-theme .bio-topic-stars,
+html[data-theme="light"] .bio-theme .bio-term-chip,
+html[data-theme="light"] .bio-theme .bio-mode-pill,
+html[data-theme="light"] .bio-theme .bio-dict-chip,
+html[data-theme="light"] .bio-theme .bio-term-group { color: #047857; }
+
+@media (prefers-reduced-motion: reduce) {
+  .bio-card, .bio-result, .bio-group-card, .bio-clue.new { animation: none; }
+}
+
+/* ---------- Admin: biologiya ---------- */
+.admin-label-note { font-weight: 500; color: var(--text-faint); font-size: 10px; }
+.bio-stage-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.bio-stage-tag {
+  font-size: 9.5px; font-weight: 700; padding: 3px 8px; border-radius: 20px;
+  background: rgba(52,211,153,0.12); border: 1px solid rgba(52,211,153,0.28); color: #6ee7b7;
+}
+.bio-stage-tag.empty {
+  background: var(--surface2); border-color: var(--border); color: var(--text-faint);
+}
+#adminBioTermForm input, #adminBioTermForm textarea,
+#adminBioSeqForm input, #adminBioSeqForm textarea,
+#adminBioImgForm input, #adminBioBulkForm textarea {
+  width: 100%; background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); padding: 10px; border-radius: 8px;
+  font-size: 13px; font-family: inherit; resize: vertical;
+}
+.bio-img-editor { margin-top: 14px; }
+.bio-img-editor-hint {
+  font-size: 11.5px; color: var(--text-dim); margin-bottom: 8px; text-align: center;
+}
+.bio-img-editor-wrap {
+  position: relative; border-radius: 12px; overflow: hidden;
+  background: var(--surface2); border: 1px solid var(--border);
+}
+.bio-img-editor-img { display: block; width: 100%; height: auto; cursor: crosshair; }
+.bio-img-dot {
+  position: absolute; transform: translate(-50%, -50%);
+  width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 11px; font-weight: 800; pointer-events: none;
+  background: #34d399; color: var(--on-accent); border: 2px solid rgba(10,15,28,0.6);
+}
+.bio-img-labels { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.bio-img-label-row {
+  display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 10px;
+  background: var(--surface2); border: 1px solid var(--border);
+}
+.bio-img-label-num {
+  flex: 0 0 22px; width: 22px; height: 22px; border-radius: 7px; display: grid;
+  place-items: center; font-size: 11px; font-weight: 800;
+  background: #34d399; color: var(--on-accent);
+}
+.bio-img-label-name { flex: 1; font-size: 12.5px; font-weight: 700; }
+.bio-img-label-pos { font-size: 10px; color: var(--text-faint); }
