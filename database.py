@@ -1247,6 +1247,69 @@ def init_db():
             ON chem_stage_progress(telegram_id, level_id)
         """)
 
+        # ---------- Battle (1v1 musobaqa) ----------
+        # ASINXRON MODEL: ikkala o'yinchi bir vaqtda onlayn bo'lishi SHART EMAS.
+        # 1-o'yinchi savollarga javob beradi va "raqib kutilmoqda" holatida
+        # qoladi; keyinroq 2-o'yinchi AYNAN SHU savollarga javob beradi va
+        # natijalar taqqoslanadi. Kichik guruh uchun bu yagona ishlaydigan
+        # model — aks holda o'quvchi bo'sh xonada abadiy kutib qolardi.
+        #
+        # Agar 10 daqiqada hech kim qo'shilmasa, fon vazifasi jangni
+        # "Kimyobot" bilan yakunlaydi (bot.py -> resolve_stale_chem_battles).
+        #
+        # `questions` — JSON, TO'G'RI JAVOBLARI BILAN. Mijozga hech qachon
+        # to'liq yuborilmaydi: har savol alohida so'raladi va javob serverda
+        # tekshiriladi.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS chem_battles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category_id INTEGER NOT NULL,
+                mode TEXT DEFAULT 'ranked',
+                invite_code TEXT,
+                questions TEXT NOT NULL,
+                p1_telegram_id INTEGER NOT NULL,
+                p1_score INTEGER,
+                p1_time_ms INTEGER,
+                p1_finished_at TIMESTAMP,
+                p2_telegram_id INTEGER,
+                p2_score INTEGER,
+                p2_time_ms INTEGER,
+                p2_finished_at TIMESTAMP,
+                is_bot INTEGER DEFAULT 0,
+                bot_name TEXT,
+                bot_elo INTEGER,
+                status TEXT DEFAULT 'waiting',
+                winner_telegram_id INTEGER,
+                p1_elo_before INTEGER, p1_elo_after INTEGER,
+                p2_elo_before INTEGER, p2_elo_after INTEGER,
+                notified INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                finished_at TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_chem_battles_wait
+            ON chem_battles(category_id, status)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_chem_battles_code
+            ON chem_battles(invite_code)
+        """)
+
+        # ---------- ELO reytingi ----------
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS chem_ratings (
+                telegram_id INTEGER PRIMARY KEY,
+                elo INTEGER DEFAULT 1000,
+                wins INTEGER DEFAULT 0,
+                losses INTEGER DEFAULT 0,
+                draws INTEGER DEFAULT 0,
+                current_streak INTEGER DEFAULT 0,
+                best_streak INTEGER DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # ---------- Kimyo o'yini: boshlang'ich kategoriyalar ----------
         # BIR MARTA yaratiladi. Keyin o'qituvchi ularni tahrirlaydi yoki
         # o'chiradi — qayta deploy'da tiklanib qolmaydi (fan kartalaridagi
@@ -5636,3 +5699,356 @@ def get_chem_level_detail(telegram_id: int, level_id: int):
         "next_stage": next_stage,
         "all_done": next_stage is None,
     }
+
+
+# ==========================================================================
+#  KIMYO O'YINI — BATTLE va ELO
+# ==========================================================================
+
+BATTLE_QUESTION_COUNT = 10      # bitta jangdagi savollar soni
+BATTLE_STALE_MINUTES = 10       # shundan keyin raqib kutilmaydi, bot qo'shiladi
+ELO_K = 32                      # standart shaxmat koeffitsienti
+
+# Darajalar. Chegaralar ataylab "keng": o'quvchi bir necha g'alaba bilan
+# keyingi darajaga o'tsin, lekin bitta mag'lubiyatdan tushib ketmasin.
+CHEM_TIERS = (
+    (1700, "Olmos",   "💎"),
+    (1500, "Platina", "🔷"),
+    (1300, "Oltin",   "🥇"),
+    (1100, "Kumush",  "🥈"),
+    (0,    "Bronza",  "🥉"),
+)
+
+
+def chem_tier(elo: int):
+    """ELO ballidan daraja nomini aniqlaydi."""
+    for threshold, name, icon in CHEM_TIERS:
+        if elo >= threshold:
+            return {"name": name, "icon": icon, "min_elo": threshold}
+    return {"name": "Bronza", "icon": "🥉", "min_elo": 0}
+
+
+def get_chem_rating(telegram_id: int):
+    """Reyting yozuvi — bo'lmasa 1000 ball bilan yaratiladi."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM chem_ratings WHERE telegram_id = ?", (telegram_id,))
+        row = cur.fetchone()
+        if row is None:
+            cur.execute("INSERT INTO chem_ratings (telegram_id) VALUES (?)", (telegram_id,))
+            conn.commit()
+            cur.execute("SELECT * FROM chem_ratings WHERE telegram_id = ?", (telegram_id,))
+            row = cur.fetchone()
+        data = dict(row)
+
+        # Global o'rin — reytingda nechanchi ekani.
+        cur.execute("SELECT COUNT(*) AS c FROM chem_ratings WHERE elo > ?", (data["elo"],))
+        data["rank"] = (cur.fetchone()["c"] or 0) + 1
+        cur.execute("SELECT COUNT(*) AS c FROM chem_ratings")
+        data["total_players"] = cur.fetchone()["c"] or 0
+
+    total = data["wins"] + data["losses"] + data["draws"]
+    data["games"] = total
+    data["win_rate"] = round(data["wins"] / total * 100) if total else 0
+    data["tier"] = chem_tier(data["elo"])
+    return data
+
+
+def _elo_delta(my_elo: int, opp_elo: int, score: float) -> int:
+    """Standart ELO formulasi. score: 1=g'alaba, 0.5=durang, 0=mag'lubiyat.
+
+    Kuchliroq raqibni yenggan ko'proq ball oladi; kuchsizga yutqazgan
+    ko'proq yo'qotadi — shu sababli reyting adolatli bo'ladi.
+    """
+    expected = 1 / (1 + 10 ** ((opp_elo - my_elo) / 400))
+    return round(ELO_K * (score - expected))
+
+
+def _apply_rating(telegram_id: int, delta: int, result: str):
+    """Reytingni yangilaydi. result: 'win' | 'lose' | 'draw'."""
+    r = get_chem_rating(telegram_id)
+    new_elo = max(100, r["elo"] + delta)   # 100 dan pastga tushmaydi
+    wins = r["wins"] + (1 if result == "win" else 0)
+    losses = r["losses"] + (1 if result == "lose" else 0)
+    draws = r["draws"] + (1 if result == "draw" else 0)
+    streak = (r["current_streak"] + 1) if result == "win" else 0
+    best = max(r["best_streak"], streak)
+
+    with get_connection() as conn:
+        conn.cursor().execute("""
+            UPDATE chem_ratings
+            SET elo = ?, wins = ?, losses = ?, draws = ?,
+                current_streak = ?, best_streak = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE telegram_id = ?
+        """, (new_elo, wins, losses, draws, streak, best, telegram_id))
+        conn.commit()
+    return new_elo
+
+
+# ---------- Jang yaratish va qo'shilish ----------
+
+def find_waiting_chem_battle(category_id: int, exclude_telegram_id: int):
+    """Shu kategoriyada raqib kutayotgan jangni topadi (o'zimniki bo'lmagan)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT * FROM chem_battles
+            WHERE category_id = ? AND status = 'waiting'
+              AND p1_telegram_id != ? AND p2_telegram_id IS NULL
+              AND mode = 'ranked'
+            ORDER BY created_at ASC LIMIT 1
+        """, (category_id, exclude_telegram_id))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def create_chem_battle(category_id: int, telegram_id: int, questions: list,
+                       mode: str = "ranked", invite_code: str = None,
+                       is_bot: int = 0, bot_name: str = None, bot_elo: int = None):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO chem_battles
+                (category_id, mode, invite_code, questions, p1_telegram_id,
+                 is_bot, bot_name, bot_elo, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'waiting')
+        """, (category_id, mode, invite_code, json.dumps(questions, ensure_ascii=False),
+              telegram_id, is_bot, bot_name, bot_elo))
+        conn.commit()
+        return cur.lastrowid
+
+
+def join_chem_battle(battle_id: int, telegram_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE chem_battles SET p2_telegram_id = ?, status = 'playing'
+            WHERE id = ? AND p2_telegram_id IS NULL
+        """, (telegram_id, battle_id))
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def get_chem_battle(battle_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM chem_battles WHERE id = ?", (battle_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        b = dict(row)
+        b["questions"] = json.loads(b["questions"])
+        return b
+
+
+def find_chem_battle_by_code(code: str):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT * FROM chem_battles
+            WHERE invite_code = ? AND status = 'waiting' AND p2_telegram_id IS NULL
+            ORDER BY id DESC LIMIT 1
+        """, (code,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        b = dict(row)
+        b["questions"] = json.loads(b["questions"])
+        return b
+
+
+def save_chem_battle_run(battle_id: int, telegram_id: int, score: int, time_ms: int):
+    """O'yinchining natijasini saqlaydi va ikkalasi tugagan bo'lsa yakunlaydi."""
+    b = get_chem_battle(battle_id)
+    if not b:
+        return None
+    is_p1 = b["p1_telegram_id"] == telegram_id
+    col = "p1" if is_p1 else "p2"
+
+    with get_connection() as conn:
+        conn.cursor().execute(f"""
+            UPDATE chem_battles
+            SET {col}_score = ?, {col}_time_ms = ?, {col}_finished_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (score, time_ms, battle_id))
+        conn.commit()
+
+    b = get_chem_battle(battle_id)
+    both_done = b["p1_score"] is not None and b["p2_score"] is not None
+    if both_done and b["status"] != "finished":
+        return finish_chem_battle(battle_id)
+    return b
+
+
+def finish_chem_battle(battle_id: int):
+    """G'olibni aniqlaydi va ELO'ni ikkala tomon uchun yangilaydi.
+
+    Tenglik holatida TEZROQ javob bergan yutadi — shu sababli o'quvchi
+    faqat to'g'ri emas, tez ham javob berishga harakat qiladi.
+    """
+    b = get_chem_battle(battle_id)
+    if not b or b["status"] == "finished":
+        return b
+
+    p1_id, p2_id = b["p1_telegram_id"], b["p2_telegram_id"]
+    p1_score = b["p1_score"] or 0
+    p2_score = b["p2_score"] or 0
+    p1_time = b["p1_time_ms"] or 10 ** 9
+    p2_time = b["p2_time_ms"] or 10 ** 9
+
+    if p1_score != p2_score:
+        winner_is_p1 = p1_score > p2_score
+    elif p1_time != p2_time:
+        winner_is_p1 = p1_time < p2_time
+    else:
+        winner_is_p1 = None   # to'liq durang
+
+    p1_elo = get_chem_rating(p1_id)["elo"]
+    p2_elo = get_chem_rating(p2_id)["elo"] if p2_id else (b["bot_elo"] or 1000)
+
+    if winner_is_p1 is None:
+        p1_res, p2_res, p1_s, p2_s = "draw", "draw", 0.5, 0.5
+        winner_id = None
+    elif winner_is_p1:
+        p1_res, p2_res, p1_s, p2_s = "win", "lose", 1.0, 0.0
+        winner_id = p1_id
+    else:
+        p1_res, p2_res, p1_s, p2_s = "lose", "win", 0.0, 1.0
+        winner_id = p2_id
+
+    # Mashq rejimida (bot bilan) ELO o'zgarmaydi — aks holda o'quvchi
+    # botni yengib reytingni sun'iy ko'tarib olardi.
+    ranked = b["mode"] in ("ranked", "friend")
+    p1_delta = _elo_delta(p1_elo, p2_elo, p1_s) if ranked else 0
+    p1_after = _apply_rating(p1_id, p1_delta, p1_res) if ranked else p1_elo
+
+    p2_after = p2_elo
+    if p2_id and ranked:
+        p2_delta = _elo_delta(p2_elo, p1_elo, p2_s)
+        p2_after = _apply_rating(p2_id, p2_delta, p2_res)
+
+    with get_connection() as conn:
+        conn.cursor().execute("""
+            UPDATE chem_battles
+            SET status = 'finished', winner_telegram_id = ?,
+                p1_elo_before = ?, p1_elo_after = ?,
+                p2_elo_before = ?, p2_elo_after = ?,
+                finished_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (winner_id, p1_elo, p1_after, p2_elo, p2_after, battle_id))
+        conn.commit()
+
+    return get_chem_battle(battle_id)
+
+
+def resolve_stale_chem_battles(minutes: int = BATTLE_STALE_MINUTES):
+    """Uzoq kutgan janglarni "Kimyobot" bilan yakunlaydi.
+
+    NEGA KERAK: kichik guruhda ayni damda boshqa o'ynayotgan odam
+    bo'lmasligi mumkin. Natijasiz osilib qolgan jang o'quvchini
+    ko'ngilsizlantiradi — shuning uchun bot raqib sifatida qo'shiladi.
+    Bot bali o'quvchinikiga yaqin qilib tanlanadi, lekin tasodifiy —
+    shunda natija oldindan ma'lum bo'lmaydi.
+    """
+    import random
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"""
+            SELECT id, p1_score, p1_telegram_id FROM chem_battles
+            WHERE status = 'waiting' AND p2_telegram_id IS NULL
+              AND p1_score IS NOT NULL
+              AND created_at <= datetime('now', '-{int(minutes)} minutes')
+        """)
+        rows = [dict(r) for r in cur.fetchall()]
+
+    resolved = []
+    for r in rows:
+        total = BATTLE_QUESTION_COUNT
+        # Bot natijasi o'quvchinikiga yaqin: -2 dan +2 gacha, chegaralar ichida.
+        bot_score = max(0, min(total, (r["p1_score"] or 0) + random.randint(-2, 2)))
+        bot_time = random.randint(25000, 70000)
+        elo = get_chem_rating(r["p1_telegram_id"])["elo"]
+        with get_connection() as conn:
+            conn.cursor().execute("""
+                UPDATE chem_battles
+                SET p2_score = ?, p2_time_ms = ?, p2_finished_at = CURRENT_TIMESTAMP,
+                    is_bot = 1, bot_name = 'Kimyobot',
+                    bot_elo = ?, status = 'playing'
+                WHERE id = ?
+            """, (bot_score, bot_time, max(600, elo + random.randint(-80, 80)), r["id"]))
+            conn.commit()
+        resolved.append(finish_chem_battle(r["id"]))
+    return resolved
+
+
+def get_my_chem_battles(telegram_id: int, limit: int = 20):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT * FROM chem_battles
+            WHERE p1_telegram_id = ? OR p2_telegram_id = ?
+            ORDER BY id DESC LIMIT ?
+        """, (telegram_id, telegram_id, limit))
+        out = []
+        for r in cur.fetchall():
+            b = dict(r)
+            b.pop("questions", None)     # ro'yxatda savollar kerak emas
+            out.append(b)
+        return out
+
+
+def get_unnotified_chem_battles():
+    """Yakunlangan, lekin hali Telegram xabari yuborilmagan janglar."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, p1_telegram_id, p2_telegram_id, p1_score, p2_score,
+                   winner_telegram_id, is_bot, bot_name,
+                   p1_elo_before, p1_elo_after, p2_elo_before, p2_elo_after
+            FROM chem_battles
+            WHERE status = 'finished' AND notified = 0
+        """)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def mark_chem_battle_notified(battle_id: int):
+    with get_connection() as conn:
+        conn.cursor().execute(
+            "UPDATE chem_battles SET notified = 1 WHERE id = ?", (battle_id,))
+        conn.commit()
+
+
+def get_chem_leaderboard(limit: int = 50):
+    """ELO reytingi — ismlar bilan."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT r.telegram_id, r.elo, r.wins, r.losses, r.draws,
+                   u.first_name, u.username
+            FROM chem_ratings r
+            LEFT JOIN users u ON u.telegram_id = r.telegram_id
+            WHERE (r.wins + r.losses + r.draws) > 0
+            ORDER BY r.elo DESC, r.wins DESC
+            LIMIT ?
+        """, (limit,))
+        out = []
+        for i, r in enumerate(cur.fetchall(), start=1):
+            d = dict(r)
+            d["rank"] = i
+            d["tier"] = chem_tier(d["elo"])
+            out.append(d)
+        return out
+
+
+def get_chem_daily_mission(telegram_id: int, target: int = 3):
+    """Bugun nechta jang o'ynagani — kunlik missiya ko'rsatkichi."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COUNT(*) AS c FROM chem_battles
+            WHERE (p1_telegram_id = ? OR p2_telegram_id = ?)
+              AND status = 'finished'
+              AND DATE(finished_at) = DATE('now')
+        """, (telegram_id, telegram_id))
+        done = cur.fetchone()["c"] or 0
+    return {"done": min(done, target), "target": target, "completed": done >= target}

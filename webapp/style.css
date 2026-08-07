@@ -2209,3 +2209,165 @@ html[data-theme="light"] .chem-dict-chip { color: var(--gold-deep); }
 @media (prefers-reduced-motion: reduce) {
   .chem-card, .chem-result { animation: none; }
 }
+
+/* ---------- Battle: ELO kartasi va kunlik missiya ---------- */
+.chem-elo-card {
+  display: flex; align-items: center; gap: 14px; width: calc(100% - 32px);
+  margin: 0 16px 12px; padding: 16px; border-radius: 20px; text-align: left;
+  background: linear-gradient(150deg, rgba(45,212,191,0.12), rgba(167,139,250,0.14)), var(--surface);
+  border: 1px solid var(--border-glow); color: var(--text);
+  cursor: pointer; font-family: inherit; transition: transform 0.15s ease;
+}
+.chem-elo-card:active { transform: scale(0.985); }
+.chem-elo-value {
+  flex: 0 0 68px; width: 68px; height: 68px; border-radius: 50%; display: grid;
+  place-items: center; font-size: 21px; font-weight: 900;
+  background: var(--surface2); border: 2px solid transparent;
+  background-image: linear-gradient(var(--surface2), var(--surface2)), var(--accent-gradient);
+  background-origin: border-box; background-clip: padding-box, border-box;
+}
+.chem-elo-text { flex: 1; min-width: 0; }
+.chem-elo-label {
+  display: block; font-size: 9px; font-weight: 800; letter-spacing: 1.2px;
+  color: var(--text-faint); margin-bottom: 4px;
+}
+.chem-elo-tier { display: block; font-size: 15px; font-weight: 900; margin-bottom: 4px; }
+.chem-elo-stats { display: block; font-size: 10.5px; color: var(--text-dim); letter-spacing: 0.3px; }
+
+.chem-mission {
+  position: relative; margin: 0 16px 16px; padding: 14px 16px 18px; border-radius: 16px;
+  background: var(--surface); border: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.chem-mission-icon { font-size: 18px; }
+.chem-mission-text { flex: 1; font-size: 13px; font-weight: 700; }
+.chem-mission-count { font-size: 12px; font-weight: 800; color: var(--warning); }
+.chem-mission-bar {
+  position: absolute; left: 16px; right: 16px; bottom: 10px; height: 4px;
+  border-radius: 20px; background: var(--surface2); overflow: hidden;
+}
+.chem-mission-fill {
+  height: 100%; border-radius: 20px;
+  background: linear-gradient(90deg, var(--warning), var(--gold));
+  transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.chem-battle-cta { width: calc(100% - 32px); margin: 4px 16px 18px; }
+.chem-mode-card { cursor: pointer; font-family: inherit; text-align: left; color: var(--text); }
+.chem-mode-card:not(.soon):active { transform: scale(0.97); }
+
+/* ---------- Battle: o'yin ekrani ---------- */
+.chem-battle-score {
+  display: flex; align-items: center; gap: 10px; margin: 0 16px 12px;
+  padding: 12px 14px; border-radius: 16px;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.chem-bs-side { flex: 1; min-width: 0; }
+.chem-bs-side.right { text-align: right; }
+.chem-bs-name {
+  font-size: 12.5px; font-weight: 800; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.chem-bs-elo { font-size: 10px; color: var(--text-faint); margin-top: 2px; }
+.chem-bs-mid { display: flex; align-items: baseline; gap: 5px; }
+.chem-bs-score { font-size: 22px; font-weight: 900; }
+.chem-bs-score.dim { color: var(--text-faint); }
+.chem-bs-sep { font-size: 16px; color: var(--text-faint); }
+#screen-chem-battle .test-progress-bar { margin: 0 16px 14px; }
+.chem-battle-feedback { padding: 14px 16px 0; }
+.chem-option.battle { display: flex; align-items: center; gap: 12px; }
+.chem-option-letter {
+  flex: 0 0 26px; width: 26px; height: 26px; border-radius: 8px; display: grid;
+  place-items: center; font-size: 11px; font-weight: 800;
+  background: var(--surface2); border: 1px solid var(--border); color: var(--text-dim);
+}
+
+/* ---------- Battle: natija ---------- */
+.chem-result-vs { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 16px 0; }
+.chem-result-vs-num { font-size: 40px; font-weight: 900; }
+.chem-result-vs-sep { font-size: 26px; color: var(--text-faint); }
+.chem-elo-change {
+  display: inline-block; padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 700;
+  background: var(--surface2); border: 1px solid var(--border);
+}
+.chem-elo-change.up { color: var(--success); border-color: rgba(52,211,153,0.4); }
+.chem-elo-change.down { color: var(--danger); border-color: rgba(248,113,113,0.4); }
+.chem-result-tier { margin-top: 14px; font-size: 12.5px; font-weight: 700; color: var(--text-dim); }
+
+/* ---------- Do'stga taklif ---------- */
+.chem-invite-card {
+  margin: 0 16px 16px; padding: 28px 18px; border-radius: 22px; text-align: center;
+  background: linear-gradient(150deg, rgba(45,212,191,0.12), rgba(167,139,250,0.14)), var(--surface);
+  border: 1px solid var(--border-glow);
+}
+.chem-invite-label {
+  font-size: 9.5px; font-weight: 800; letter-spacing: 1.4px; color: var(--text-faint); margin-bottom: 12px;
+}
+.chem-invite-code {
+  font-size: 38px; font-weight: 900; letter-spacing: 6px;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  background: var(--accent-gradient); -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.chem-invite-hint { margin-top: 12px; font-size: 12px; color: var(--text-dim); }
+.chem-invite-or {
+  margin: 18px 16px; text-align: center; font-size: 10px; font-weight: 800;
+  letter-spacing: 2px; color: var(--text-faint);
+}
+.chem-invite-join { padding: 0 16px; display: flex; flex-direction: column; gap: 10px; }
+.chem-write-input.small { font-size: 18px; letter-spacing: 4px; padding: 14px; }
+.chem-invite-join .secondary-btn { margin: 0; width: 100%; }
+
+/* ---------- Reyting ---------- */
+.chem-rank-row {
+  display: flex; align-items: center; gap: 11px; margin: 0 16px 8px;
+  padding: 12px 14px; border-radius: 14px;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.chem-rank-row.me { border-color: var(--border-glow); background: rgba(45,212,191,0.08); }
+.chem-rank-row.sticky { position: sticky; bottom: 8px; box-shadow: var(--shadow-md); }
+.chem-rank-num {
+  flex: 0 0 34px; font-size: 11px; font-weight: 800; color: var(--text-faint);
+}
+.chem-rank-avatar {
+  flex: 0 0 34px; width: 34px; height: 34px; border-radius: 50%; display: grid;
+  place-items: center; font-size: 13px; font-weight: 800;
+  background: var(--accent-gradient); color: var(--on-accent);
+}
+.chem-rank-text { flex: 1; min-width: 0; }
+.chem-rank-name {
+  display: block; font-size: 13.5px; font-weight: 800;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.chem-rank-sub { display: block; font-size: 10.5px; color: var(--text-dim); margin-top: 2px; }
+.chem-rank-right { text-align: right; }
+.chem-rank-elo { display: block; font-size: 14px; font-weight: 900; }
+.chem-rank-tier {
+  display: block; font-size: 9px; font-weight: 800; letter-spacing: 0.6px;
+  color: var(--text-faint); text-transform: uppercase; margin-top: 2px;
+}
+
+/* ---------- Janglar tarixi ---------- */
+.chem-history-row {
+  display: flex; align-items: center; gap: 11px; margin: 0 16px 8px;
+  padding: 13px 14px; border-radius: 14px;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.chem-history-row.win { border-left: 3px solid var(--success); }
+.chem-history-row.lose { border-left: 3px solid var(--danger); }
+.chem-history-row.draw { border-left: 3px solid var(--warning); }
+.chem-history-row.pending { border-left: 3px solid var(--text-faint); opacity: 0.75; }
+.chem-history-badge {
+  flex: 0 0 auto; font-size: 9.5px; font-weight: 800; letter-spacing: 0.4px;
+  padding: 4px 9px; border-radius: 20px; background: var(--surface2); color: var(--text-dim);
+}
+.chem-history-row.win .chem-history-badge { color: var(--success); }
+.chem-history-row.lose .chem-history-badge { color: var(--danger); }
+.chem-history-text { flex: 1; min-width: 0; }
+.chem-history-name {
+  display: block; font-size: 13px; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.chem-history-score { display: block; font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+.chem-history-elo { font-size: 12px; font-weight: 800; }
+.chem-history-elo.up { color: var(--success); }
+.chem-history-elo.down { color: var(--danger); }

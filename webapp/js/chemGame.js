@@ -103,12 +103,38 @@ export async function openChemHub() {
   const box = document.getElementById("chemHubContent");
   box.innerHTML = skeletonCards(3);
   try {
-    const res = await apiFetch(`/api/chem/hub`);
-    const data = await res.json();
+    // Ikkala so'rov birga — ekran ikki bosqichda "sakramasin".
+    const [hubRes, ratRes] = await Promise.all([
+      apiFetch(`/api/chem/hub`),
+      apiFetch(`/api/chem/battle/me/rating`),
+    ]);
+    const data = await hubRes.json();
+    const rat = await ratRes.json();
+    const r = rat.rating || {};
+    const mission = rat.daily_mission || { done: 0, target: 3 };
     const cats = data.categories || [];
     const readyCount = cats.filter(c => c.is_ready).length;
 
     box.innerHTML = `
+      <button class="chem-elo-card" id="chemEloCard" type="button">
+        <span class="chem-elo-value">${r.elo ?? 1000}</span>
+        <span class="chem-elo-text">
+          <span class="chem-elo-label">UMUMIY ELO</span>
+          <span class="chem-elo-tier">${r.tier ? r.tier.icon + " " + r.tier.name : "🥉 Bronza"} · #${r.rank ?? "—"}</span>
+          <span class="chem-elo-stats">${r.wins ?? 0} G'  ·  ${r.losses ?? 0} M  ·  ${r.win_rate ?? 0}%  ·  🔥${r.current_streak ?? 0}</span>
+        </span>
+        <span class="chem-hub-row-chev">›</span>
+      </button>
+
+      <div class="chem-mission">
+        <span class="chem-mission-icon">✨</span>
+        <span class="chem-mission-text">Kunlik missiya · ${mission.target} ta battle</span>
+        <span class="chem-mission-count">${mission.done}/${mission.target}</span>
+        <div class="chem-mission-bar">
+          <div class="chem-mission-fill" style="width:${Math.round(mission.done / mission.target * 100)}%"></div>
+        </div>
+      </div>
+
       <div class="chem-hub-stars">
         <div class="chem-hub-stars-value">${data.earned_stars || 0}<span>/${data.total_stars || 0}</span></div>
         <div class="chem-hub-stars-label">YULDUZ TO'PLANDI</div>
@@ -135,26 +161,34 @@ export async function openChemHub() {
         <span class="chem-hub-row-chev">›</span>
       </button>
 
+      <button class="primary-btn chem-battle-cta" id="chemBattleCta" type="button">⚔️ Battle o'ynash</button>
+
       <div class="section-label">O'YIN REJIMLARI</div>
       <div class="chem-mode-grid">
-        <div class="chem-mode-card soon"><span class="chem-mode-icon">⚔️</span>
+        <button class="chem-mode-card" id="chemModeRanked" type="button"><span class="chem-mode-icon">⚔️</span>
           <span class="chem-mode-title">Battle 1v1</span>
-          <span class="chem-mode-sub">Tez orada</span></div>
-        <div class="chem-mode-card soon"><span class="chem-mode-icon">👥</span>
+          <span class="chem-mode-sub">Aralash savollar · ELO</span></button>
+        <button class="chem-mode-card" id="chemModeInvite" type="button"><span class="chem-mode-icon">👥</span>
           <span class="chem-mode-title">Do'stga taklif</span>
-          <span class="chem-mode-sub">Tez orada</span></div>
-        <div class="chem-mode-card soon"><span class="chem-mode-icon">🏆</span>
-          <span class="chem-mode-title">Chempionat</span>
-          <span class="chem-mode-sub">Tez orada</span></div>
-        <div class="chem-mode-card soon"><span class="chem-mode-icon">🤖</span>
+          <span class="chem-mode-sub">Kod orqali</span></button>
+        <button class="chem-mode-card" id="chemModeBot" type="button"><span class="chem-mode-icon">🤖</span>
           <span class="chem-mode-title">Bot bilan mashq</span>
-          <span class="chem-mode-sub">Tez orada</span></div>
+          <span class="chem-mode-sub">ELO'siz, darhol</span></button>
+        <button class="chem-mode-card" id="chemModeHistory" type="button"><span class="chem-mode-icon">📜</span>
+          <span class="chem-mode-title">Mening janglarim</span>
+          <span class="chem-mode-sub">Natijalar tarixi</span></button>
       </div>`;
 
     document.getElementById("chemLearnBtn")
       .addEventListener("click", () => openChemCategories(cats));
     document.getElementById("chemDictBtn")
       .addEventListener("click", () => openChemDictionary());
+    document.getElementById("chemEloCard").addEventListener("click", openChemRating);
+    document.getElementById("chemBattleCta").addEventListener("click", () => startBattle("ranked"));
+    document.getElementById("chemModeRanked").addEventListener("click", () => startBattle("ranked"));
+    document.getElementById("chemModeBot").addEventListener("click", () => startBattle("bot"));
+    document.getElementById("chemModeInvite").addEventListener("click", openChemInvite);
+    document.getElementById("chemModeHistory").addEventListener("click", openChemHistory);
   } catch (e) {
     console.error(e);
     box.innerHTML = errorHtml("O'yin ma'lumotini yuklab bo'lmadi.");
@@ -745,6 +779,330 @@ async function openSubstance(id) {
 }
 
 // ==========================================================================
+//  8. BATTLE (1v1 / bot / do'st)
+// ==========================================================================
+
+let battle = null;   // {id, total, index, myScore, oppName, oppElo, mode, busy}
+
+async function startBattle(mode) {
+  showScreen("chem-battle");
+  const content = document.getElementById("chemBattleContent");
+  document.getElementById("chemBattleScore").innerHTML = "";
+  document.getElementById("chemBattleProgress").style.width = "0%";
+  content.innerHTML = `<div class="chem-result-loading">Raqib qidirilmoqda...</div>`;
+
+  try {
+    const res = await apiFetch(`/api/chem/battle/start`, {
+      method: "POST", body: JSON.stringify({ mode }),
+    });
+    if (!res.ok) {
+      content.innerHTML = errorHtml((await res.json()).detail || "Jangni boshlab bo'lmadi.");
+      return;
+    }
+    const d = await res.json();
+    enterBattle(d);
+  } catch (e) {
+    console.error(e);
+    content.innerHTML = errorHtml("Jangni boshlab bo'lmadi.");
+  }
+}
+
+function enterBattle(d) {
+  battle = {
+    id: d.battle_id, total: d.total, index: 0, myScore: 0,
+    oppName: d.opponent_name, oppElo: d.opponent_elo,
+    myElo: d.my_elo, mode: d.mode, busy: false,
+  };
+  document.getElementById("chemBattleLabel").textContent =
+    d.mode === "bot" ? "MASHQ · KIMYOBOT" : "BATTLE 1v1";
+  renderBattleScore(0, null);
+  nextBattleQuestion();
+}
+
+function renderBattleScore(mine, theirs) {
+  const b = battle;
+  document.getElementById("chemBattleScore").innerHTML = `
+    <div class="chem-bs-side">
+      <div class="chem-bs-name">Siz</div>
+      <div class="chem-bs-elo">${b.myElo} ELO</div>
+    </div>
+    <div class="chem-bs-mid">
+      <span class="chem-bs-score">${mine}</span>
+      <span class="chem-bs-sep">:</span>
+      <span class="chem-bs-score dim">${theirs == null ? "?" : theirs}</span>
+    </div>
+    <div class="chem-bs-side right">
+      <div class="chem-bs-name">${esc(b.oppName || "Raqib kutilmoqda")}</div>
+      <div class="chem-bs-elo">${b.oppElo ? b.oppElo + " ELO" : "—"}</div>
+    </div>`;
+}
+
+async function nextBattleQuestion() {
+  const content = document.getElementById("chemBattleContent");
+  try {
+    const d = await (await apiFetch(`/api/chem/battle/${battle.id}/question`)).json();
+    if (d.finished) return finishBattle();
+
+    battle.index = d.index;
+    battle.myScore = d.my_score;
+    renderBattleScore(d.my_score, null);
+    document.getElementById("chemBattleProgress").style.width =
+      `${Math.round((d.index - 1) / d.total * 100)}%`;
+
+    const q = d.question;
+    const letters = ["A", "B", "C", "D", "E"];
+    content.innerHTML = `
+      <div class="chem-play-counter">Savol ${d.index} / ${d.total}</div>
+      <div class="chem-prompt">
+        <div class="chem-prompt-label">${esc(q.prompt_label)}</div>
+        <div class="chem-prompt-value">${esc(q.prompt_value)}</div>
+        <div class="chem-prompt-question">${esc(q.question_text)}</div>
+      </div>
+      <div class="chem-options">
+        ${q.options.map((o, i) => `
+          <button class="chem-option battle" type="button" data-a="${esc(o)}">
+            <span class="chem-option-letter">${letters[i]}</span>${esc(o)}
+          </button>`).join("")}
+      </div>
+      <div id="chemBattleFeedback" class="chem-battle-feedback"></div>`;
+
+    battle.busy = false;
+    content.querySelectorAll(".chem-option").forEach(btn => {
+      btn.addEventListener("click", () => answerBattle(btn));
+    });
+  } catch (e) {
+    console.error(e);
+    content.innerHTML = errorHtml("Savolni yuklab bo'lmadi.");
+  }
+}
+
+async function answerBattle(btn) {
+  if (battle.busy) return;
+  battle.busy = true;
+  document.querySelectorAll(".chem-option").forEach(b => b.disabled = true);
+
+  try {
+    const d = await (await apiFetch(`/api/chem/battle/${battle.id}/answer`, {
+      method: "POST", body: JSON.stringify({ answer: btn.dataset.a }),
+    })).json();
+
+    haptic(d.correct ? "success" : "error");
+    btn.classList.add(d.correct ? "correct" : "wrong");
+    if (!d.correct) {
+      document.querySelectorAll(".chem-option").forEach(b => {
+        if (b.dataset.a === d.correct_answer) b.classList.add("correct");
+      });
+      document.getElementById("chemBattleFeedback").innerHTML =
+        `<div class="chem-answer-bar">✗ To'g'ri javob: <b>${esc(d.correct_answer)}</b></div>`;
+    }
+    renderBattleScore(d.my_score, null);
+
+    setTimeout(() => {
+      if (d.finished) finishBattle();
+      else nextBattleQuestion();
+    }, d.correct ? 500 : 1300);
+  } catch (e) {
+    console.error(e);
+    battle.busy = false;
+  }
+}
+
+async function finishBattle() {
+  document.getElementById("chemBattleProgress").style.width = "100%";
+  document.getElementById("chemBattleContent").innerHTML =
+    `<div class="chem-result-loading">Natija hisoblanmoqda...</div>`;
+  try {
+    const d = await (await apiFetch(`/api/chem/battle/${battle.id}/finish`, { method: "POST" })).json();
+    showBattleResult(d);
+  } catch (e) {
+    console.error(e);
+    document.getElementById("chemBattleContent").innerHTML =
+      errorHtml("Natijani saqlab bo'lmadi.");
+  }
+}
+
+function showBattleResult(d) {
+  showScreen("chem-battle-result");
+  const box = document.getElementById("chemBattleResultContent");
+
+  // Raqib hali javob bermagan bo'lsa — jang "kutish" holatida qoladi.
+  if (d.status !== "finished") {
+    box.innerHTML = `
+      <div class="chem-result">
+        <div class="chem-result-icon">⏳</div>
+        <div class="chem-result-title">Raqib kutilmoqda</div>
+        <div class="chem-result-sub">Siz ${d.my_score}/${d.total} to'g'ri javob berdingiz.</div>
+        <div class="chem-result-note">
+          Raqib qo'shilishi bilan natija chiqadi va sizga Telegram orqali xabar keladi.
+          10 daqiqada hech kim qo'shilmasa, Kimyobot bilan yakunlanadi.
+        </div>
+      </div>
+      <button class="primary-btn chem-start-btn" id="chemBattleAgain" type="button">Yana o'ynash</button>`;
+    document.getElementById("chemBattleAgain")
+      .addEventListener("click", () => startBattle(d.mode === "bot" ? "bot" : "ranked"));
+    return;
+  }
+
+  const icons = { win: "🏆", lose: "😔", draw: "🤝" };
+  const titles = { win: "G'alaba!", lose: "Mag'lubiyat", draw: "Durang" };
+  haptic(d.result === "win" ? "success" : (d.result === "draw" ? "warning" : "error"));
+
+  const delta = d.elo_delta;
+  const eloRow = d.mode === "bot"
+    ? `<div class="chem-result-note">Mashq rejimi — ELO o'zgarmaydi.</div>`
+    : `<div class="chem-elo-change ${delta > 0 ? "up" : (delta < 0 ? "down" : "")}">
+         ELO: ${d.elo_before} → <b>${d.elo_after}</b> (${delta > 0 ? "+" : ""}${delta})
+       </div>`;
+
+  box.innerHTML = `
+    <div class="chem-result">
+      <div class="chem-result-icon">${icons[d.result] || "⚔️"}</div>
+      <div class="chem-result-title">${titles[d.result] || "Natija"}</div>
+      <div class="chem-result-sub">${esc(d.opponent_name || "Raqib")}${d.is_bot ? " 🤖" : ""}</div>
+      <div class="chem-result-vs">
+        <span class="chem-result-vs-num">${d.my_score}</span>
+        <span class="chem-result-vs-sep">:</span>
+        <span class="chem-result-vs-num">${d.opponent_score}</span>
+      </div>
+      ${eloRow}
+      <div class="chem-result-tier">${d.my_tier.icon} ${d.my_tier.name} · ${d.my_elo} ELO</div>
+    </div>
+    <button class="primary-btn chem-start-btn" id="chemBattleAgain" type="button">Yana o'ynash</button>`;
+
+  document.getElementById("chemBattleAgain")
+    .addEventListener("click", () => startBattle(d.mode === "bot" ? "bot" : "ranked"));
+}
+
+// ---------- Do'stga taklif ----------
+
+async function openChemInvite() {
+  showScreen("chem-invite");
+  const box = document.getElementById("chemInviteContent");
+  box.innerHTML = skeletonCards(1);
+  try {
+    const d = await (await apiFetch(`/api/chem/battle/invite`, {
+      method: "POST", body: JSON.stringify({}),
+    })).json();
+    if (d.detail) { box.innerHTML = errorHtml(d.detail); return; }
+
+    box.innerHTML = `
+      <div class="chem-invite-card">
+        <div class="chem-invite-label">O'YIN KODI</div>
+        <div class="chem-invite-code">${esc(d.code)}</div>
+        <div class="chem-invite-hint">Do'stingiz shu kodni kiritsa o'yin boshlanadi</div>
+      </div>
+      <button class="primary-btn chem-start-btn" id="chemShareBtn" type="button">📤 Telegramda ulashish</button>
+      <div class="chem-invite-or">YOKI</div>
+      <div class="chem-invite-join">
+        <input type="text" id="chemJoinCode" class="chem-write-input small"
+               placeholder="Do'stingiz kodini kiriting" maxlength="6"
+               autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <button class="secondary-btn" id="chemJoinBtn" type="button">Kod bilan qo'shilish</button>
+      </div>
+      <div id="chemJoinError"></div>`;
+
+    document.getElementById("chemShareBtn").addEventListener("click", () => {
+      const text = `Kimyo battle o'ynaymizmi? Kodim: ${d.code}`;
+      const url = `https://t.me/share/url?url=${encodeURIComponent(text)}`;
+      if (tg.openTelegramLink) tg.openTelegramLink(url); else window.open(url, "_blank");
+    });
+
+    const input = document.getElementById("chemJoinCode");
+    input.addEventListener("input", () => { input.value = input.value.toUpperCase(); });
+    document.getElementById("chemJoinBtn").addEventListener("click", async () => {
+      const code = input.value.trim();
+      const err = document.getElementById("chemJoinError");
+      if (code.length !== 6) { err.innerHTML = errorHtml("Kod 6 ta belgidan iborat."); return; }
+      err.innerHTML = "";
+      const res = await apiFetch(`/api/chem/battle/join-code`, {
+        method: "POST", body: JSON.stringify({ code }),
+      });
+      const j = await res.json();
+      if (!res.ok) { err.innerHTML = errorHtml(j.detail || "Qo'shilib bo'lmadi."); return; }
+      showScreen("chem-battle");
+      document.getElementById("chemBattleScore").innerHTML = "";
+      document.getElementById("chemBattleContent").innerHTML = "";
+      enterBattle(j);
+    });
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml("Taklif kodini olishda xato.");
+  }
+}
+
+// ---------- Reyting ----------
+
+async function openChemRating() {
+  showScreen("chem-rating");
+  const box = document.getElementById("chemRatingContent");
+  box.innerHTML = skeletonCards(4);
+  try {
+    const d = await (await apiFetch(`/api/chem/battle/leaderboard`)).json();
+    const me = d.me;
+    if (!d.leaders.length) {
+      box.innerHTML = emptyHtml("Hali hech kim battle o'ynamagan — birinchi bo'ling!");
+      return;
+    }
+    const rows = d.leaders.map(x => `
+      <div class="chem-rank-row${x.telegram_id === me.telegram_id ? " me" : ""}">
+        <span class="chem-rank-num">#${x.rank}</span>
+        <span class="chem-rank-avatar">${esc((x.first_name || "?").slice(0, 1).toUpperCase())}</span>
+        <span class="chem-rank-text">
+          <span class="chem-rank-name">${esc(x.first_name || "O'quvchi")}</span>
+          <span class="chem-rank-sub">${x.wins} g'alaba · ${x.losses} mag'lubiyat</span>
+        </span>
+        <span class="chem-rank-right">
+          <span class="chem-rank-elo">${x.elo}</span>
+          <span class="chem-rank-tier">${x.tier.name}</span>
+        </span>
+      </div>`).join("");
+
+    box.innerHTML = rows + (me.in_list ? "" : `
+      <div class="chem-rank-row me sticky">
+        <span class="chem-rank-num">#${me.rank}</span>
+        <span class="chem-rank-avatar">S</span>
+        <span class="chem-rank-text"><span class="chem-rank-name">Siz</span></span>
+        <span class="chem-rank-right">
+          <span class="chem-rank-elo">${me.elo}</span>
+          <span class="chem-rank-tier">${me.tier.name}</span>
+        </span>
+      </div>`);
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml("Reytingni yuklab bo'lmadi.");
+  }
+}
+
+// ---------- Janglar tarixi ----------
+
+async function openChemHistory() {
+  showScreen("chem-history");
+  const box = document.getElementById("chemHistoryContent");
+  box.innerHTML = skeletonCards(3);
+  try {
+    const d = await (await apiFetch(`/api/chem/battle/me/history`)).json();
+    if (!d.battles.length) {
+      box.innerHTML = emptyHtml("Hali jang o'ynamagansiz.");
+      return;
+    }
+    const label = { win: "G'alaba", lose: "Mag'lubiyat", draw: "Durang" };
+    box.innerHTML = d.battles.map(b => `
+      <div class="chem-history-row ${b.result || "pending"}">
+        <span class="chem-history-badge">${b.result ? label[b.result] : "Kutilmoqda"}</span>
+        <span class="chem-history-text">
+          <span class="chem-history-name">${esc(b.opponent_name)}${b.is_bot ? " 🤖" : ""}</span>
+          <span class="chem-history-score">${b.my_score ?? "—"} : ${b.opponent_score ?? "—"}</span>
+        </span>
+        ${b.elo_delta ? `<span class="chem-history-elo ${b.elo_delta > 0 ? "up" : "down"}">
+          ${b.elo_delta > 0 ? "+" : ""}${b.elo_delta}</span>` : ""}
+      </div>`).join("");
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = errorHtml("Tarixni yuklab bo'lmadi.");
+  }
+}
+
+// ==========================================================================
 //  Ishga tushirish
 // ==========================================================================
 
@@ -756,6 +1114,14 @@ export function initChemGameModule() {
     const msg = "O'yindan chiqasizmi? Shu bosqichdagi natija saqlanmaydi.";
     if (tg.showConfirm) tg.showConfirm(msg, ok => { if (ok) done(); });
     else if (confirm(msg)) done();
+  });
+
+  // Battle'dan chiqish — javob berilgan savollar saqlanib qoladi, lekin
+  // jang tugallanmagan hisoblanadi, shuning uchun ogohlantiramiz.
+  document.getElementById("chemBattleExitBtn").addEventListener("click", () => {
+    const msg = "Jangdan chiqasizmi? Tugatilmagan jang mag'lubiyat sifatida hisoblanishi mumkin.";
+    if (tg.showConfirm) tg.showConfirm(msg, ok => { if (ok) openChemHub(); });
+    else if (confirm(msg)) openChemHub();
   });
 
   // Lug'at qidiruvi — har harfda so'rov yubormaslik uchun kechiktiriladi.

@@ -15,7 +15,8 @@ from database import (
     init_db, get_or_create_user, add_sample_courses,
     create_pending_referral, confirm_referral, set_user_subscribed,
     get_confirmed_referral_count, get_enrollments_needing_reminder, mark_reminder_sent,
-    get_battles_needing_notification, mark_battle_notified
+    get_battles_needing_notification, mark_battle_notified,
+    resolve_stale_chem_battles, get_unnotified_chem_battles, mark_chem_battle_notified,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -458,3 +459,87 @@ async def cleanup_old_homework_photos_loop():
         except Exception as e:
             logging.error(f"Vazifa rasmlarini tozalash siklida xato: {e}")
         await asyncio.sleep(HOMEWORK_CLEANUP_INTERVAL_SECONDS)
+
+
+# ==========================================================================
+#  KIMYO O'YINI — jangni yakunlash va natija haqida xabar
+# ==========================================================================
+
+CHEM_BATTLE_CHECK_INTERVAL_SECONDS = 20
+
+
+def _chem_result_text(my_score, opp_score, opp_name, elo_before, elo_after,
+                      is_draw, is_winner, is_bot):
+    """Jang natijasi haqida Telegram xabari."""
+    if is_draw:
+        head = "🤝 <b>Durang!</b>"
+    elif is_winner:
+        head = "🏆 <b>G'alaba!</b>"
+    else:
+        head = "😔 <b>Mag'lubiyat</b>"
+
+    delta = ""
+    if elo_before is not None and elo_after is not None and elo_after != elo_before:
+        diff = elo_after - elo_before
+        delta = f"\n📊 ELO: {elo_before} → <b>{elo_after}</b> ({'+' if diff > 0 else ''}{diff})"
+
+    who = f"{opp_name} 🤖" if is_bot else opp_name
+    return (f"{head}\n\n"
+            f"🧪 Kimyo battle\n"
+            f"👤 Raqib: <b>{who}</b>\n"
+            f"⚔️ Hisob: <b>{my_score} : {opp_score}</b>{delta}\n\n"
+            f"Yana o'ynash uchun ilovadagi <b>O'yinlar</b> bo'limiga kiring.")
+
+
+async def chem_battle_maintenance_loop():
+    """Ikki vazifani bajaradi:
+
+    1) UZOQ KUTGAN janglarni "Kimyobot" bilan yakunlaydi. Kichik guruhda
+       ayni damda boshqa o'ynayotgan odam bo'lmasligi mumkin — natijasiz
+       osilib qolgan jang o'quvchini ko'ngilsizlantiradi.
+    2) Yakunlangan janglar haqida ikkala tomonga Telegram xabari yuboradi
+       (o'yinchi o'sha payt ilovani ochib turmagan bo'lishi mumkin).
+    """
+    while True:
+        try:
+            resolved = resolve_stale_chem_battles()
+            if resolved:
+                logging.info(f"[KIMYO] {len(resolved)} ta kutayotgan jang bot bilan yakunlandi")
+        except Exception as e:
+            logging.error(f"[KIMYO] Kutayotgan janglarni yakunlashda xato: {e}")
+
+        try:
+            for b in get_unnotified_chem_battles():
+                try:
+                    p1, p2 = b["p1_telegram_id"], b["p2_telegram_id"]
+                    winner = b["winner_telegram_id"]
+                    is_draw = winner is None
+                    is_bot = bool(b["is_bot"])
+
+                    opp1 = (b["bot_name"] or "Kimyobot") if is_bot else \
+                        (get_or_create_user(p2, "Raqib").get("first_name") if p2 else "Raqib")
+                    try:
+                        await bot.send_message(p1, _chem_result_text(
+                            b["p1_score"], b["p2_score"], opp1,
+                            b["p1_elo_before"], b["p1_elo_after"],
+                            is_draw, winner == p1, is_bot), parse_mode="HTML")
+                    except Exception as e:
+                        logging.warning(f"[KIMYO] Xabar yuborilmadi ({p1}): {e}")
+
+                    if p2:
+                        opp2 = get_or_create_user(p1, "Raqib").get("first_name")
+                        try:
+                            await bot.send_message(p2, _chem_result_text(
+                                b["p2_score"], b["p1_score"], opp2,
+                                b["p2_elo_before"], b["p2_elo_after"],
+                                is_draw, winner == p2, False), parse_mode="HTML")
+                        except Exception as e:
+                            logging.warning(f"[KIMYO] Xabar yuborilmadi ({p2}): {e}")
+
+                    mark_chem_battle_notified(b["id"])
+                except Exception as e:
+                    logging.warning(f"[KIMYO] Xabarni tayyorlashda xato (id={b.get('id')}): {e}")
+        except Exception as e:
+            logging.error(f"[KIMYO] Xabarlar siklida xato: {e}")
+
+        await asyncio.sleep(CHEM_BATTLE_CHECK_INTERVAL_SECONDS)
