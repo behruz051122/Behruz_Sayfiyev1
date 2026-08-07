@@ -76,6 +76,10 @@ export async function loadAdminAccessGroups() {
             ${g.invite_link ? "" : " · <b>taklif havolasi yo'q</b>"}
           </div>
           ${g.last_error ? `<div class="acc-group-error">⚠️ ${esc(g.last_error)}</div>` : ""}
+          ${g.setup_broken ? `<div class="acc-group-warn">
+             ℹ️ Sozlama buzuq — shuning uchun bu guruh <b>hech kimni qulflamayapti</b>.
+             Kirish eski tartibda ishlayapti. chat_id ni to'g'rilang yoki 🔍 bosing.
+           </div>` : ""}
         </div>
         <button class="admin-mini-btn" data-verify="${g.id}" title="Botni tekshirish">🔍</button>
         <button class="admin-mini-btn" data-sync="${g.id}" title="A'zolarni yangilash">🔄</button>
@@ -89,8 +93,14 @@ export async function loadAdminAccessGroups() {
                            { method: "POST" }, "Tekshirib bo'lmadi");
       b.disabled = false; b.textContent = "🔍";
       if (!r) return;
+      const typeText = r.chat_type === "group" ? "oddiy guruh"
+        : r.chat_type === "supergroup" ? "superguruh"
+        : r.chat_type === "channel" ? "kanal" : (r.chat_type || "—");
       alertMsg(r.ok
-        ? `✅ Hammasi joyida.\n\nGuruh: ${r.title || "—"}\nA'zolar: ${r.member_count ?? "—"}\nBot admin: ha`
+        ? `✅ Hammasi joyida.\n\nGuruh: ${r.title || "—"}\nTuri: ${typeText}\n` +
+          `A'zolar: ${r.member_count ?? "—"}\nBot admin: ha` +
+          (r.migrated_to ? `\n\n♻️ Guruh supergruhga aylangan — yangi ID avtomatik saqlandi.` : "") +
+          (r.note ? `\n\nℹ️ ${r.note}` : "")
         : `❌ ${r.error || "Nomaʼlum xato"}`);
       loadAdminAccessGroups();
     }));
@@ -136,9 +146,15 @@ function openGroupForm(g) {
     <div class="acc-help">
       <b>chat_id ni qanday topish mumkin:</b><br>
       1. Botni guruhga qo'shing va <b>admin</b> qiling<br>
-      2. Guruhdan istalgan xabarni <b>@userinfobot</b> ga forward qiling —
-         u <code>-100...</code> bilan boshlanadigan ID ni ko'rsatadi<br>
-      3. Taklif havolasini guruh sozlamalaridan oling
+      2. Guruhdan istalgan xabarni <b>@userinfobot</b> ga forward qiling<br>
+      3. U bergan MANFIY sonni shu yerga yozing — <b>minus bilan birga</b><br>
+      <br>
+      <b>Ikki xil ID bo'ladi, ikkalasi ham to'g'ri:</b><br>
+      • <code>-1001234567890</code> — superguruh yoki kanal<br>
+      • <code>-123456789</code> — oddiy guruh (bu ham ishlaydi)<br>
+      <br>
+      Guruh keyinchalik supergruhga aylansa ID o'zgaradi —
+      <b>tizim buni o'zi sezib yangilaydi.</b>
     </div>`;
   show("accGroupForm", true);
   document.getElementById("accGroupForm").scrollIntoView({ behavior: "smooth" });

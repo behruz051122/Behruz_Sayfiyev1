@@ -29,10 +29,21 @@ Qo'shimcha huquq berish shart emas — oddiy admin yetarli.
 ### 2-qadam. Guruh ID sini toping
 
 1. Guruhdagi istalgan xabarni **@userinfobot** ga forward qiling
-2. U `-100` bilan boshlanadigan raqamni ko'rsatadi, masalan `-1001234567890`
+2. U bergan **manfiy sonni** o'sha holicha, **minus bilan birga** yozing
 
-> Yopiq guruh ID si **doim `-100` bilan boshlanadi**. Agar `-100` siz
-> kiritsangiz, tizim xato deb qaytaradi.
+> **Telegramda ikki xil guruh bor va ID si har xil — ikkalasi ham to'g'ri:**
+>
+> | Guruh turi | ID namunasi |
+> |---|---|
+> | Oddiy guruh (basic group) | `-123456789` |
+> | Superguruh yoki kanal | `-1001234567890` |
+>
+> Ya'ni `-100` bilan boshlanishi **shart emas**. Faqat **musbat** son xato —
+> u odam ID si, guruhniki emas.
+>
+> Guruhingiz keyinchalik superguruhga aylansa Telegram ID ni **o'zgartiradi**.
+> Tizim buni o'zi sezadi va yangi ID ni avtomatik saqlab qo'yadi —
+> siz hech narsa qilmaysiz.
 
 ### 3-qadam. Taklif havolasini oling
 
@@ -107,9 +118,14 @@ Testlarda ham xuddi shunday: pullik bosqich yonida qo'shilish havolasi chiqadi.
 
 - Qulf **serverda** tekshiriladi. Mijozdagi qulfni chetlab o'tib
   to'g'ridan-to'g'ri so'rov yuborilsa ham server rad etadi.
-- **«Ishonchsiz holatda yopiq»** tamoyili: Telegram javob bermasa yoki
-  bot admin bo'lmasa — kirish **berilmaydi**. Aks holda bitta tarmoq
-  uzilishi butun pullik kontentni ochib yuborardi.
+- **«Ishonchsiz holatda yopiq»** tamoyili: Telegram vaqtincha javob bermasa —
+  kirish **berilmaydi**. Aks holda bitta tarmoq uzilishi butun pullik
+  kontentni ochib yuborardi.
+- **Lekin sozlama BUZUQ bo'lsa — qulflamaydi.** Agar chat_id noto'g'ri
+  bo'lsa, bot guruhdan chiqarilgan yoki admin qilinmagan bo'lsa, tizim
+  buni "guruh a'zosi emas" deb hisoblamaydi — aks holda bitta xato
+  sozlama **hamma o'quvchini** kontentdan uzib qo'yardi. Bunday guruh
+  admin panelda **qizil ogohlantirish** bilan chiqadi.
 - A'zolik natijasi 10 daqiqa saqlanadi — shuning uchun har dars ochilganda
   Telegram'ga so'rov yog'ilmaydi va ilova sekinlashmaydi.
 
@@ -134,3 +150,18 @@ Ha, yopiq kanal ham bo'ladi — bot u yerda ham admin bo'lishi kerak.
 
 **Bot admin emasligini qanday bilaman?**
 🔍 tugmasi aytadi, va guruh ro'yxatida qizil ogohlantirish chiqadi.
+
+**O'quvchilar «ochilmayapti» deb shikoyat qilyapti — nima qilay?**
+
+1. **Admin panel → 🔐 Pullik guruhlar** ga kiring
+2. Guruh yonida qizil ogohlantirish bormi qarang
+3. 🔍 **Tekshirish** ni bosing — u aniq nima xato ekanini aytadi
+4. Ko'p uchraydigan sabablar:
+   - chat_id noto'g'ri kiritilgan → to'g'rilang yoki guruhni o'chirib
+     qaytadan qo'shing
+   - bot guruhda admin emas → admin qiling
+   - guruh superguruhga aylangan → 🔍 bosing, ID o'zi yangilanadi
+5. Tuzatgach 🔄 **Yangilash** ni bosing — a'zolik darhol qayta hisoblanadi
+
+> Sozlamasi buzuq guruh **hech kimni qulflamaydi** — ya'ni xato paytida
+> o'quvchilar eski tartibda (qo'lda biriktirish bo'yicha) ishlaydi.

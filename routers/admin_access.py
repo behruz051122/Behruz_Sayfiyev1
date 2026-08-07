@@ -29,6 +29,9 @@ def admin_list_groups(admin=Depends(require_admin)):
     links = db.get_all_content_links()
     for g in groups:
         g["member_count"] = db.get_group_member_count(g["id"])
+        # Sozlamasi buzuq guruh KIRISHNI CHEKLAMAYDI — admin buni
+        # aniq bilishi kerak, aks holda "nega ochilmayapti?" deb izlaydi.
+        g["setup_broken"] = db.is_group_setup_broken(g)
         g["course_count"] = sum(1 for (t, _), ids in links.items()
                                 if t == "course" and g["id"] in ids)
         g["stage_count"] = sum(1 for (t, _), ids in links.items()
@@ -43,21 +46,50 @@ def admin_create_group(data: dict = Body(...), admin=Depends(require_admin)):
     if not title or not chat_id:
         raise HTTPException(status_code=400, detail="Guruh nomi va chat_id majburiy")
 
-    # Eng ko'p uchraydigan xato: yopiq guruh ID sini "-100" prefiksisiz kiritish.
-    if chat_id.lstrip("-").isdigit() and chat_id.startswith("-") and not chat_id.startswith("-100"):
-        raise HTTPException(
-            status_code=400,
-            detail="Yopiq guruh/kanal ID si '-100' bilan boshlanadi. "
-                   "Masalan: -1001234567890")
+    err = _validate_chat_id(chat_id)
+    if err:
+        raise HTTPException(status_code=400, detail=err)
 
     gid = db.create_access_group(title, chat_id, data.get("invite_link"))
     return {"success": True, "id": gid}
+
+
+def _validate_chat_id(chat_id: str):
+    """chat_id ko'rinishini tekshiradi. Xato bo'lsa matn, to'g'ri bo'lsa None.
+
+    TELEGRAMDA IKKI XIL GURUH BOR va ikkalasining ID si HAR XIL:
+
+      1) ODDIY GURUH (basic group) -> manfiy son, masalan -123456789
+         Bu ham to'liq ishlaydi. Lekin guruh keyinchalik SUPERGURUHGA
+         aylanganda ID O'ZGARADI — Telegram shunday ishlaydi.
+         Biz bu holatni avtomatik ushlaymiz (access_control.py).
+
+      2) SUPERGURUH yoki KANAL -> -100 bilan boshlanadi, masalan -1001234567890
+
+    Ya'ni "-100 bo'lishi shart" degan qoida NOTO'G'RI edi — oddiy guruhning
+    ID si ham haqiqiy. Faqat MUSBAT son xato: u odam ID si, guruhniki emas.
+    """
+    v = (chat_id or "").strip()
+    if not v:
+        return "chat_id bo'sh"
+    if v.startswith("@"):
+        return None                      # ommaviy guruh/kanal username
+    if v.lstrip("-").isdigit():
+        if not v.startswith("-"):
+            return ("Bu odam ID siga o'xshaydi. Guruh ID si MANFIY bo'ladi — "
+                    "oldiga minus qo'ying (masalan -123456789).")
+        return None
+    return "chat_id raqam (masalan -1001234567890) yoki @username bo'lishi kerak"
 
 
 @router.put("/groups/{group_id}")
 def admin_update_group(group_id: int, data: dict = Body(...), admin=Depends(require_admin)):
     if not db.get_access_group(group_id):
         raise HTTPException(status_code=404, detail="Guruh topilmadi")
+    if "chat_id" in data:
+        err = _validate_chat_id(data.get("chat_id"))
+        if err:
+            raise HTTPException(status_code=400, detail=err)
     db.update_access_group(group_id, **data)
     return {"success": True}
 
@@ -81,6 +113,11 @@ async def admin_verify_group(group_id: int, admin=Depends(require_admin)):
 
     import bot as bot_module
     result = await access_control.verify_group_setup(bot_module.bot, g["chat_id"])
+
+    # Guruh supergruhga aylangan bo'lsa — yangi ID ni saqlab qo'yamiz.
+    if result.get("migrated_to"):
+        db.update_access_group(group_id, chat_id=result["migrated_to"])
+
     db.update_access_group(group_id, last_error=result.get("error"))
     return result
 
@@ -124,6 +161,8 @@ def admin_list_links(admin=Depends(require_admin)):
     ko'radi.
     """
     links = db.get_all_content_links()
+    broken_ids = {g["id"] for g in db.get_access_groups(only_active=True)
+                  if db.is_group_setup_broken(g)}
 
     courses = []
     for c in db.get_all_courses():
@@ -143,7 +182,8 @@ def admin_list_links(admin=Depends(require_admin)):
             })
 
     return {"courses": courses, "stages": stages,
-            "groups": db.get_access_groups(only_active=True)}
+            "groups": db.get_access_groups(only_active=True),
+            "broken_group_ids": sorted(broken_ids)}
 
 
 @router.put("/links/{content_type}/{content_id}")

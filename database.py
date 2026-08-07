@@ -7506,8 +7506,34 @@ def delete_access_group(group_id: int):
 
 # ---------- Kontentni guruhga bog'lash ----------
 
-def get_content_groups(content_type: str, content_id: int):
-    """Shu kontent qaysi guruhlarga bog'langan (faqat faollari)."""
+# Guruh sozlamasi BUZUQ ekanini bildiruvchi xato belgilari.
+# Bunday guruh KIRISHNI CHEKLAMAYDI — pastdagi izohga qarang.
+_BROKEN_SETUP_MARKERS = (
+    "chat not found", "bot is not a member", "not enough rights",
+    "chat_id is empty", "bot was kicked", "forbidden",
+)
+
+
+def is_group_setup_broken(group: dict) -> bool:
+    low = (group.get("last_error") or "").lower()
+    return any(m in low for m in _BROKEN_SETUP_MARKERS)
+
+
+def get_content_groups(content_type: str, content_id: int, include_broken: bool = False):
+    """Shu kontent qaysi guruhlarga bog'langan (faqat faollari).
+
+    MUHIM QOIDA — BUZUQ SOZLAMA QULFLAMAYDI:
+    Agar guruhning chat_id si noto'g'ri bo'lsa yoki bot guruhdan chiqarilgan
+    bo'lsa, Telegram hech kimni "a'zo" deb ko'rsatolmaydi. Bunday holatda
+    hamma o'quvchini qulflab qo'yish — o'qituvchining sozlash xatosi uchun
+    o'quvchilarni jazolash bo'lardi.
+
+    Shuning uchun BUZUQ guruh ro'yxatdan chiqarib tashlanadi: kontent
+    qulflanmaydi va eski tartib (qo'lda biriktirish) ishlayveradi.
+    Admin panelda esa katta qizil ogohlantirish chiqadi.
+
+    `include_broken=True` — admin paneli uchun (u hammasini ko'rsatishi kerak).
+    """
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("""
@@ -7516,7 +7542,11 @@ def get_content_groups(content_type: str, content_id: int):
             WHERE l.content_type = ? AND l.content_id = ? AND g.is_active = 1
             ORDER BY g.id
         """, (content_type, content_id))
-        return [dict(r) for r in cur.fetchall()]
+        groups = [dict(r) for r in cur.fetchall()]
+
+    if include_broken:
+        return groups
+    return [g for g in groups if not is_group_setup_broken(g)]
 
 
 def set_content_groups(content_type: str, content_id: int, group_ids):

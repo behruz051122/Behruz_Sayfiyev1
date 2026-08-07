@@ -2973,3 +2973,10 @@ html[data-theme="light"] .bio-theme .bio-term-group { color: #047857; }
   background: rgba(251,191,36,0.14); border-color: rgba(251,191,36,0.45); color: var(--warning);
 }
 .acc-chip input { width: 14px; height: 14px; accent-color: var(--warning); margin: 0; }
+
+.acc-group-warn {
+  margin-top: 6px; padding: 8px 10px; border-radius: 8px;
+  font-size: 10.5px; line-height: 1.6;
+  background: rgba(251,191,36,0.10); border: 1px solid rgba(251,191,36,0.32);
+  color: var(--warning);
+}
