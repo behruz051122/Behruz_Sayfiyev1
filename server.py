@@ -51,6 +51,8 @@ from routers import (
     chem_battle,
     chem_tournament,
     admin_chem,
+    bio_game,
+    admin_bio,
     certificates,
     faq,
     admin_faq,
@@ -159,6 +161,8 @@ app.include_router(chem_game.router)
 app.include_router(chem_battle.router)
 app.include_router(chem_tournament.router)
 app.include_router(admin_chem.router)
+app.include_router(bio_game.router)
+app.include_router(admin_bio.router)
 app.include_router(certificates.router)
 app.include_router(faq.router)
 app.include_router(admin_faq.router)

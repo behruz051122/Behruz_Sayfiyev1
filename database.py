@@ -1374,6 +1374,161 @@ def init_db():
             ON chem_tournament_matches(tournament_id, round_no)
         """)
 
+        # ================================================================
+        #  BIOLOGIYA O'YINI
+        # ================================================================
+        # NEGA KIMYODAN ALOHIDA TIZIM:
+        # Kimyoda ma'lumot bir xil shaklda — har modda uchun formula, nom,
+        # rang. Shuning uchun 4 ta bosqich hamma levelga bir xil to'g'ri
+        # kelardi.
+        #
+        # Biologiyada esa ma'lumot TURLI SHAKLDA bo'ladi:
+        #   - termin va uning vazifasi        (mitoxondriya -> ATP sintezi)
+        #   - JARAYON bosqichlari             (mitoz: profaza -> metafaza -> ...)
+        #   - TASNIF guruhlari                (prokariot / eukariot)
+        #   - RASMDAGI qismlar                (hujayra tuzilishi)
+        #
+        # Shuning uchun bu yerda bosqichlar RO'YXATI QAT'IY EMAS: har level
+        # o'zida qanday ma'lumot bo'lsa, shunga mos o'yinlarni ko'rsatadi.
+        # Ketma-ketlik kiritilmagan levelda "Ketma-ketlik" bosqichi umuman
+        # paydo bo'lmaydi.
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS bio_topics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key TEXT UNIQUE NOT NULL,
+                title TEXT NOT NULL,
+                subtitle TEXT,
+                icon TEXT DEFAULT '🧬',
+                is_ready INTEGER DEFAULT 0,
+                sort_order INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS bio_levels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                topic_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                sort_order INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (topic_id) REFERENCES bio_topics(id)
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_bio_levels_topic
+            ON bio_levels(topic_id, sort_order)
+        """)
+
+        # ---------- Termin (bazaning o'zagi) ----------
+        # `group_name` — GURUHLASH o'yini uchun savat nomi
+        #                (masalan "Prokariot" / "Eukariot").
+        # `clues`      — "KIM MEN?" o'yini uchun ipuchalar, JSON ro'yxat.
+        #                Umumiydan aniqqa tartibda yoziladi.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS bio_terms (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                level_id INTEGER NOT NULL,
+                term TEXT NOT NULL,
+                definition TEXT,
+                function_text TEXT,
+                group_name TEXT,
+                clues TEXT,
+                extra_fact TEXT,
+                image_url TEXT,
+                sort_order INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (level_id) REFERENCES bio_levels(id)
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_bio_terms_level
+            ON bio_terms(level_id, sort_order)
+        """)
+
+        # ---------- Jarayon ketma-ketligi ----------
+        # `steps` — JSON ro'yxat, TO'G'RI TARTIBDA saqlanadi. O'quvchiga
+        # aralashtirilgan holda ko'rsatiladi.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS bio_sequences (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                level_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                steps TEXT NOT NULL,
+                sort_order INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (level_id) REFERENCES bio_levels(id)
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_bio_sequences_level
+            ON bio_sequences(level_id, sort_order)
+        """)
+
+        # ---------- Rasm bo'yicha belgilash ----------
+        # `labels` — JSON: [{"name": "yadro", "x": 42, "y": 55}, ...]
+        # x, y — rasmning FOIZ koordinatalari (0-100), shuning uchun rasm
+        # istalgan o'lchamda ko'rsatilsa ham nuqtalar joyida qoladi.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS bio_image_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                level_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                image_url TEXT NOT NULL,
+                labels TEXT NOT NULL,
+                sort_order INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (level_id) REFERENCES bio_levels(id)
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_bio_image_tasks_level
+            ON bio_image_tasks(level_id, sort_order)
+        """)
+
+        # ---------- Bosqich natijasi ----------
+        # `stage_key` — matn (kimyodagi raqamdan farqli), chunki bosqichlar
+        # to'plami levelga qarab o'zgaradi: "learn", "test", "match",
+        # "sequence", "group", "whoami", "image".
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS bio_stage_progress (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                level_id INTEGER NOT NULL,
+                stage_key TEXT NOT NULL,
+                stars INTEGER DEFAULT 0,
+                best_correct INTEGER DEFAULT 0,
+                total_questions INTEGER DEFAULT 0,
+                attempts INTEGER DEFAULT 0,
+                completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(telegram_id, level_id, stage_key)
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_bio_stage_progress_user
+            ON bio_stage_progress(telegram_id, level_id)
+        """)
+
+        # ---------- Boshlang'ich mavzular (bir marta) ----------
+        if not _flag_done("bio_topics_seeded"):
+            for _key, _title, _sub, _icon, _ready, _ord in (
+                ("hujayra", "Hujayra va organoidlar", "Tuzilishi va vazifasi", "🔬", 1, 1),
+                ("organ_tizimlari", "Odam organ tizimlari", "Hazm, nafas, qon aylanish...", "🫀", 0, 2),
+                ("genetika", "Genetika va bo'linish", "Mitoz, meyoz, DNK, oqsil sintezi", "🧬", 0, 3),
+                ("botanika_zoologiya", "Botanika va zoologiya", "O'simlik va hayvonlar olami", "🌿", 0, 4),
+            ):
+                cur.execute("SELECT id FROM bio_topics WHERE key = ?", (_key,))
+                if cur.fetchone() is None:
+                    cur.execute("""
+                        INSERT INTO bio_topics (key, title, subtitle, icon, is_ready, sort_order)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (_key, _title, _sub, _icon, _ready, _ord))
+            conn.commit()
+            _set_flag("bio_topics_seeded")
+
         # ---------- ELO reytingi ----------
         cur.execute("""
             CREATE TABLE IF NOT EXISTS chem_ratings (
@@ -6548,3 +6703,610 @@ def count_todays_tournaments_by(telegram_id: int) -> int:
             WHERE created_by = ? AND DATE(created_at) = DATE('now')
         """, (telegram_id,))
         return cur.fetchone()["c"] or 0
+
+
+# ==========================================================================
+#  BIOLOGIYA O'YINI
+# ==========================================================================
+# Kimyodan asosiy farq: BOSQICHLAR RO'YXATI QAT'IY EMAS.
+# Har level o'zida qanday ma'lumot bo'lsa, shunga mos o'yinlarni beradi.
+# Masalan levelda ketma-ketlik kiritilmagan bo'lsa — "Ketma-ketlik"
+# bosqichi umuman ko'rinmaydi. Shu tufayli o'qituvchi bazani
+# bosqichma-bosqich to'ldirsa ham, o'quvchi hech qachon bo'sh o'yinga
+# tushib qolmaydi.
+
+# Bosqich kalitlari va ular uchun kerakli ma'lumot.
+BIO_STAGES = (
+    ("learn",    "O'rganish",     "Kartochkalarni ko'rib yodlang"),
+    ("test",     "Test",          "Variantlardan to'g'risini tanlang"),
+    ("match",    "Juftlash",      "Termin va ta'rifni moslashtiring"),
+    ("sequence", "Ketma-ketlik",  "Bosqichlarni to'g'ri tartibda joylang"),
+    ("group",    "Guruhlash",     "Har elementni o'z guruhiga ajrating"),
+    ("whoami",   "Kim men?",      "Ipuchalarga qarab toping"),
+    ("image",    "Rasm bo'yicha", "Rasmdagi qismlarni belgilang"),
+)
+BIO_STAGE_TITLES = {k: t for k, t, _ in BIO_STAGES}
+BIO_STAGE_SUBS = {k: s for k, _, s in BIO_STAGES}
+BIO_STAGE_ORDER = [k for k, _, _ in BIO_STAGES]
+
+# Baholanadigan bosqichlar (yulduz shulardan hisoblanadi).
+# "learn" sinov emas — u har doim to'liq hisoblanadi.
+BIO_ASSESSED_STAGES = ("test", "match", "sequence", "group", "whoami", "image")
+
+
+def bio_stars_for_accuracy(correct: int, total: int) -> int:
+    """Kimyodagi bilan bir xil qoida — o'quvchi ikki fanda bir xil
+    mantiqni ko'radi, chalkashmaydi."""
+    return chem_stars_for_accuracy(correct, total)
+
+
+# ---------- Mavzular ----------
+
+def get_bio_topics(only_ready: bool = False):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        sql = "SELECT * FROM bio_topics"
+        if only_ready:
+            sql += " WHERE is_ready = 1"
+        sql += " ORDER BY sort_order, id"
+        cur.execute(sql)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_bio_topic(topic_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM bio_topics WHERE id = ?", (topic_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def create_bio_topic(key: str, title: str, subtitle: str = "", icon: str = "🧬",
+                     is_ready: int = 0, sort_order: int = 0):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO bio_topics (key, title, subtitle, icon, is_ready, sort_order)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (key, title, subtitle, icon, safe_int(is_ready), safe_int(sort_order)))
+        conn.commit()
+        return cur.lastrowid
+
+
+def update_bio_topic(topic_id: int, **fields):
+    allowed = ("title", "subtitle", "icon", "is_ready", "sort_order")
+    sets, vals = [], []
+    for k in allowed:
+        if k in fields:
+            sets.append(f"{k} = ?")
+            vals.append(safe_int(fields[k]) if k in ("is_ready", "sort_order") else fields[k])
+    if not sets:
+        return False
+    vals.append(topic_id)
+    with get_connection() as conn:
+        conn.cursor().execute(f"UPDATE bio_topics SET {', '.join(sets)} WHERE id = ?", vals)
+        conn.commit()
+    return True
+
+
+def delete_bio_topic(topic_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM bio_levels WHERE topic_id = ?", (topic_id,))
+        for lid in [r["id"] for r in cur.fetchall()]:
+            for t in ("bio_terms", "bio_sequences", "bio_image_tasks", "bio_stage_progress"):
+                cur.execute(f"DELETE FROM {t} WHERE level_id = ?", (lid,))
+        cur.execute("DELETE FROM bio_levels WHERE topic_id = ?", (topic_id,))
+        cur.execute("DELETE FROM bio_topics WHERE id = ?", (topic_id,))
+        conn.commit()
+    return True
+
+
+# ---------- Levellar ----------
+
+def get_bio_levels(topic_id: int, only_active: bool = True):
+    """Levellar + har birida QANDAY ma'lumot borligi (bosqichlarni
+    aniqlash uchun bitta so'rovda sanab olamiz)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        sql = """
+            SELECT l.*,
+                (SELECT COUNT(*) FROM bio_terms t WHERE t.level_id = l.id) AS term_count,
+                (SELECT COUNT(*) FROM bio_sequences s WHERE s.level_id = l.id) AS sequence_count,
+                (SELECT COUNT(*) FROM bio_image_tasks i WHERE i.level_id = l.id) AS image_count,
+                (SELECT COUNT(DISTINCT t.group_name) FROM bio_terms t
+                 WHERE t.level_id = l.id AND t.group_name IS NOT NULL
+                   AND TRIM(t.group_name) != '') AS group_count,
+                (SELECT COUNT(*) FROM bio_terms t
+                 WHERE t.level_id = l.id AND t.clues IS NOT NULL
+                   AND TRIM(t.clues) NOT IN ('', '[]')) AS clue_count
+            FROM bio_levels l
+            WHERE l.topic_id = ?
+        """
+        if only_active:
+            sql += " AND l.is_active = 1"
+        sql += " ORDER BY l.sort_order, l.id"
+        cur.execute(sql, (topic_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_bio_level(level_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT l.*, t.title AS topic_title, t.key AS topic_key, t.icon AS topic_icon
+            FROM bio_levels l JOIN bio_topics t ON t.id = l.topic_id
+            WHERE l.id = ?
+        """, (level_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def create_bio_level(topic_id: int, title: str, sort_order: int = 0):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO bio_levels (topic_id, title, sort_order) VALUES (?, ?, ?)",
+                    (topic_id, title, safe_int(sort_order)))
+        conn.commit()
+        return cur.lastrowid
+
+
+def update_bio_level(level_id: int, **fields):
+    allowed = ("title", "sort_order", "is_active")
+    sets, vals = [], []
+    for k in allowed:
+        if k in fields:
+            sets.append(f"{k} = ?")
+            vals.append(safe_int(fields[k]) if k in ("sort_order", "is_active") else fields[k])
+    if not sets:
+        return False
+    vals.append(level_id)
+    with get_connection() as conn:
+        conn.cursor().execute(f"UPDATE bio_levels SET {', '.join(sets)} WHERE id = ?", vals)
+        conn.commit()
+    return True
+
+
+def delete_bio_level(level_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        for t in ("bio_terms", "bio_sequences", "bio_image_tasks", "bio_stage_progress"):
+            cur.execute(f"DELETE FROM {t} WHERE level_id = ?", (level_id,))
+        cur.execute("DELETE FROM bio_levels WHERE id = ?", (level_id,))
+        conn.commit()
+    return True
+
+
+# ---------- Terminlar ----------
+
+_BIO_TERM_FIELDS = ("term", "definition", "function_text", "group_name",
+                    "clues", "extra_fact", "image_url", "sort_order")
+
+
+def _decode_clues(row: dict):
+    """clues JSON matnini ro'yxatga aylantiradi (buzuq bo'lsa bo'sh)."""
+    raw = row.get("clues")
+    if not raw:
+        row["clues"] = []
+        return row
+    try:
+        val = json.loads(raw)
+        row["clues"] = val if isinstance(val, list) else []
+    except (ValueError, TypeError):
+        row["clues"] = []
+    return row
+
+
+def get_bio_terms(level_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM bio_terms WHERE level_id = ? ORDER BY sort_order, id",
+                    (level_id,))
+        return [_decode_clues(dict(r)) for r in cur.fetchall()]
+
+
+def get_bio_terms_by_topic(topic_id: int):
+    """Mavzudagi barcha terminlar — chalg'ituvchi variantlar uchun."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT t.* FROM bio_terms t
+            JOIN bio_levels l ON l.id = t.level_id
+            WHERE l.topic_id = ? AND l.is_active = 1
+            ORDER BY l.sort_order, t.sort_order, t.id
+        """, (topic_id,))
+        return [_decode_clues(dict(r)) for r in cur.fetchall()]
+
+
+def get_bio_term(term_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT t.*, l.title AS level_title, l.topic_id
+            FROM bio_terms t JOIN bio_levels l ON l.id = t.level_id
+            WHERE t.id = ?
+        """, (term_id,))
+        row = cur.fetchone()
+        return _decode_clues(dict(row)) if row else None
+
+
+def _encode_clues(value):
+    """Ipuchalarni JSON matnga aylantiradi. Ro'yxat ham, qatorlarga
+    bo'lingan matn ham qabul qilinadi — admin formasida yozish qulay."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        parts = [p.strip() for p in value.splitlines() if p.strip()]
+        return json.dumps(parts, ensure_ascii=False) if parts else None
+    if isinstance(value, (list, tuple)):
+        parts = [str(p).strip() for p in value if str(p).strip()]
+        return json.dumps(parts, ensure_ascii=False) if parts else None
+    return None
+
+
+def create_bio_term(level_id: int, term: str, **fields):
+    vals = {k: fields.get(k) for k in _BIO_TERM_FIELDS}
+    vals["term"] = term
+    vals["clues"] = _encode_clues(fields.get("clues"))
+    vals["sort_order"] = safe_int(vals.get("sort_order"))
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"""
+            INSERT INTO bio_terms (level_id, {', '.join(_BIO_TERM_FIELDS)})
+            VALUES (?, {', '.join(['?'] * len(_BIO_TERM_FIELDS))})
+        """, (level_id, *[vals[k] for k in _BIO_TERM_FIELDS]))
+        conn.commit()
+        return cur.lastrowid
+
+
+def update_bio_term(term_id: int, **fields):
+    sets, vals = [], []
+    for k in _BIO_TERM_FIELDS:
+        if k in fields:
+            sets.append(f"{k} = ?")
+            if k == "clues":
+                vals.append(_encode_clues(fields[k]))
+            elif k == "sort_order":
+                vals.append(safe_int(fields[k]))
+            else:
+                vals.append(fields[k])
+    if not sets:
+        return False
+    vals.append(term_id)
+    with get_connection() as conn:
+        conn.cursor().execute(f"UPDATE bio_terms SET {', '.join(sets)} WHERE id = ?", vals)
+        conn.commit()
+    return True
+
+
+def delete_bio_term(term_id: int):
+    with get_connection() as conn:
+        conn.cursor().execute("DELETE FROM bio_terms WHERE id = ?", (term_id,))
+        conn.commit()
+    return True
+
+
+def search_bio_terms(query: str = "", limit: int = 60, offset: int = 0):
+    """Biologiya lug'ati — termin yoki ta'rif bo'yicha qidiruv."""
+    q = (query or "").strip()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        if q:
+            like = f"%{q}%"
+            cur.execute("""
+                SELECT t.*, l.title AS level_title FROM bio_terms t
+                JOIN bio_levels l ON l.id = t.level_id
+                WHERE t.term LIKE ? OR t.definition LIKE ? OR t.function_text LIKE ?
+                ORDER BY CASE WHEN t.term = ? THEN 0
+                              WHEN t.term LIKE ? THEN 1 ELSE 2 END, t.term
+                LIMIT ? OFFSET ?
+            """, (like, like, like, q, f"{q}%", limit, offset))
+        else:
+            cur.execute("""
+                SELECT t.*, l.title AS level_title FROM bio_terms t
+                JOIN bio_levels l ON l.id = t.level_id
+                ORDER BY t.id DESC LIMIT ? OFFSET ?
+            """, (limit, offset))
+        return [_decode_clues(dict(r)) for r in cur.fetchall()]
+
+
+# ---------- Ketma-ketliklar ----------
+
+def get_bio_sequences(level_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM bio_sequences WHERE level_id = ? ORDER BY sort_order, id",
+                    (level_id,))
+        out = []
+        for r in cur.fetchall():
+            d = dict(r)
+            try:
+                d["steps"] = json.loads(d["steps"])
+            except (ValueError, TypeError):
+                d["steps"] = []
+            out.append(d)
+        return out
+
+
+def create_bio_sequence(level_id: int, title: str, steps, description: str = None,
+                        sort_order: int = 0):
+    if isinstance(steps, str):
+        steps = [s.strip() for s in steps.splitlines() if s.strip()]
+    steps = [str(s).strip() for s in (steps or []) if str(s).strip()]
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO bio_sequences (level_id, title, description, steps, sort_order)
+            VALUES (?, ?, ?, ?, ?)
+        """, (level_id, title, description, json.dumps(steps, ensure_ascii=False),
+              safe_int(sort_order)))
+        conn.commit()
+        return cur.lastrowid
+
+
+def update_bio_sequence(sequence_id: int, **fields):
+    sets, vals = [], []
+    for k in ("title", "description", "sort_order"):
+        if k in fields:
+            sets.append(f"{k} = ?")
+            vals.append(safe_int(fields[k]) if k == "sort_order" else fields[k])
+    if "steps" in fields:
+        steps = fields["steps"]
+        if isinstance(steps, str):
+            steps = [s.strip() for s in steps.splitlines() if s.strip()]
+        steps = [str(s).strip() for s in (steps or []) if str(s).strip()]
+        sets.append("steps = ?")
+        vals.append(json.dumps(steps, ensure_ascii=False))
+    if not sets:
+        return False
+    vals.append(sequence_id)
+    with get_connection() as conn:
+        conn.cursor().execute(f"UPDATE bio_sequences SET {', '.join(sets)} WHERE id = ?", vals)
+        conn.commit()
+    return True
+
+
+def delete_bio_sequence(sequence_id: int):
+    with get_connection() as conn:
+        conn.cursor().execute("DELETE FROM bio_sequences WHERE id = ?", (sequence_id,))
+        conn.commit()
+    return True
+
+
+# ---------- Rasm topshiriqlari ----------
+
+def get_bio_image_tasks(level_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM bio_image_tasks WHERE level_id = ? ORDER BY sort_order, id",
+                    (level_id,))
+        out = []
+        for r in cur.fetchall():
+            d = dict(r)
+            try:
+                d["labels"] = json.loads(d["labels"])
+            except (ValueError, TypeError):
+                d["labels"] = []
+            out.append(d)
+        return out
+
+
+def create_bio_image_task(level_id: int, title: str, image_url: str, labels,
+                          sort_order: int = 0):
+    labels = labels or []
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO bio_image_tasks (level_id, title, image_url, labels, sort_order)
+            VALUES (?, ?, ?, ?, ?)
+        """, (level_id, title, image_url, json.dumps(labels, ensure_ascii=False),
+              safe_int(sort_order)))
+        conn.commit()
+        return cur.lastrowid
+
+
+def update_bio_image_task(task_id: int, **fields):
+    sets, vals = [], []
+    for k in ("title", "image_url", "sort_order"):
+        if k in fields:
+            sets.append(f"{k} = ?")
+            vals.append(safe_int(fields[k]) if k == "sort_order" else fields[k])
+    if "labels" in fields:
+        sets.append("labels = ?")
+        vals.append(json.dumps(fields["labels"] or [], ensure_ascii=False))
+    if not sets:
+        return False
+    vals.append(task_id)
+    with get_connection() as conn:
+        conn.cursor().execute(f"UPDATE bio_image_tasks SET {', '.join(sets)} WHERE id = ?", vals)
+        conn.commit()
+    return True
+
+
+def delete_bio_image_task(task_id: int):
+    with get_connection() as conn:
+        conn.cursor().execute("DELETE FROM bio_image_tasks WHERE id = ?", (task_id,))
+        conn.commit()
+    return True
+
+
+# ---------- Bosqichlarni ANIQLASH (biologiyaning o'ziga xosligi) ----------
+
+def bio_available_stages(level_row: dict):
+    """Level ichida QAYSI o'yinlar mumkinligini aniqlaydi.
+
+    Har o'yin uchun minimal shart bor:
+      learn/test/match — kamida 3 ta termin (aks holda variant yetmaydi)
+      sequence         — kamida 1 ta ketma-ketlik
+      group            — kamida 2 xil guruh
+      whoami           — kamida 1 ta ipuchali termin
+      image            — kamida 1 ta rasm topshirig'i
+
+    Shart bajarilmasa, bosqich UMUMAN ko'rsatilmaydi — o'quvchi bo'sh
+    o'yinga tushib qolmaydi.
+    """
+    terms = level_row.get("term_count", 0) or 0
+    out = []
+    if terms >= 3:
+        out += ["learn", "test", "match"]
+    elif terms >= 1:
+        out += ["learn"]
+    if (level_row.get("sequence_count") or 0) >= 1:
+        out.append("sequence")
+    if (level_row.get("group_count") or 0) >= 2:
+        out.append("group")
+    if (level_row.get("clue_count") or 0) >= 1:
+        out.append("whoami")
+    if (level_row.get("image_count") or 0) >= 1:
+        out.append("image")
+    # Doimiy tartibda qaytaramiz — o'quvchi har safar bir xil ketma-ketlik ko'radi.
+    return [k for k in BIO_STAGE_ORDER if k in out]
+
+
+def get_bio_level_stats(level_id: int):
+    """Bitta level uchun sanoqlar (bosqichlarni aniqlash uchun)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                (SELECT COUNT(*) FROM bio_terms WHERE level_id = ?) AS term_count,
+                (SELECT COUNT(*) FROM bio_sequences WHERE level_id = ?) AS sequence_count,
+                (SELECT COUNT(*) FROM bio_image_tasks WHERE level_id = ?) AS image_count,
+                (SELECT COUNT(DISTINCT group_name) FROM bio_terms
+                 WHERE level_id = ? AND group_name IS NOT NULL AND TRIM(group_name) != '') AS group_count,
+                (SELECT COUNT(*) FROM bio_terms
+                 WHERE level_id = ? AND clues IS NOT NULL AND TRIM(clues) NOT IN ('', '[]')) AS clue_count
+        """, (level_id, level_id, level_id, level_id, level_id))
+        return dict(cur.fetchone())
+
+
+# ---------- Progress ----------
+
+def get_bio_progress_map(telegram_id: int, topic_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT p.* FROM bio_stage_progress p
+            JOIN bio_levels l ON l.id = p.level_id
+            WHERE p.telegram_id = ? AND l.topic_id = ?
+        """, (telegram_id, topic_id))
+        out = {}
+        for r in cur.fetchall():
+            out.setdefault(r["level_id"], {})[r["stage_key"]] = {
+                "stars": r["stars"], "best_correct": r["best_correct"],
+                "total_questions": r["total_questions"], "attempts": r["attempts"],
+            }
+        return out
+
+
+def save_bio_stage_result(telegram_id: int, level_id: int, stage_key: str,
+                          correct: int, total: int):
+    correct, total = safe_int(correct), safe_int(total)
+    stars = 3 if stage_key == "learn" else bio_stars_for_accuracy(correct, total)
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT * FROM bio_stage_progress
+            WHERE telegram_id = ? AND level_id = ? AND stage_key = ?
+        """, (telegram_id, level_id, stage_key))
+        row = cur.fetchone()
+
+        if row is None:
+            cur.execute("""
+                INSERT INTO bio_stage_progress
+                    (telegram_id, level_id, stage_key, stars, best_correct,
+                     total_questions, attempts)
+                VALUES (?, ?, ?, ?, ?, ?, 1)
+            """, (telegram_id, level_id, stage_key, stars, correct, total))
+            conn.commit()
+            return {"stars": stars, "best_stars": stars, "improved": True, "attempts": 1}
+
+        best_stars = max(row["stars"], stars)
+        cur.execute("""
+            UPDATE bio_stage_progress
+            SET stars = ?, best_correct = ?, total_questions = ?, attempts = ?,
+                completed_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (best_stars, max(row["best_correct"], correct), total,
+              (row["attempts"] or 0) + 1, row["id"]))
+        conn.commit()
+        return {"stars": stars, "best_stars": best_stars,
+                "improved": stars > row["stars"], "attempts": (row["attempts"] or 0) + 1}
+
+
+def build_bio_level_path(telegram_id: int, topic_id: int):
+    """Level yo'lagi. Qulf qoidasi kimyodagi bilan bir xil, LEKIN
+    "yakunlangan" deganda shu levelda MAVJUD bosqichlar nazarda tutiladi."""
+    levels = get_bio_levels(topic_id)
+    progress = get_bio_progress_map(telegram_id, topic_id)
+
+    path, unlocked = [], True
+    total_stars = earned_stars = 0
+    for lvl in levels:
+        stages = bio_available_stages(lvl)
+        done = progress.get(lvl["id"], {})
+        done_count = sum(1 for s in stages if s in done)
+
+        assessed = [done[s]["stars"] for s in stages
+                    if s in done and s in BIO_ASSESSED_STAGES]
+        level_stars = min(3, int(sum(assessed) / len(assessed) + 0.5)) if assessed else 0
+
+        total_stars += 3
+        earned_stars += level_stars
+
+        path.append({
+            "id": lvl["id"], "title": lvl["title"],
+            "term_count": lvl["term_count"],
+            "stage_count": len(stages),
+            "stages_done": done_count,
+            "unlocked": unlocked,
+            "completed": bool(stages) and done_count == len(stages),
+            "stars": level_stars,
+            "has_sequence": (lvl["sequence_count"] or 0) > 0,
+            "has_image": (lvl["image_count"] or 0) > 0,
+        })
+        unlocked = bool(stages) and done_count == len(stages)
+
+    return {
+        "levels": path,
+        "total_stars": total_stars,
+        "earned_stars": earned_stars,
+        "level_count": len(path),
+        "term_count": sum(l["term_count"] for l in path),
+    }
+
+
+def get_bio_level_detail(telegram_id: int, level_id: int):
+    level = get_bio_level(level_id)
+    if not level:
+        return None
+    stats = get_bio_level_stats(level_id)
+    stage_keys = bio_available_stages(stats)
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM bio_stage_progress WHERE telegram_id = ? AND level_id = ?",
+                    (telegram_id, level_id))
+        done = {r["stage_key"]: dict(r) for r in cur.fetchall()}
+
+    stages, next_stage = [], None
+    for i, key in enumerate(stage_keys):
+        is_done = key in done
+        prev_done = (i == 0) or (stage_keys[i - 1] in done)
+        if not is_done and prev_done and next_stage is None:
+            next_stage = key
+        stages.append({
+            "key": key,
+            "title": BIO_STAGE_TITLES[key],
+            "subtitle": BIO_STAGE_SUBS[key],
+            "done": is_done,
+            "unlocked": prev_done,
+            "stars": done.get(key, {}).get("stars", 0),
+        })
+
+    return {
+        "level": level, "stats": stats, "stages": stages,
+        "next_stage": next_stage,
+        "all_done": bool(stage_keys) and next_stage is None,
+    }
