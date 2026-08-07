@@ -116,7 +116,9 @@ body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-heig
   font-weight: 800; font-size: 14px;
 }
 /* Logotip nishoni plitka ichida — atrofida bir oz bo'sh joy qoladi. */
-.logo img { width: 100%; height: 100%; object-fit: contain; padding: 6px; display: block; }
+.logo img { width: 100%; height: 100%; object-fit: contain; padding: 3px; display: block; }
+/* BS harflari SVG ichida allaqachon chekkasi bilan chizilgan — shuning
+   uchun bu yerdagi bo'shliq DNK nishoniga qaraganda kichikroq. */
 .brand { font-weight: 800; font-size: 15px; letter-spacing: 0.3px; }
 .brand-sub { font-size: 10px; color: var(--gold); letter-spacing: 1.5px; margin-top: 2px; }
 
