@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Body
 
 from routers.deps import require_admin
 import database as db
-from chem_seed_data import SEED_LEVELS, seed_summary
+from chem_seed_data import seed_levels_for, seed_summary
 
 router = APIRouter(prefix="/api/admin/chem", tags=["admin-chem"])
 
@@ -246,9 +246,13 @@ def admin_bulk_substances(level_id: int, data: dict = Body(...),
 # --------------------------------------------------------------------------
 
 @router.get("/seed/info")
-def admin_seed_info(admin=Depends(require_admin)):
-    """Tugma yonida "nima yuklanadi" ni ko'rsatish uchun."""
-    return seed_summary()
+def admin_seed_info(category_key: str = "modda_nomlari", admin=Depends(require_admin)):
+    """Tugma yonida "nima yuklanadi" ni ko'rsatish uchun.
+
+    Har kategoriyaning O'Z namuna to'plami bor — "Cho'kmalar" bo'limiga
+    kislotalar tushib qolmaydi.
+    """
+    return seed_summary(category_key)
 
 
 @router.post("/categories/{category_id}/seed")
@@ -263,8 +267,16 @@ def admin_seed_category(category_id: int, admin=Depends(require_admin)):
     yaratilmaydi va moddalari ham takrorlanmaydi — tugmani bir necha
     marta bossa ham baza buzilmaydi.
     """
-    if not db.get_chem_category(category_id):
+    cat = db.get_chem_category(category_id)
+    if not cat:
         raise HTTPException(status_code=404, detail="Kategoriya topilmadi")
+
+    seed_levels = seed_levels_for(cat["key"])
+    if not seed_levels:
+        raise HTTPException(
+            status_code=400,
+            detail="Bu kategoriya uchun namuna baza hali tayyorlanmagan — "
+                   "moddalarni ommaviy yuklash orqali qo'shing.")
 
     existing_titles = {l["title"].strip().lower()
                        for l in db.get_chem_levels(category_id, only_active=False)}
@@ -272,7 +284,7 @@ def admin_seed_category(category_id: int, admin=Depends(require_admin)):
 
     added_levels, added_substances, skipped_levels = 0, 0, []
 
-    for spec in SEED_LEVELS:
+    for spec in seed_levels:
         title = spec["title"]
         if title.strip().lower() in existing_titles:
             skipped_levels.append(title)
@@ -297,3 +309,82 @@ def admin_seed_category(category_id: int, admin=Depends(require_admin)):
         "added_substances": added_substances,
         "skipped_levels": skipped_levels,
     }
+
+
+# --------------------------------------------------------------------------
+#  Rasmiy (sovrinli) chempionat
+# --------------------------------------------------------------------------
+# O'quvchilar ham chempionat yarata oladi, lekin ularniki SOVRINSIZ —
+# faqat ELO raqobati. Sovrinli chempionatni faqat o'qituvchi e'lon qiladi
+# va u talabalar ro'yxatida ENG TEPADA, alohida ajratilgan holda turadi.
+
+@router.get("/tournaments")
+def admin_list_tournaments(admin=Depends(require_admin)):
+    """Barcha faol chempionatlar — rasmiylari birinchi."""
+    items = []
+    for t in db.list_chem_tournaments(50):
+        full = db.get_chem_tournament(t["id"])
+        winner = None
+        if full["winner_telegram_id"]:
+            w = db.get_or_create_user(full["winner_telegram_id"], "O'quvchi")
+            winner = w.get("first_name")
+        items.append({
+            "id": t["id"], "title": t["title"], "status": t["status"],
+            "is_official": bool(t["is_official"]), "prize_text": t["prize_text"],
+            "creator_name": t["creator_name"], "player_count": t["player_count"],
+            "start_mode": t["start_mode"], "start_count": t["start_count"],
+            "round_no": t["round_no"], "winner_name": winner,
+            "elo_counts": t["player_count"] >= db.TOURNAMENT_ELO_MIN_PLAYERS,
+        })
+    return {"tournaments": items}
+
+
+@router.post("/tournaments")
+def admin_create_tournament(data: dict = Body(...), admin=Depends(require_admin)):
+    """Sovrinli chempionat e'lon qilish.
+
+    O'quvchilarnikidan farqi:
+      - `is_official=1` -> ro'yxatda eng tepada, "SOVRINLI" bo'limida
+      - sovrin matni ko'rsatiladi
+      - kuniga bitta chegara YO'Q (o'qituvchi xohlagancha e'lon qiladi)
+    """
+    title = (data.get("title") or "").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Chempionat nomi majburiy")
+
+    cats = db.get_chem_categories(only_ready=True)
+    if not cats:
+        raise HTTPException(
+            status_code=400,
+            detail="Avval kamida bitta kategoriyani o'quvchilarga oching")
+    category_id = db.safe_int(data.get("category_id")) or cats[0]["id"]
+
+    start_mode = data.get("start_mode") or "count"
+    if start_mode not in ("count", "time"):
+        raise HTTPException(status_code=400, detail="Noma'lum boshlanish sharti")
+    start_at = (data.get("start_at") or "").strip() or None
+    if start_mode == "time" and not start_at:
+        raise HTTPException(status_code=400,
+                            detail="Boshlanish vaqtini kiriting (YYYY-MM-DD HH:MM)")
+
+    new_id = db.create_chem_tournament(
+        category_id, title[:60], created_by=None,
+        start_mode=start_mode,
+        start_count=db.safe_int(data.get("start_count"), 8),
+        start_at=start_at,
+        is_official=1,
+        prize_text=(data.get("prize_text") or "").strip() or None,
+    )
+    return {"success": True, "id": new_id}
+
+
+@router.delete("/tournaments/{tournament_id}")
+def admin_delete_tournament(tournament_id: int, admin=Depends(require_admin)):
+    """Chempionatni bekor qilish (qatnashchilari va o'yinlari bilan)."""
+    with db.get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM chem_tournament_matches WHERE tournament_id = ?", (tournament_id,))
+        cur.execute("DELETE FROM chem_tournament_players WHERE tournament_id = ?", (tournament_id,))
+        cur.execute("DELETE FROM chem_tournaments WHERE id = ?", (tournament_id,))
+        conn.commit()
+    return {"success": True}

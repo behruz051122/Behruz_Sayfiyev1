@@ -15,7 +15,7 @@
 import { apiFetch, tg } from "./api.js";
 
 const state = {
-  categoryId: null, categoryTitle: "",
+  categoryId: null, categoryTitle: "", categoryKey: "",
   levelId: null, levelTitle: "",
   editingSubstanceId: null,
 };
@@ -78,7 +78,7 @@ export async function loadAdminChemCategories() {
     }
     box.innerHTML = cats.map(c => `
       <div class="admin-item chem-admin-cat${c.id === state.categoryId ? " selected" : ""}">
-        <div class="admin-item-main" data-cat="${c.id}" data-title="${esc(c.title)}">
+        <div class="admin-item-main" data-cat="${c.id}" data-title="${esc(c.title)}" data-key="${esc(c.key)}">
           <div class="admin-item-title">${esc(c.icon || "🧪")} ${esc(c.title)}</div>
           <div class="admin-item-sub">
             ${c.level_count} level · ${c.substance_count} modda ·
@@ -91,7 +91,7 @@ export async function loadAdminChemCategories() {
 
     box.querySelectorAll("[data-cat]").forEach(el => {
       el.addEventListener("click", () =>
-        selectCategory(parseInt(el.dataset.cat, 10), el.dataset.title));
+        selectCategory(parseInt(el.dataset.cat, 10), el.dataset.title, el.dataset.key));
     });
     box.querySelectorAll("[data-toggle]").forEach(btn => {
       btn.addEventListener("click", async () => {
@@ -109,9 +109,10 @@ export async function loadAdminChemCategories() {
   }
 }
 
-async function selectCategory(id, title) {
+async function selectCategory(id, title, key) {
   state.categoryId = id;
   state.categoryTitle = title;
+  state.categoryKey = key || "";
   state.levelId = null;
   show("adminChemSubstancesBox", false);
   show("adminChemSubstanceForm", false);
@@ -131,7 +132,21 @@ async function refreshSeedBox() {
   show("adminChemSeedBox", true);
   document.getElementById("chemSeedResult").innerHTML = "";
   try {
-    const s = await (await apiFetch(`/api/admin/chem/seed/info`)).json();
+    const s = await (await apiFetch(
+      `/api/admin/chem/seed/info?category_key=${encodeURIComponent(state.categoryKey)}`)).json();
+    const btn = document.getElementById("chemSeedBtn");
+
+    if (!s.available) {
+      // Bu kategoriya uchun namuna hali yozilmagan — tugmani ko'rsatmaymiz,
+      // lekin nima qilish kerakligini aytamiz.
+      document.getElementById("chemSeedText").innerHTML =
+        `<b>${esc(state.categoryTitle)}</b> uchun tayyor namuna hali yo'q. ` +
+        `Level qo'shib, moddalarni <b>Ommaviy yuklash</b> orqali kiriting.`;
+      btn.classList.add("hidden");
+      return;
+    }
+
+    btn.classList.remove("hidden");
     document.getElementById("chemSeedText").innerHTML =
       `<b>${esc(state.categoryTitle)}</b> kategoriyasiga ${s.level_count} ta tayyor level va ` +
       `${s.substance_count} ta modda qo'shiladi:<br>` +
@@ -365,6 +380,85 @@ async function bulkUpload() {
 }
 
 // --------------------------------------------------------------------------
+//  Rasmiy (sovrinli) chempionat
+// --------------------------------------------------------------------------
+
+const TOUR_STATUS = {
+  open: "Ro'yxatga olish ochiq",
+  qualifying: "Saralash ketmoqda",
+  bracket: "Setka ketmoqda",
+  finished: "Yakunlandi",
+};
+
+export async function loadAdminTournaments() {
+  const box = document.getElementById("adminTournamentList");
+  if (!box) return;
+  try {
+    const d = await (await apiFetch(`/api/admin/chem/tournaments`)).json();
+    const items = d.tournaments || [];
+    if (!items.length) {
+      box.innerHTML = `<div class="admin-empty">Faol chempionat yo'q.</div>`;
+      return;
+    }
+    box.innerHTML = items.map(t => `
+      <div class="admin-item">
+        <div class="admin-item-main">
+          <div class="admin-item-title">
+            ${t.is_official ? "🏆" : "👥"} ${esc(t.title)}
+          </div>
+          <div class="admin-item-sub">
+            ${t.is_official ? "sovrinli" : esc(t.creator_name || "o'quvchi") + " yaratgan"} ·
+            ${t.player_count} kishi · ${TOUR_STATUS[t.status] || t.status}
+            ${t.status === "bracket" ? ` (${t.round_no}-bosqich)` : ""}
+            ${t.winner_name ? ` · g'olib: <b>${esc(t.winner_name)}</b>` : ""}
+            ${t.elo_counts ? "" : " · <i>ELO hisoblanmaydi</i>"}
+          </div>
+        </div>
+        <button class="admin-mini-btn danger" data-tour-del="${t.id}">🗑</button>
+      </div>`).join("");
+
+    box.querySelectorAll("[data-tour-del]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("Chempionat va uning barcha o'yinlari o'chiriladi. Davom etamizmi?")) return;
+        const r = await post(`/api/admin/chem/tournaments/${btn.dataset.tourDel}`,
+                             { method: "DELETE" }, "O'chirib bo'lmadi");
+        if (r) loadAdminTournaments();
+      });
+    });
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = `<div class="admin-empty">Yuklab bo'lmadi.</div>`;
+  }
+}
+
+async function saveTournament() {
+  const title = val("admTourTitle");
+  if (!title) { alertMsg("Chempionat nomini kiriting."); return; }
+
+  const mode = document.getElementById("admTourMode").value;
+  const body = {
+    title,
+    prize_text: val("admTourPrize"),
+    start_mode: mode,
+    start_count: parseInt(val("admTourCount"), 10) || 8,
+    start_at: mode === "time" ? val("admTourAt") : null,
+  };
+  if (mode === "time" && !body.start_at) {
+    alertMsg("Boshlanish vaqtini kiriting (masalan: 2026-08-15 20:00).");
+    return;
+  }
+
+  const r = await post(`/api/admin/chem/tournaments`,
+                       { method: "POST", body: JSON.stringify(body) },
+                       "E'lon qilib bo'lmadi");
+  if (!r) return;
+  setVal("admTourTitle", "");
+  setVal("admTourPrize", "");
+  show("adminTournamentForm", false);
+  loadAdminTournaments();
+}
+
+// --------------------------------------------------------------------------
 //  Ishga tushirish
 // --------------------------------------------------------------------------
 
@@ -400,4 +494,21 @@ export function initAdminChemModule() {
   });
   on("chemBulkSaveBtn", bulkUpload);
   on("chemBulkCancelBtn", () => show("adminChemBulkForm", false));
+
+  // Chempionat formasi
+  on("adminTourNewBtn", () => {
+    show("adminTournamentForm", true);
+    document.getElementById("adminTournamentForm").scrollIntoView({ behavior: "smooth" });
+  });
+  on("admTourSaveBtn", saveTournament);
+  on("admTourCancelBtn", () => show("adminTournamentForm", false));
+
+  // Boshlanish sharti o'zgarganda mos maydonni ko'rsatamiz — o'qituvchi
+  // keraksiz maydonni to'ldirib o'tirmaydi.
+  const modeSel = document.getElementById("admTourMode");
+  if (modeSel) modeSel.addEventListener("change", () => {
+    const byTime = modeSel.value === "time";
+    show("admTourCountRow", !byTime);
+    show("admTourTimeRow", byTime);
+  });
 }

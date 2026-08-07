@@ -19,7 +19,7 @@ import { loadGameSubjects, openChemHub, reopenChemPath, openTournamentsScreen, i
 import { loadFaq } from "./faq.js";
 import { loadStudentResults } from "./studentResults.js";
 import { loadHomeworkSubjects, initHomeworkModule } from "./homework.js";
-import { loadAdminChemCategories, initAdminChemModule } from "./adminChem.js";
+import { loadAdminChemCategories, loadAdminTournaments, initAdminChemModule } from "./adminChem.js";
 
 function handleNav(target) {
   if (target === "home") {
@@ -78,6 +78,7 @@ function handleNav(target) {
     loadAdminObjections();
     loadAdminHomeworkSubjects();
     loadAdminChemCategories();
+    loadAdminTournaments();
     showScreen("admin");
   } else if (target === "games") {
     loadGameSubjects();

@@ -744,6 +744,44 @@ PbS | qo'rg'oshin sulfid | qo'rg'oshin yaltirog'i | qora | - | qora"></textarea>
         <div id="chemBulkResult"></div>
       </div>
 
+      <!-- Rasmiy (sovrinli) chempionat -->
+      <div class="admin-section">
+        <div class="admin-section-head">
+          <h3>🏆 Chempionatlar</h3>
+          <button class="secondary-btn small" id="adminTourNewBtn" type="button">+ E'lon qilish</button>
+        </div>
+        <p class="admin-hint">
+          Sovrinli chempionatni <b>faqat siz</b> e'lon qilasiz — u o'quvchilar ro'yxatida
+          eng tepada turadi. O'quvchilar o'zlari yaratganida sovrin bo'lmaydi (faqat ELO).
+        </p>
+        <div id="adminTournamentList" class="admin-list"></div>
+      </div>
+
+      <div id="adminTournamentForm" class="admin-section hidden">
+        <div class="admin-section-head"><h3>Yangi sovrinli chempionat</h3></div>
+        <label class="admin-label">Nomi *</label>
+        <input type="text" id="admTourTitle" placeholder="Masalan: Kuzgi kimyo kubogi" maxlength="60">
+        <label class="admin-label">Sovrin (o'quvchilarga ko'rinadi)</label>
+        <input type="text" id="admTourPrize" placeholder="1-o'rin: kitob + sertifikat">
+        <label class="admin-label">Qachon boshlansin?</label>
+        <select id="admTourMode">
+          <option value="count">Belgilangan odam yig'ilganda</option>
+          <option value="time">Belgilangan vaqtda</option>
+        </select>
+        <div id="admTourCountRow">
+          <label class="admin-label">Necha kishi yig'ilganda</label>
+          <input type="number" id="admTourCount" value="8" min="4" max="64">
+        </div>
+        <div id="admTourTimeRow" class="hidden">
+          <label class="admin-label">Boshlanish vaqti</label>
+          <input type="text" id="admTourAt" placeholder="2026-08-15 20:00">
+        </div>
+        <div class="admin-form-actions">
+          <button class="primary-btn" id="admTourSaveBtn" type="button">E'lon qilish</button>
+          <button class="secondary-btn" id="admTourCancelBtn" type="button">Bekor qilish</button>
+        </div>
+      </div>
+
       <div class="admin-section">
         <div class="admin-section-head">
           <h3>🏠 Bosh sahifa kartalari</h3>

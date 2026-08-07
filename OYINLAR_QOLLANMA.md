@@ -40,6 +40,24 @@ Kislotalar 2 — xlor, brom va yod qatori
 Tuzli minerallar (1-qism)
 ```
 
+### Eng tezi: **"Namuna moddalarni yuklash"** tugmasi
+
+Kategoriyani tanlaganingizda pastda chiqadi. Bir bosishda tayyor baza yuklanadi:
+
+| Kategoriya | Nima yuklanadi |
+|---|---|
+| **Modda nomlari** | Kislorodsiz kislotalar (10) + kislorodli kislotalar (12) |
+| **Cho'kmalar** | Oq cho'kmalar (12) + rangli cho'kmalar (12) |
+| **Moddalar rangi** | Eritmalar rangi — asosiy ionlar (12) |
+| Reaksiyalar | namuna yo'q — o'zingiz kiritasiz |
+
+Jami **58 ta modda**, har birida tarixiy nomi, ranglari, xarakterli reaksiyasi
+va qo'llanilishi bilan. Tugmani qayta bossangiz takrorlanmaydi.
+
+> Cho'kmalar bo'limi Milliy sertifikat va DTM uchun ayniqsa qimmatli —
+> "oq cho'kmalar" va "rangli cho'kmalar" alohida guruhlangan, chunki
+> o'quvchi ularni aynan shu tarzda eslab qoladi.
+
 ### 3-qadam. Moddalarni yuklang
 
 **⬆ Ommaviy yuklash** — eng tez yo'l. Har qatorda bitta modda:
@@ -136,6 +154,20 @@ Format: **saralash → setka → final**
 3. Setkada juftliklar ham bir xil savollarga javob beradi — shuning uchun
    **bir vaqtda onlayn bo'lish shart emas**.
 4. Ikkala tomon javob berishi bilan g'olib avtomatik keyingi bosqichga o'tadi.
+
+### Sovrinli chempionat (faqat siz e'lon qilasiz)
+
+**Admin panel → 🏆 Chempionatlar → + E'lon qilish**
+
+- Nomi va **sovrin matnini** yozasiz (o'quvchilarga ko'rinadi)
+- Qachon boshlanishini tanlaysiz: *odam yig'ilganda* yoki *belgilangan vaqtda*
+- Sizning chempionatingiz o'quvchilar ro'yxatida **eng tepada**, "SOVRINLI"
+  bo'limida turadi
+- Sizga **kuniga bitta** chegarasi yo'q — xohlagancha e'lon qilasiz
+
+O'quvchilarniki esa **sovrinsiz** — faqat ELO raqobati.
+
+### Umumiy qoidalar
 
 - O'quvchilar o'zlari chempionat yaratishi mumkin — **kuniga bitta**.
 - Belgilangan odam soni yig'ilishi bilan **avtomatik boshlanadi** va barchaga
