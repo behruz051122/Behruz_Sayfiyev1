@@ -118,6 +118,47 @@ async function selectCategory(id, title) {
   show("adminChemBulkForm", false);
   await loadAdminChemCategories();
   await loadLevels();
+  await refreshSeedBox();
+}
+
+// --------------------------------------------------------------------------
+//  Namuna baza — "bo'sh ekrandan boshlamaslik" uchun
+// --------------------------------------------------------------------------
+
+async function refreshSeedBox() {
+  const box = document.getElementById("adminChemSeedBox");
+  if (!box || !state.categoryId) return;
+  show("adminChemSeedBox", true);
+  document.getElementById("chemSeedResult").innerHTML = "";
+  try {
+    const s = await (await apiFetch(`/api/admin/chem/seed/info`)).json();
+    document.getElementById("chemSeedText").innerHTML =
+      `<b>${esc(state.categoryTitle)}</b> kategoriyasiga ${s.level_count} ta tayyor level va ` +
+      `${s.substance_count} ta modda qo'shiladi:<br>` +
+      s.titles.map(t => `• ${esc(t)}`).join("<br>") +
+      `<br><span class="chem-seed-note">Tugmani bir necha marta bossangiz ham takrorlanmaydi.</span>`;
+  } catch (e) { console.error(e); }
+}
+
+async function runSeed() {
+  if (!state.categoryId) { alertMsg("Avval kategoriyani tanlang."); return; }
+  const btn = document.getElementById("chemSeedBtn");
+  btn.disabled = true;
+  const r = await post(`/api/admin/chem/categories/${state.categoryId}/seed`,
+                       { method: "POST" }, "Yuklab bo'lmadi");
+  btn.disabled = false;
+  if (!r) return;
+
+  document.getElementById("chemSeedResult").innerHTML = r.added_levels
+    ? `<div class="chem-bulk-result">
+         <b>${r.added_levels} ta level va ${r.added_substances} ta modda qo'shildi.</b>
+         Endi levelni bosib moddalarni ko'rishingiz mumkin.
+       </div>`
+    : `<div class="chem-bulk-result">
+         Hammasi allaqachon mavjud — hech narsa takrorlanmadi.
+       </div>`;
+  loadLevels();
+  loadAdminChemCategories();
 }
 
 // --------------------------------------------------------------------------
@@ -343,6 +384,7 @@ export function initAdminChemModule() {
     if (r) { loadLevels(); loadAdminChemCategories(); }
   });
 
+  on("chemSeedBtn", runSeed);
   on("adminChemSubstanceAddBtn", () => openSubstanceForm(null));
   on("chemSubstanceSaveBtn", saveSubstance);
   on("chemSubstanceCancelBtn", () => {

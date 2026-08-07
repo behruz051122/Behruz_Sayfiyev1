@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Body
 
 from routers.deps import require_admin
 import database as db
+from chem_seed_data import SEED_LEVELS, seed_summary
 
 router = APIRouter(prefix="/api/admin/chem", tags=["admin-chem"])
 
@@ -238,3 +239,61 @@ def admin_bulk_substances(level_id: int, data: dict = Body(...),
 
     return {"success": True, "added": added, "skipped": skipped,
             "total_now": len(db.get_chem_substances(level_id))}
+
+
+# --------------------------------------------------------------------------
+#  Namuna baza (bir bosishda to'ldirish)
+# --------------------------------------------------------------------------
+
+@router.get("/seed/info")
+def admin_seed_info(admin=Depends(require_admin)):
+    """Tugma yonida "nima yuklanadi" ni ko'rsatish uchun."""
+    return seed_summary()
+
+
+@router.post("/categories/{category_id}/seed")
+def admin_seed_category(category_id: int, admin=Depends(require_admin)):
+    """Kategoriyaga tayyor namuna levellarni va moddalarni qo'shadi.
+
+    NEGA KERAK: o'qituvchi bo'sh ekrandan boshlamasin. Ikkita to'liq level
+    bilan tizimni darhol sinab ko'radi, keyin ustiga o'z levellarini
+    qo'shadi.
+
+    TAKRORLANMASLIK: shu nomdagi level allaqachon bo'lsa, u qayta
+    yaratilmaydi va moddalari ham takrorlanmaydi — tugmani bir necha
+    marta bossa ham baza buzilmaydi.
+    """
+    if not db.get_chem_category(category_id):
+        raise HTTPException(status_code=404, detail="Kategoriya topilmadi")
+
+    existing_titles = {l["title"].strip().lower()
+                       for l in db.get_chem_levels(category_id, only_active=False)}
+    order = len(existing_titles) + 1
+
+    added_levels, added_substances, skipped_levels = 0, 0, []
+
+    for spec in SEED_LEVELS:
+        title = spec["title"]
+        if title.strip().lower() in existing_titles:
+            skipped_levels.append(title)
+            continue
+
+        level_id = db.create_chem_level(category_id, title, sort_order=order)
+        order += 1
+        added_levels += 1
+
+        for i, row in enumerate(spec["substances"], start=1):
+            formula, name, historic, pure, solution, precip, reactions, usage = row
+            db.create_chem_substance(
+                level_id, formula, name,
+                historic_name=historic, color_pure=pure,
+                color_solution=solution, color_precipitate=precip,
+                reactions=reactions, usage_text=usage, sort_order=i)
+            added_substances += 1
+
+    return {
+        "success": True,
+        "added_levels": added_levels,
+        "added_substances": added_substances,
+        "skipped_levels": skipped_levels,
+    }
