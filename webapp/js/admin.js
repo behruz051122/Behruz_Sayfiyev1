@@ -944,8 +944,9 @@ export async function loadAdminTests() {
       const attestationBadge = t.test_kind === "attestation" ? `<span class="control-badge">📋 ATTESTATSIYA</span>` : "";
       const group = t.test_group_id ? groupById[t.test_group_id] : null;
       const groupBadge = group ? `<span class="control-badge">${group.icon || "📂"} ${group.subject_title} · ${group.stage_title} · ${group.title}</span>` : "";
+      const showResults = t.is_control_test || t.test_kind === "attestation";
       const accessBtn = t.is_control_test ? `<button data-a="access">👥 Talabalar</button>` : "";
-      const resultsBtn = t.is_control_test ? `<button data-a="results">📊 Natijalar</button>` : "";
+      const resultsBtn = showResults ? `<button data-a="results">📊 Natijalar</button>` : "";
       // Nazorat testi qaysi guruhlarga bog'langani — bir qarashda ko'rinib tursin.
       const linkedIds = Array.isArray(t.course_ids) ? t.course_ids : (t.course_id ? [t.course_id] : []);
       const linkedTitles = linkedIds
@@ -971,6 +972,8 @@ export async function loadAdminTests() {
       row.querySelector('[data-a="questions"]').onclick = () => openAdminQuestions(t.id, t.title);
       if (t.is_control_test) {
         row.querySelector('[data-a="access"]').onclick = () => openAdminControlAccess(t.id, t.title);
+      }
+      if (showResults) {
         row.querySelector('[data-a="results"]').onclick = () => openAdminControlResults(t.id, t.title);
       }
       row.querySelector('[data-a="edit"]').onclick = () => openAdminTestForm(t);
