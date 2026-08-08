@@ -89,30 +89,75 @@ export async function loadLeaderboard(period) {
   }
 }
 
-// ---------- Nazorat testlari oylik reytingi ----------
+// ---------- Nazorat testi / Attestatsiya / Milliy sertifikat / Mavzuli testlar — oylik reytinglar ----------
+//
+// Ushbu 4 ta tab bir xil shaklga ega natija qaytaradi (leaderboard + my_rank),
+// farqi faqat qaysi endpoint chaqirilishi va DOM elementlari qaysi id'ga ega
+// ekanida — shuning uchun bitta generik funksiya orqali boshqariladi (nusxa
+// ko'chirishning oldini oladi).
+const KIND_TAB_CONFIG = {
+  control: {
+    endpoint: "/api/control-test-leaderboard",
+    monthLabelId: "controlLbMonthLabel", rankBoxId: "myControlRankBox", listId: "controlLeaderboardList",
+    emptyText: "Bu oy hali hech kim nazorat testi topshirmagan",
+    noRankText: "Bu oy hali nazorat testi topshirmagansiz",
+    metricLabel: "test",
+  },
+  attestation: {
+    endpoint: "/api/test-kind-leaderboard?kind=attestation",
+    monthLabelId: "attestationLbMonthLabel", rankBoxId: "myAttestationRankBox", listId: "attestationLeaderboardList",
+    emptyText: "Bu oy hali hech kim attestatsiya testini topshirmagan",
+    noRankText: "Bu oy hali attestatsiya testi topshirmagansiz",
+    metricLabel: "test",
+  },
+  certificate: {
+    endpoint: "/api/test-kind-leaderboard?kind=certificate",
+    monthLabelId: "certificateLbMonthLabel", rankBoxId: "myCertificateRankBox", listId: "certificateLeaderboardList",
+    emptyText: "Bu oy hali hech kim Milliy sertifikat testini topshirmagan",
+    noRankText: "Bu oy hali Milliy sertifikat testi topshirmagansiz",
+    metricLabel: "test",
+  },
+  practice: {
+    endpoint: "/api/test-kind-leaderboard?kind=practice",
+    monthLabelId: "practiceLbMonthLabel", rankBoxId: "myPracticeRankBox", listId: "practiceLeaderboardList",
+    emptyText: "Bu oy hali hech kim mavzuli test topshirmagan",
+    noRankText: "Bu oy hali mavzuli test topshirmagansiz",
+    metricLabel: "test",
+  },
+};
 
-let controlLbLoaded = false;
+const kindLbLoaded = {};
 
 function switchLeaderboardTab(tab) {
-  document.getElementById("tabBtnCoinLb").classList.toggle("active", tab === "coin");
-  document.getElementById("tabBtnControlLb").classList.toggle("active", tab === "control");
-  document.getElementById("coinLbTabContent").classList.toggle("hidden", tab !== "coin");
-  document.getElementById("controlLbTabContent").classList.toggle("hidden", tab !== "control");
+  const allTabs = ["coin", "control", "attestation", "certificate", "practice"];
+  const tabBtnIds = {
+    coin: "tabBtnCoinLb", control: "tabBtnControlLb", attestation: "tabBtnAttestationLb",
+    certificate: "tabBtnCertificateLb", practice: "tabBtnPracticeLb",
+  };
+  const tabContentIds = {
+    coin: "coinLbTabContent", control: "controlLbTabContent", attestation: "attestationLbTabContent",
+    certificate: "certificateLbTabContent", practice: "practiceLbTabContent",
+  };
+  allTabs.forEach(t => {
+    document.getElementById(tabBtnIds[t]).classList.toggle("active", t === tab);
+    document.getElementById(tabContentIds[t]).classList.toggle("hidden", t !== tab);
+  });
 
-  if (tab === "control" && !controlLbLoaded) {
-    loadControlLeaderboard();
+  if (tab !== "coin" && !kindLbLoaded[tab]) {
+    loadKindLeaderboard(tab);
   }
 }
 
-async function loadControlLeaderboard() {
-  const rankBox = document.getElementById("myControlRankBox");
-  const box = document.getElementById("controlLeaderboardList");
-  const monthLabel = document.getElementById("controlLbMonthLabel");
+async function loadKindLeaderboard(kind) {
+  const cfg = KIND_TAB_CONFIG[kind];
+  const rankBox = document.getElementById(cfg.rankBoxId);
+  const box = document.getElementById(cfg.listId);
+  const monthLabel = document.getElementById(cfg.monthLabelId);
   box.innerHTML = skeletonRows(6);
   try {
-    const res = await apiFetch(`/api/control-test-leaderboard`);
+    const res = await apiFetch(cfg.endpoint);
     const data = await res.json();
-    controlLbLoaded = true;
+    kindLbLoaded[kind] = true;
     monthLabel.textContent = `📅 ${MONTH_NAMES[data.month - 1]} ${data.year} — oylik reyting`;
 
     if (data.my_rank) {
@@ -120,20 +165,20 @@ async function loadControlLeaderboard() {
         <div class="my-rank-label">Sizning o'rningiz</div>
         <div class="my-rank-num">#${data.my_rank.rank}</div>
         <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">
-          ${data.my_rank.avg_percent}% o'rtacha natija · ⏱ ${formatAvgTime(data.my_rank.avg_seconds)} o'rtacha vaqt · ${data.my_rank.attempts_count} ta test · ${data.my_rank.total_participants} ishtirokchi orasida
+          ${data.my_rank.avg_percent}% o'rtacha natija · ⏱ ${formatAvgTime(data.my_rank.avg_seconds)} o'rtacha vaqt · ${data.my_rank.attempts_count} ta ${cfg.metricLabel} · ${data.my_rank.total_participants} ishtirokchi orasida
         </div>
       `;
     } else {
       rankBox.innerHTML = `
         <div class="my-rank-label">Sizning o'rningiz</div>
         <div class="my-rank-num">—</div>
-        <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Bu oy hali nazorat testi topshirmagansiz</div>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">${cfg.noRankText}</div>
       `;
     }
 
     box.innerHTML = "";
     if (data.leaderboard.length === 0) {
-      box.innerHTML = emptyHtml("Bu oy hali hech kim nazorat testi topshirmagan");
+      box.innerHTML = emptyHtml(cfg.emptyText);
       return;
     }
     data.leaderboard.forEach((u, idx) => {
@@ -148,7 +193,7 @@ async function loadControlLeaderboard() {
       row.innerHTML = `
         ${medal}
         <span class="lb-name">${u.first_name || "Foydalanuvchi"}</span>
-        <span class="lb-coins">${u.avg_percent}% · ⏱ ${formatAvgTime(u.avg_seconds)} · ${u.attempts_count} test</span>
+        <span class="lb-coins">${u.avg_percent}% · ⏱ ${formatAvgTime(u.avg_seconds)} · ${u.attempts_count} ${cfg.metricLabel}</span>
       `;
       box.appendChild(row);
     });
@@ -161,6 +206,9 @@ async function loadControlLeaderboard() {
 export function initLeaderboardModule() {
   document.getElementById("tabBtnCoinLb").addEventListener("click", () => switchLeaderboardTab("coin"));
   document.getElementById("tabBtnControlLb").addEventListener("click", () => switchLeaderboardTab("control"));
+  document.getElementById("tabBtnAttestationLb").addEventListener("click", () => switchLeaderboardTab("attestation"));
+  document.getElementById("tabBtnCertificateLb").addEventListener("click", () => switchLeaderboardTab("certificate"));
+  document.getElementById("tabBtnPracticeLb").addEventListener("click", () => switchLeaderboardTab("practice"));
 
   document.querySelectorAll("#lbPeriodRow .filter-chip").forEach(btn => {
     btn.addEventListener("click", () => loadLeaderboard(btn.getAttribute("data-period")));
