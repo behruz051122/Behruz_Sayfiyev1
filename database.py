@@ -1058,6 +1058,52 @@ def init_db():
         except sqlite3.OperationalError:
             pass
 
+        # ---------- AVTOMATIK XABARNOMALAR ----------
+        # Telegram xabari YUBORISH kerak bo'lgan hodisalar shu navbatga
+        # yoziladi, botning fon sikli esa uni bo'shatadi.
+        #
+        # NEGA NAVBAT? Baholash HTTP so'rovi ichida sodir bo'ladi, lekin
+        # Telegramga yozish sekin va xato berishi mumkin. Agar to'g'ridan-
+        # to'g'ri yuborsak, bitta tarmoq uzilishi o'qituvchining baholash
+        # tugmasini "ishlamayapti" qilib qo'yardi. Navbat orqali: baho
+        # DARHOL saqlanadi, xabar esa fon rejimida, qayta urinish bilan
+        # yetkaziladi.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS notification_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                title TEXT DEFAULT '',
+                body TEXT NOT NULL,
+                payload TEXT DEFAULT '',
+                status TEXT DEFAULT 'pending',
+                attempts INTEGER DEFAULT 0,
+                last_error TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                sent_at TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_notif_status_created
+            ON notification_queue(status, created_at)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_notif_user_kind
+            ON notification_queue(telegram_id, kind, created_at)
+        """)
+
+        # Davriy xabarlar OXIRGI MARTA qachon yuborilgani — server qayta
+        # ishga tushganda (Railway deploy) xabar takrorlanmasligi uchun.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS notification_runs (
+                job_key TEXT PRIMARY KEY,
+                last_run_date TEXT,
+                last_run_at TIMESTAMP,
+                recipients INTEGER DEFAULT 0,
+                note TEXT
+            )
+        """)
+
         # ---------- Bosh sahifa kartalari (dashboard) ----------
         # Bosh sahifadagi 6 ta katakli menyu (Kurslar, Testlar, Reyting,
         # Kitoblar, O'yinlar, Natijalar) — har birining SARLAVHASI, TEG
@@ -5116,6 +5162,38 @@ def get_homework_student_starts(subject_id: int):
         return [dict(r) for r in cur.fetchall()]
 
 
+def get_effective_homework_start(telegram_id: int, subject_id: int) -> int:
+    """O'quvchi ro'yxati AMALDA nechanchi paragrafdan boshlanadi.
+
+    Bu sozlamadagi boshlanish nuqtasi bilan bir xil EMAS. O'qituvchi
+    boshlanish nuqtasini keyinchalik o'zgartirishi mumkin (masalan 61 dan
+    60 ga tushirdi yoki 60 dan 70 ga ko'tardi). Bunda O'QUVCHI ALLAQACHON
+    QILGAN ISH YO'QOLMASLIGI kerak:
+
+        effektiv boshlanish = min(sozlamadagi nuqta, eng past ishlangan
+                                  paragraf)
+
+    Ya'ni ro'yxat hech qachon topshirilgan ishni yashirmaydi. Aks holda
+    o'qituvchi nuqtani ko'targanda o'quvchining topshirgan vazifalari
+    "yo'qolgandek" ko'rinardi."""
+    start = get_homework_start_paragraph(telegram_id, subject_id)
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT MIN(paragraph_number) AS lowest
+            FROM homework_submissions
+            WHERE subject_id = ? AND telegram_id = ?
+              AND (status IN ('submitted', 'graded', 'rejected')
+                   OR EXISTS (SELECT 1 FROM homework_photos p
+                              WHERE p.submission_id = homework_submissions.id))
+        """, (subject_id, telegram_id))
+        row = cur.fetchone()
+    lowest = safe_int((row or {})["lowest"], 0) if row and row["lowest"] else 0
+    if lowest:
+        return max(1, min(start, lowest))
+    return max(1, start)
+
+
 def compute_homework_paragraphs(telegram_id: int, subject_id: int):
     """Fandagi paragraflar ro'yxatini, har birining HOLATI va QULF
     holati bilan qaytaradi.
@@ -5123,18 +5201,24 @@ def compute_homework_paragraphs(telegram_id: int, subject_id: int):
     BOSHLANISH NUQTASI: ro'yxat o'quvchining shaxsiy boshlanish
     paragrafidan boshlanadi (masalan 60-dan). Undan OLDINGILARI umuman
     qaytarilmaydi — o'quvchi ularni ko'rmaydi ham, chunki u mavzularni
-    allaqachon (tizimdan tashqarida) topshirib bo'lgan.
+    allaqachon (tizimdan tashqarida) topshirib bo'lgan. LEKIN o'quvchi
+    o'sha nuqtadan pastda ish qilgan bo'lsa, ro'yxat o'sha ishdan
+    boshlanadi (get_effective_homework_start).
 
-    KETMA-KET OCHILISH QOIDASI O'ZGARMAYDI: boshlanish paragrafi doim
-    ochiq, undan keyingisi esa faqat oldingisi "Vazifalar to'liq
-    yuklandi" deb YAKUNLANGANDA ochiladi. O'qituvchi qayta ishlashga
-    qaytargan (rejected) topshiriq yakunlangan hisoblanmaydi —
-    keyingisi yopiladi."""
+    KETMA-KET OCHILISH QOIDASI:
+      • boshlanish paragrafi doim ochiq
+      • keyingisi oldingisi YAKUNLANGANDA ochiladi
+      • O'QUVCHI ALLAQACHON ISHLAGAN PARAGRAF HECH QACHON YOPILMAYDI
+
+    Oxirgi qoida muhim: o'qituvchi boshlanish nuqtasini o'zgartirganda
+    (61 -> 60) eski tartib buzilib, allaqachon topshirilgan 61-paragraf
+    "qulflangan" bo'lib qolayotgan edi. Endi o'quvchi qilgan ish o'z
+    holicha ochiq qoladi va zanjir o'sha joydan davom etadi."""
     subject = get_homework_subject(subject_id)
     if not subject:
         return []
     total = safe_int(subject.get("paragraph_count"), 0)
-    start = get_homework_start_paragraph(telegram_id, subject_id)
+    start = get_effective_homework_start(telegram_id, subject_id)
     if start > total:
         return []
 
@@ -5147,10 +5231,13 @@ def compute_homework_paragraphs(telegram_id: int, subject_id: int):
         status = sub["status"] if sub else "empty"
         is_done = status in ("submitted", "graded")
         photo_count = len(get_homework_photos(sub["id"])) if sub else 0
+        # Boshlangan ish (rasm yuklangan yoki topshirilgan) — QAYTIB
+        # YOPILMAYDI, sozlama o'zgarsa ham.
+        has_own_work = status != "empty" or photo_count > 0
         result.append({
             "paragraph_number": n,
             "status": status,
-            "unlocked": prev_done,
+            "unlocked": prev_done or has_own_work,
             "photo_count": photo_count,
             "teacher_score": sub.get("teacher_score") if sub else None,
             "teacher_comment": sub.get("teacher_comment") if sub else None,
@@ -5180,8 +5267,17 @@ def is_homework_paragraph_unlocked(telegram_id: int, subject_id: int, paragraph_
     o'quvchi tartibni buzib, oldinga o'tib ketolmaydi.
 
     Boshlanish nuqtasidan OLDINGI paragraflar ham yopiq hisoblanadi
-    (ular o'quvchiga umuman ko'rsatilmaydi)."""
-    start = get_homework_start_paragraph(telegram_id, subject_id)
+    (ular o'quvchiga umuman ko'rsatilmaydi).
+
+    ISTISNO: o'quvchi allaqachon ish boshlagan paragraf HAR DOIM ochiq.
+    O'qituvchi boshlanish nuqtasini o'zgartirsa ham, qilingan ish
+    qulflanib qolmaydi."""
+    existing = get_homework_submission(subject_id, telegram_id, paragraph_number)
+    if existing and (existing["status"] != "draft"
+                     or get_homework_photos(existing["id"])):
+        return True
+
+    start = get_effective_homework_start(telegram_id, subject_id)
     if paragraph_number < start:
         return False
     if paragraph_number == start:
@@ -7686,3 +7782,598 @@ def has_group_access(telegram_id: int, content_type: str, content_id: int,
         member_group_ids = get_member_group_ids(telegram_id)
     ok = any(g["id"] in member_group_ids for g in groups)
     return ok, groups
+
+
+# ================================================================
+#  HISOBOTLAR, YANGI REYTINGLAR VA AVTOMATIK XABARNOMALAR
+# ================================================================
+#
+# Bu bo'lim uchta bir-biriga bog'liq vazifani bajaradi:
+#
+#   1) TEST TURI BO'YICHA ALOHIDA REYTING — attestatsiya, milliy
+#      sertifikat va mavzulashtirilgan testlar endi bir qozonda emas,
+#      har biri o'z reytingiga ega.
+#   2) ATTESTATSIYA NATIJALARI — o'qituvchi kim nechta test ishlaganini
+#      va qanday natija ko'rsatganini bir jadvalda ko'radi.
+#   3) XABARNOMA NAVBATI — baho, haftalik reyting va davriy hisobotlar
+#      o'quvchiga Telegram orqali avtomatik yetkaziladi.
+
+import json as _json
+
+# O'zbekiston vaqti — Telegram xabarlari MAHALLIY vaqt bo'yicha (23:00,
+# 21:00) yuborilishi kerak, baza esa UTC da yozadi. Toshkent yil bo'yi
+# UTC+5 (yozgi vaqt siljishi yo'q), shuning uchun oddiy siljish yetarli.
+TASHKENT_OFFSET = datetime.timedelta(hours=5)
+
+
+def tashkent_now() -> datetime.datetime:
+    """Hozirgi Toshkent vaqti."""
+    return datetime.datetime.utcnow() + TASHKENT_OFFSET
+
+
+def tashkent_to_utc(local_dt: datetime.datetime) -> datetime.datetime:
+    return local_dt - TASHKENT_OFFSET
+
+
+def tashkent_day_bounds_utc(local_date: datetime.date, days: int = 1):
+    """Toshkent kalendaridagi kun(lar)ni UTC oralig'iga aylantiradi.
+
+    Masalan 5-avgust (Toshkent) => 4-avgust 19:00 .. 5-avgust 19:00 (UTC).
+    Bazadagi barcha vaqtlar UTC bo'lgani uchun solishtirish shu oraliqda
+    bajariladi. `days=2` bo'lsa oraliq shu kundan orqaga 2 kunni qamraydi."""
+    end_local = datetime.datetime.combine(local_date, datetime.time.max)
+    start_local = datetime.datetime.combine(
+        local_date - datetime.timedelta(days=days - 1), datetime.time.min)
+    return (tashkent_to_utc(start_local).strftime("%Y-%m-%d %H:%M:%S"),
+            tashkent_to_utc(end_local).strftime("%Y-%m-%d %H:%M:%S"))
+
+
+# ----------------------------------------------------------------
+#  1) TEST TURI BO'YICHA REYTING
+# ----------------------------------------------------------------
+
+# Har bir reyting bo'limining nomi, belgisi va SQL sharti.
+TEST_KIND_META = {
+    "attestation": {
+        "label": "Attestatsiya",
+        "icon": "🎓",
+        "where": "t.test_kind = 'attestation'",
+    },
+    "certificate": {
+        "label": "Milliy sertifikat",
+        "icon": "📜",
+        "where": "t.test_kind = 'certificate'",
+    },
+    "topic": {
+        "label": "Mavzulashtirilgan testlar",
+        "icon": "📚",
+        "where": ("(t.test_kind IS NULL OR t.test_kind = 'practice') "
+                  "AND COALESCE(t.is_control_test, 0) = 0"),
+    },
+    "control": {
+        "label": "Nazorat testlari",
+        "icon": "📝",
+        "where": "COALESCE(t.is_control_test, 0) = 1",
+    },
+}
+
+# Urinish natijasini FOIZga aylantirish. Milliy sertifikatda savollar
+# turli og'irlikka ega (Y1=1 ball, O2=25 ball), shuning uchun "nechta
+# to'g'ri" emas, og'irliklangan ball ishlatiladi.
+_ATTEMPT_PERCENT_SQL = """
+    CASE
+      WHEN t.test_kind = 'certificate' AND COALESCE(a.max_score_points, 0) > 0
+        THEN a.raw_score_points * 100.0 / a.max_score_points
+      WHEN COALESCE(a.total_questions, 0) > 0
+        THEN a.score * 100.0 / a.total_questions
+      ELSE 0
+    END
+"""
+
+_ATTEMPT_PERIOD_SQL = {
+    "week": "a.finished_at >= datetime('now', '-7 days')",
+    "month": "a.finished_at >= datetime('now', 'start of month')",
+}
+
+
+def _kind_where(kind: str) -> str:
+    meta = TEST_KIND_META.get(kind)
+    if not meta:
+        raise ValueError(f"Noma'lum test turi: {kind}")
+    return meta["where"]
+
+
+def get_test_kind_leaderboard(kind: str, period: str = "month", limit: int = 100):
+    """Berilgan test TURI bo'yicha reyting.
+
+    MEZON (o'qituvchi tanlovi): o'rtacha foiz — asosiy, test soni —
+    tenglikni buzuvchi. Ya'ni ko'p test ishlagani avtomatik yuqoriga
+    chiqmaydi, lekin bir xil sifat ko'rsatgan ikki o'quvchi orasida
+    ko'proq ishlagani oldinda turadi.
+
+    FAQAT BIRINCHI URINISH hisobga olinadi (har bir test uchun) — aks
+    holda testni qayta-qayta ishlab, javoblarni yodlab reytingni
+    ko'tarish mumkin bo'lardi. Keyingi urinishlar shaxsiy mashq."""
+    where_kind = _kind_where(kind)
+    period_sql = _ATTEMPT_PERIOD_SQL.get(period)
+    period_clause = f"AND {period_sql}" if period_sql else ""
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"""
+            WITH first_attempts AS (
+                SELECT a.id, a.telegram_id, a.test_id, a.finished_at,
+                       {_ATTEMPT_PERCENT_SQL} AS percent,
+                       (julianday(a.finished_at) - julianday(a.started_at)) * 86400 AS seconds,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY a.telegram_id, a.test_id
+                           ORDER BY a.started_at ASC, a.id ASC
+                       ) AS rn
+                FROM test_attempts a
+                JOIN tests t ON t.id = a.test_id
+                WHERE a.finished_at IS NOT NULL
+                  AND COALESCE(a.review_status, 'auto') != 'pending_review'
+                  AND {where_kind}
+                  {period_clause}
+            )
+            SELECT u.telegram_id AS telegram_id,
+                   u.first_name  AS first_name,
+                   u.username    AS username,
+                   AVG(f.percent) AS avg_percent,
+                   COUNT(f.id)    AS tests_count,
+                   AVG(f.seconds) AS avg_seconds,
+                   MAX(f.finished_at) AS last_at
+            FROM first_attempts f
+            JOIN users u ON u.telegram_id = f.telegram_id
+            WHERE f.rn = 1
+            GROUP BY u.telegram_id
+            ORDER BY avg_percent DESC, tests_count DESC, avg_seconds ASC
+            LIMIT ?
+        """, (limit,))
+        rows = [dict(r) for r in cur.fetchall()]
+
+    for idx, r in enumerate(rows):
+        r["rank"] = idx + 1
+        r["avg_percent"] = round(r["avg_percent"] or 0, 1)
+        r["avg_seconds"] = round(r["avg_seconds"] or 0)
+        r["first_name"] = r["first_name"] or "Foydalanuvchi"
+    return rows
+
+
+def get_my_test_kind_rank(telegram_id: int, kind: str, period: str = "month"):
+    """O'quvchining shu turdagi reytingdagi o'z o'rni (ro'yxatda bo'lmasa None)."""
+    board = get_test_kind_leaderboard(kind, period, limit=1000000)
+    for row in board:
+        if row["telegram_id"] == telegram_id:
+            row = dict(row)
+            row["total_participants"] = len(board)
+            return row
+    return None
+
+
+def get_test_kind_summary(kind: str, period: str = "month"):
+    """Bo'lim sarlavhasi uchun qisqa statistika."""
+    board = get_test_kind_leaderboard(kind, period, limit=1000000)
+    meta = TEST_KIND_META.get(kind, {})
+    return {
+        "kind": kind,
+        "label": meta.get("label", kind),
+        "icon": meta.get("icon", "📊"),
+        "participants": len(board),
+        "avg_percent": round(sum(r["avg_percent"] for r in board) / len(board), 1) if board else 0.0,
+        "total_tests": sum(r["tests_count"] for r in board),
+    }
+
+
+# ----------------------------------------------------------------
+#  2) ATTESTATSIYA NATIJALARI (o'qituvchi uchun)
+# ----------------------------------------------------------------
+
+def get_attestation_student_results(test_id: int = None, period: str = "all",
+                                    limit: int = 500):
+    """O'quvchilar kesimida attestatsiya natijalari — "kim nechta ishlagan".
+
+    Har bir o'quvchi uchun: nechta HAR XIL test ishlagan, jami nechta
+    urinish qilgan, o'rtacha va eng yaxshi foiz, oxirgi faoliyat vaqti.
+
+    "Testlar soni" va "urinishlar soni" ATAYLAB alohida ko'rsatiladi:
+    ular teng bo'lmasa, o'quvchi testni qayta-qayta ishlagani ko'rinadi."""
+    period_sql = _ATTEMPT_PERIOD_SQL.get(period)
+    clauses = ["a.finished_at IS NOT NULL", _kind_where("attestation")]
+    params = []
+    if period_sql:
+        clauses.append(period_sql)
+    if test_id:
+        clauses.append("a.test_id = ?")
+        params.append(test_id)
+    where = " AND ".join(clauses)
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"""
+            WITH graded AS (
+                SELECT a.id, a.telegram_id, a.test_id, a.finished_at,
+                       {_ATTEMPT_PERCENT_SQL} AS percent,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY a.telegram_id, a.test_id
+                           ORDER BY a.started_at ASC, a.id ASC
+                       ) AS rn
+                FROM test_attempts a
+                JOIN tests t ON t.id = a.test_id
+                WHERE {where}
+            )
+            SELECT u.telegram_id, u.first_name, u.username,
+                   COUNT(DISTINCT g.test_id) AS tests_count,
+                   COUNT(g.id)               AS attempts_count,
+                   AVG(CASE WHEN g.rn = 1 THEN g.percent END) AS avg_percent,
+                   MAX(g.percent)            AS best_percent,
+                   MAX(g.finished_at)        AS last_at
+            FROM graded g
+            JOIN users u ON u.telegram_id = g.telegram_id
+            GROUP BY u.telegram_id
+            ORDER BY tests_count DESC, avg_percent DESC
+            LIMIT ?
+        """, params + [limit])
+        rows = [dict(r) for r in cur.fetchall()]
+
+    for r in rows:
+        r["avg_percent"] = round(r["avg_percent"] or 0, 1)
+        r["best_percent"] = round(r["best_percent"] or 0, 1)
+        r["first_name"] = r["first_name"] or "Foydalanuvchi"
+    return rows
+
+
+def get_attestation_tests_overview(period: str = "all"):
+    """Har bir attestatsiya testi bo'yicha: nechta o'quvchi ishlagan,
+    o'rtacha natija. O'qituvchi qaysi test og'ir kelayotganini ko'radi."""
+    period_sql = _ATTEMPT_PERIOD_SQL.get(period)
+    period_clause = f"AND {period_sql}" if period_sql else ""
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"""
+            SELECT t.id, t.title, t.subject,
+                   COUNT(DISTINCT a.telegram_id) AS students_count,
+                   COUNT(a.id)                   AS attempts_count,
+                   AVG({_ATTEMPT_PERCENT_SQL})   AS avg_percent,
+                   MAX(a.finished_at)            AS last_at
+            FROM tests t
+            LEFT JOIN test_attempts a
+                   ON a.test_id = t.id AND a.finished_at IS NOT NULL {period_clause}
+            WHERE {_kind_where('attestation')}
+            GROUP BY t.id
+            ORDER BY students_count DESC, t.id DESC
+        """)
+        rows = [dict(r) for r in cur.fetchall()]
+
+    for r in rows:
+        r["avg_percent"] = round(r["avg_percent"] or 0, 1)
+        r["students_count"] = r["students_count"] or 0
+        r["attempts_count"] = r["attempts_count"] or 0
+    return rows
+
+
+def get_attestation_student_detail(telegram_id: int):
+    """Bitta o'quvchining har bir attestatsiya testi bo'yicha natijasi."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"""
+            SELECT t.id AS test_id, t.title, t.subject,
+                   a.id AS attempt_id, a.score, a.total_questions,
+                   a.started_at, a.finished_at,
+                   {_ATTEMPT_PERCENT_SQL} AS percent,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY a.test_id ORDER BY a.started_at ASC, a.id ASC
+                   ) AS attempt_no
+            FROM test_attempts a
+            JOIN tests t ON t.id = a.test_id
+            WHERE a.telegram_id = ? AND a.finished_at IS NOT NULL
+              AND {_kind_where('attestation')}
+            ORDER BY a.finished_at DESC
+        """, (telegram_id,))
+        rows = [dict(r) for r in cur.fetchall()]
+    for r in rows:
+        r["percent"] = round(r["percent"] or 0, 1)
+    return rows
+
+
+# ----------------------------------------------------------------
+#  3) XABARNOMA NAVBATI
+# ----------------------------------------------------------------
+
+NOTIFICATION_KINDS = {
+    "homework_graded": "Vazifa baholandi",
+    "homework_rejected": "Vazifa qayta ishlashga qaytarildi",
+    "weekly_rating": "Haftalik reyting",
+    "periodic_digest": "Davriy hisobot",
+}
+
+MAX_NOTIFICATION_ATTEMPTS = 5
+
+
+def queue_notification(telegram_id: int, kind: str, body: str,
+                       title: str = "", payload: dict = None):
+    """Xabarni navbatga qo'yadi (darhol yubormaydi).
+
+    Yuborishni bot fon siklida bajaradi — shu sababli o'qituvchining
+    baholash amali Telegram sekinligiga bog'lanib qolmaydi."""
+    if not telegram_id or not body:
+        return {"ok": False}
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO notification_queue (telegram_id, kind, title, body, payload)
+            VALUES (?, ?, ?, ?, ?)
+        """, (telegram_id, kind, title or NOTIFICATION_KINDS.get(kind, ""),
+              body, _json.dumps(payload or {}, ensure_ascii=False)))
+        conn.commit()
+        return {"ok": True, "id": cur.lastrowid}
+
+
+def get_pending_notifications(limit: int = 50):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT * FROM notification_queue
+            WHERE status = 'pending' AND attempts < ?
+            ORDER BY created_at ASC, id ASC
+            LIMIT ?
+        """, (MAX_NOTIFICATION_ATTEMPTS, limit))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def mark_notification_sent(notification_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE notification_queue
+            SET status = 'sent', sent_at = CURRENT_TIMESTAMP, attempts = attempts + 1
+            WHERE id = ?
+        """, (notification_id,))
+        conn.commit()
+    return {"ok": True}
+
+
+def mark_notification_failed(notification_id: int, error: str = ""):
+    """Xatoni yozadi. Urinishlar chegarasiga yetganda holat 'failed'
+    bo'ladi — masalan o'quvchi botni bloklagan bo'lsa, tizim uni abadiy
+    qayta-qayta urinib turmaydi."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE notification_queue
+            SET attempts = attempts + 1,
+                last_error = ?,
+                status = CASE WHEN attempts + 1 >= ? THEN 'failed' ELSE 'pending' END
+            WHERE id = ?
+        """, (str(error)[:300], MAX_NOTIFICATION_ATTEMPTS, notification_id))
+        conn.commit()
+    return {"ok": True}
+
+
+def get_notification_log(limit: int = 100, kind: str = None, status: str = None):
+    clauses, params = [], []
+    if kind:
+        clauses.append("n.kind = ?")
+        params.append(kind)
+    if status:
+        clauses.append("n.status = ?")
+        params.append(status)
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"""
+            SELECT n.*, u.first_name, u.username
+            FROM notification_queue n
+            LEFT JOIN users u ON u.telegram_id = n.telegram_id
+            {where}
+            ORDER BY n.created_at DESC, n.id DESC
+            LIMIT ?
+        """, params + [limit])
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_notification_stats():
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT kind, status, COUNT(*) AS c
+            FROM notification_queue GROUP BY kind, status
+        """)
+        rows = [dict(r) for r in cur.fetchall()]
+    stats = {}
+    for r in rows:
+        entry = stats.setdefault(r["kind"], {"kind": r["kind"],
+                                             "label": NOTIFICATION_KINDS.get(r["kind"], r["kind"]),
+                                             "pending": 0, "sent": 0, "failed": 0})
+        if r["status"] in entry:
+            entry[r["status"]] += r["c"]
+    return sorted(stats.values(), key=lambda x: -(x["sent"] + x["pending"]))
+
+
+def cleanup_old_notifications(days: int = 30):
+    """Eski yuborilgan xabarlarni tozalaydi — jadval cheksiz o'smasin."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            DELETE FROM notification_queue
+            WHERE status IN ('sent', 'failed')
+              AND created_at < datetime('now', ?)
+        """, (f"-{int(days)} days",))
+        conn.commit()
+        return {"deleted": cur.rowcount}
+
+
+# ---------- Davriy vazifalar hisobi ----------
+
+def notification_job_should_run(job_key: str, run_date: str) -> bool:
+    """Shu vazifa shu kunda ALLAQACHON bajarilganmi?
+
+    Railway serverni kuniga bir necha marta qayta ishga tushirishi mumkin
+    (deploy, uyqudan uyg'onish). Bu tekshiruvsiz o'quvchi bir kunda
+    bir xil hisobotni bir necha marta olardi."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT last_run_date FROM notification_runs WHERE job_key = ?", (job_key,))
+        row = cur.fetchone()
+    return not (row and row["last_run_date"] == run_date)
+
+
+def mark_notification_job_run(job_key: str, run_date: str, recipients: int = 0, note: str = ""):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO notification_runs (job_key, last_run_date, last_run_at, recipients, note)
+            VALUES (?, ?, CURRENT_TIMESTAMP, ?, ?)
+            ON CONFLICT(job_key) DO UPDATE SET
+                last_run_date = excluded.last_run_date,
+                last_run_at   = excluded.last_run_at,
+                recipients    = excluded.recipients,
+                note          = excluded.note
+        """, (job_key, run_date, recipients, note))
+        conn.commit()
+    return {"ok": True}
+
+
+def get_notification_runs():
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM notification_runs ORDER BY job_key")
+        return [dict(r) for r in cur.fetchall()]
+
+
+# ----------------------------------------------------------------
+#  4) DAVRIY HISOBOT UCHUN MA'LUMOT
+# ----------------------------------------------------------------
+
+def get_report_recipients():
+    """Davriy hisobot KIMGA yuborilishi kerak.
+
+    Birinchi navbatda — PULLIK GURUH a'zolari (o'qituvchi shuni so'ragan).
+    Sozlamasi buzuq guruh hisobga olinmaydi.
+
+    Guruh umuman sozlanmagan bo'lsa (yoki hech kim a'zo emas) — tizim
+    jim qolmaydi, balki KURSGA YOZILGAN o'quvchilarga yuboradi. Shunday
+    qilib guruh sozlanmaguncha ham hisobot ishlaydi.
+
+    Qaytadi: (telegram_id ro'yxati, manba nomi)"""
+    groups = [g for g in get_access_groups(only_active=True)
+              if not is_group_setup_broken(g)]
+    if groups:
+        ids = ",".join(str(int(g["id"])) for g in groups)
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(f"""
+                SELECT DISTINCT telegram_id FROM group_membership_cache
+                WHERE is_member = 1 AND group_id IN ({ids})
+            """)
+            members = [r["telegram_id"] for r in cur.fetchall()]
+        if members:
+            return members, "group"
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT DISTINCT telegram_id FROM enrollments")
+        enrolled = [r["telegram_id"] for r in cur.fetchall()]
+    return enrolled, "enrollment"
+
+
+def get_user_activity_digest(telegram_id: int, start_utc: str, end_utc: str):
+    """Berilgan UTC oralig'ida o'quvchi NIMA QILGANI.
+
+    Ikkala yo'nalish ham qaytariladi — test va vazifa. Bo'sh bo'lsa ham
+    qaytariladi (ogohlantirish matnini shu asosda tuzamiz)."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        cur.execute(f"""
+            SELECT t.title, t.subject,
+                   COALESCE(t.test_kind, 'practice') AS test_kind,
+                   COALESCE(t.is_control_test, 0)    AS is_control_test,
+                   a.score, a.total_questions, a.finished_at,
+                   COALESCE(a.review_status, 'auto') AS review_status,
+                   {_ATTEMPT_PERCENT_SQL} AS percent
+            FROM test_attempts a
+            JOIN tests t ON t.id = a.test_id
+            WHERE a.telegram_id = ?
+              AND a.finished_at IS NOT NULL
+              AND a.finished_at BETWEEN ? AND ?
+            ORDER BY a.finished_at ASC
+        """, (telegram_id, start_utc, end_utc))
+        tests = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("""
+            SELECT s.paragraph_number, s.status, s.teacher_score, s.teacher_comment,
+                   s.submitted_at, s.graded_at, hs.title AS subject_title
+            FROM homework_submissions s
+            JOIN homework_subjects hs ON hs.id = s.subject_id
+            WHERE s.telegram_id = ?
+              AND s.submitted_at IS NOT NULL
+              AND s.submitted_at BETWEEN ? AND ?
+            ORDER BY s.submitted_at ASC
+        """, (telegram_id, start_utc, end_utc))
+        homework = [dict(r) for r in cur.fetchall()]
+
+    for t in tests:
+        t["percent"] = round(t["percent"] or 0, 1)
+
+    control_tests = [t for t in tests if t["is_control_test"]]
+    graded_hw = [h for h in homework if h["status"] == "graded"
+                 and h["teacher_score"] is not None]
+
+    return {
+        "telegram_id": telegram_id,
+        "tests": tests,
+        "control_tests": control_tests,
+        "tests_count": len(tests),
+        "control_count": len(control_tests),
+        "tests_avg": round(sum(t["percent"] for t in tests) / len(tests), 1) if tests else None,
+        "homework": homework,
+        "homework_count": len(homework),
+        "homework_graded": len(graded_hw),
+        "homework_avg": (round(sum(h["teacher_score"] for h in graded_hw) / len(graded_hw), 2)
+                         if graded_hw else None),
+    }
+
+
+def get_pending_homework_for_user(telegram_id: int):
+    """O'quvchi HOZIR qaysi paragrafni topshirishi kerak — ogohlantirish
+    matnida aniq nima qilish kerakligini aytish uchun."""
+    result = []
+    for subject in get_homework_subjects(only_active=True):
+        if not user_can_access_homework_subject(telegram_id, subject["id"]):
+            continue
+        for p in compute_homework_paragraphs(telegram_id, subject["id"]):
+            if p["unlocked"] and p["status"] in ("empty", "draft", "rejected"):
+                result.append({
+                    "subject_id": subject["id"],
+                    "subject_title": subject["title"],
+                    "paragraph_number": p["paragraph_number"],
+                    "status": p["status"],
+                })
+                break
+    return result
+
+
+def get_weekly_personal_summary(telegram_id: int):
+    """Haftalik shaxsiy xabar uchun barcha ko'rsatkichlar bir joyda."""
+    now_local = tashkent_now()
+    start_utc, end_utc = tashkent_day_bounds_utc(now_local.date(), days=7)
+    digest = get_user_activity_digest(telegram_id, start_utc, end_utc)
+
+    combined = get_my_combined_monthly_rank(telegram_id, now_local.year, now_local.month)
+    kinds = {}
+    for kind in ("control", "attestation", "certificate", "topic"):
+        rank = get_my_test_kind_rank(telegram_id, kind, period="week")
+        if rank:
+            kinds[kind] = rank
+
+    top3 = get_combined_monthly_leaderboard(now_local.year, now_local.month, limit=3)
+    return {
+        "digest": digest,
+        "combined": combined,
+        "kinds": kinds,
+        "top3": top3,
+        "week_start": (now_local.date() - datetime.timedelta(days=6)).isoformat(),
+        "week_end": now_local.date().isoformat(),
+    }
