@@ -130,6 +130,10 @@ async def startup():
     asyncio.create_task(bot_module.chem_battle_maintenance_loop())
     # Pullik guruh a'zoligini fon rejimida yangilash (chiqib ketganlarni yopish)
     asyncio.create_task(bot_module.membership_refresh_loop())
+    # Har yakshanba 21:00'da har o'quvchiga shaxsiy haftalik reyting xabari
+    asyncio.create_task(bot_module.send_weekly_rank_loop())
+    # Pullik guruh a'zolariga har 2 kunda, 23:00'da, kechagi natija hisoboti
+    asyncio.create_task(bot_module.send_paid_group_daily_report_loop())
 
 
 @app.on_event("shutdown")
