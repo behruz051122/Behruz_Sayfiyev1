@@ -1,0 +1,905 @@
+From 0d3a8d3287b9f7c636126c522e7dfa80dcde03e3 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 8 Aug 2026 10:39:25 +0000
+Subject: [PATCH] Vazifa paragraf bagini tuzatish + reyting/xabar tizimlari
+
+- Bag: boshlanish paragrafi pasaytirilganda (61->60) allaqachon
+  topshirilgan paragraflar qayta qulflanib qolayotgan edi
+  (compute_homework_paragraphs). Endi submission yozuvi bor paragraf
+  har doim ochiq hisoblanadi.
+- Admin: Attestatsiya testlari uchun ham "Natijalar" ko'rish tugmasi
+  qo'shildi (mavjud control-test natijalar endpointi qayta ishlatildi).
+- Reyting ekraniga Attestatsiya / Milliy sertifikat / Mavzuli testlar
+  uchun alohida oylik reyting tablari qo'shildi.
+- O'qituvchi uy vazifasini baholaganda/qaytarganda o'quvchiga ball va
+  izoh bilan Telegram xabari avtomatik boradi.
+- Yangi fon vazifalari: har yakshanba 21:00'da shaxsiy haftalik
+  (nazorat testi + vazifa) reyting xabari, va pullik guruh a'zolariga
+  har 2 kunda 23:00'da kechagi kun natijasi/ogohlantirishi.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0164C1VewFgiRRFnNqzCnQPG
+---
+ bot.py                    | 124 ++++++++++++++
+ database.py               | 345 +++++++++++++++++++++++++++++++++++++-
+ routers/admin_homework.py |  33 +++-
+ routers/control_tests.py  |  20 ++-
+ server.py                 |   4 +
+ webapp/index.html         |  21 +++
+ webapp/js/admin.js        |   5 +-
+ webapp/js/leaderboard.js  |  86 +++++++---
+ 8 files changed, 610 insertions(+), 28 deletions(-)
+
+diff --git a/bot.py b/bot.py
+index fb025f9..1343bd0 100644
+--- a/bot.py
++++ b/bot.py
+@@ -2,6 +2,7 @@
+ # Telegram bot: referal tizimi, kanalga majburiy obuna, Mini App
+ 
+ import asyncio
++import datetime
+ import logging
+ 
+ from aiogram import Bot, Dispatcher, types, F
+@@ -20,8 +21,22 @@ from database import (
+     get_startable_chem_tournaments, start_chem_tournament, get_chem_tournament,
+     get_chem_substances_by_category, TOURNAMENT_QUESTION_COUNT,
+     get_access_groups, get_users_needing_membership_refresh,
++    get_combined_range_leaderboard, get_users_needing_weekly_rank_notification, mark_weekly_rank_sent,
++    get_users_due_for_paid_group_report, get_yesterday_control_test_results_for,
++    get_yesterday_homework_submissions_for, mark_paid_group_report_sent,
+ )
+ 
++# Loyihada barcha vaqt UTC (SQLite CURRENT_TIMESTAMP/date('now')) saqlanadi,
++# lekin "soat 21:00/23:00" va "kecha" kabi vaqtga bog'liq avtomatik xabarlar
++# o'qituvchi/o'quvchilar uchun Toshkent MAHALLIY vaqtiga mos bo'lishi kerak
++# (O'zbekiston UTC+5, yoz vaqti yo'q). Shu sababli bu funksiyalarda SQL'ning
++# o'z 'now'iga emas, shu doimiy siljish bilan hisoblangan vaqtga tayaniladi.
++TASHKENT_UTC_OFFSET_HOURS = 5
++
++
++def _tashkent_now() -> datetime.datetime:
++    return datetime.datetime.utcnow() + datetime.timedelta(hours=TASHKENT_UTC_OFFSET_HOURS)
++
+ logging.basicConfig(level=logging.INFO)
+ 
+ bot = Bot(token=BOT_TOKEN)
+@@ -225,6 +240,115 @@ async def send_homework_reminders_loop():
+         await asyncio.sleep(HOMEWORK_REMINDER_INTERVAL_SECONDS)
+ 
+ 
++# ---------- Haftalik shaxsiy reyting xabari (yakshanba, 21:00 Toshkent) ----------
++
++WEEKLY_RANK_CHECK_INTERVAL_SECONDS = 300  # 5 daqiqada bir tekshiradi — 21:00 oynasini o'tkazib yubormaslik uchun
++
++
++async def send_weekly_rank_loop():
++    """Har yakshanba, soat 21:00'da (Toshkent vaqti) shu hafta kamida bitta
++    nazorat testi yoki baholangan vazifaga ega bo'lgan har o'quvchiga
++    shaxsiy (50/50 birlashgan) haftalik reytingini yuboradi.
++
++    Bir xil haftada ikki marta yuborilmasligi weekly_rank_notifications
++    jadvali orqali kafolatlanadi (ISO yil+hafta raqami bo'yicha)."""
++    while True:
++        try:
++            now = _tashkent_now()
++            if now.weekday() == 6 and now.hour == 21:  # yakshanba = 6 (Dushanba=0)
++                iso_year, iso_week, _ = now.isocalendar()
++                week_start = (now.date() - datetime.timedelta(days=6)).isoformat()
++                week_end = now.date().isoformat()
++                board = get_combined_range_leaderboard(week_start, week_end, limit=100000)
++                due_ids = get_users_needing_weekly_rank_notification(iso_year, iso_week, week_start, week_end)
++                total_participants = len(board)
++                for row in board:
++                    if row["telegram_id"] not in due_ids:
++                        continue
++                    try:
++                        text = (
++                            f"📊 <b>Haftalik natijangiz</b>\n\n"
++                            f"🏆 Umumiy o'rin: #{row['rank']} / {total_participants}\n"
++                            f"🎓 Nazorat testi: {row['test_percent']}% ({row['test_attempts']} ta)\n"
++                            f"📸 Vazifa: {row['homework_percent']}% ({row['homework_graded']} ta baholangan)"
++                        )
++                        await bot.send_message(row["telegram_id"], text, parse_mode="HTML")
++                        mark_weekly_rank_sent(row["telegram_id"], iso_year, iso_week)
++                        logging.info(f"Haftalik reyting yuborildi: telegram_id={row['telegram_id']}")
++                    except Exception as send_error:
++                        logging.warning(f"Haftalik reyting yuborilmadi "
++                                        f"(telegram_id={row['telegram_id']}): {send_error}")
++        except Exception as e:
++            logging.error(f"Haftalik reyting siklida xato: {e}")
++
++        await asyncio.sleep(WEEKLY_RANK_CHECK_INTERVAL_SECONDS)
++
++
++# ---------- Pullik guruh a'zolari — kunlik (kechagi) natija hisoboti, 23:00 Toshkent ----------
++
++PAID_GROUP_REPORT_CHECK_INTERVAL_SECONDS = 300  # 5 daqiqada bir tekshiradi
++PAID_GROUP_REPORT_HOUR = 23
++
++
++def _build_paid_group_report_text(tests, homeworks) -> str:
++    parts = ["📅 <b>Kechagi kun natijangiz</b>\n"]
++
++    if tests:
++        parts.append("🎓 <b>Nazorat testi:</b>")
++        for t in tests:
++            parts.append(f"  • {t['test_title']}: {t['score']}/{t['total_questions']} ({t['percent']}%)")
++    else:
++        parts.append("⚠️ Kecha nazorat testi ishlamadingiz.")
++
++    parts.append("")
++
++    if homeworks:
++        parts.append("📸 <b>Vazifa:</b>")
++        for h in homeworks:
++            if h.get("teacher_score") is not None:
++                score_txt = f" — {h['teacher_score']}/10"
++            else:
++                score_txt = " (baholanmoqda)"
++            parts.append(f"  • {h['subject_title']}, {h['paragraph_number']}-paragraf{score_txt}")
++    else:
++        parts.append("⚠️ Kecha vazifa tashlamadingiz.")
++
++    return "\n".join(parts)
++
++
++async def send_paid_group_daily_report_loop():
++    """Har 2 kunda bir marta, soat 23:00'da (Toshkent vaqti), pullik
++    (kirish guruhiga a'zo) har bir foydalanuvchiga KECHAGI kunning nazorat
++    testi va vazifa natijasini (yoki yo'qligi haqida ogohlantirishni)
++    yuboradi.
++
++    "Har 2 kunda bir marta" qoidasi paid_group_daily_notifications
++    jadvalidagi oxirgi yuborilgan sana orqali ta'minlanadi — shu sabab
++    sikl har kuni soat 23:00'da ishga tushsa ham, aynan shu foydalanuvchiga
++    2 kundan kam vaqt o'tgan bo'lsa, xabar qayta yuborilmaydi."""
++    while True:
++        try:
++            now = _tashkent_now()
++            if now.hour == PAID_GROUP_REPORT_HOUR:
++                today_str = now.date().isoformat()
++                yesterday_str = (now.date() - datetime.timedelta(days=1)).isoformat()
++                due_ids = get_users_due_for_paid_group_report(today_str)
++                for tid in due_ids:
++                    try:
++                        tests = get_yesterday_control_test_results_for(tid, yesterday_str)
++                        homeworks = get_yesterday_homework_submissions_for(tid, yesterday_str)
++                        text = _build_paid_group_report_text(tests, homeworks)
++                        await bot.send_message(tid, text, parse_mode="HTML")
++                        mark_paid_group_report_sent(tid, today_str)
++                        logging.info(f"Pullik guruh kunlik hisoboti yuborildi: telegram_id={tid}")
++                    except Exception as send_error:
++                        logging.warning(f"Pullik guruh hisoboti yuborilmadi (telegram_id={tid}): {send_error}")
++        except Exception as e:
++            logging.error(f"Pullik guruh hisobot siklida xato: {e}")
++
++        await asyncio.sleep(PAID_GROUP_REPORT_CHECK_INTERVAL_SECONDS)
++
++
+ BATTLE_NOTIFY_CHECK_INTERVAL_SECONDS = 15  # o'yin natijasi tezroq yetib borishi kerak
+ 
+ 
+diff --git a/database.py b/database.py
+index f86acc4..434ccd8 100644
+--- a/database.py
++++ b/database.py
+@@ -1730,6 +1730,29 @@ def init_db():
+             )
+         """)
+ 
++        # Haftalik shaxsiy reyting xabari (nazorat testi + vazifa, 50/50)
++        # bir hafta ichida bir martadan ortiq yuborilmasligi uchun.
++        cur.execute("""
++            CREATE TABLE IF NOT EXISTS weekly_rank_notifications (
++                telegram_id INTEGER NOT NULL,
++                sent_year INTEGER NOT NULL,
++                sent_week INTEGER NOT NULL,
++                sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
++                PRIMARY KEY (telegram_id, sent_year, sent_week)
++            )
++        """)
++
++        # Pullik guruh a'zolariga kunlik (kechagi kun) natija xabari —
++        # har foydalanuvchi uchun oxirgi yuborilgan sana saqlanadi, shu
++        # orqali "har 2 kunda bir marta" qoidasi ta'minlanadi.
++        cur.execute("""
++            CREATE TABLE IF NOT EXISTS paid_group_daily_notifications (
++                telegram_id INTEGER PRIMARY KEY,
++                last_sent_date TEXT,
++                sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
++            )
++        """)
++
+         conn.commit()
+     print("Baza tayyor (v5 — DTM simulyatori bilan): users, courses, paragraphs, lessons, "
+           "lesson_progress, enrollments, referrals, tests, simulators.")
+@@ -4865,6 +4888,60 @@ def get_my_control_test_rank(telegram_id: int, year: int, month: int):
+     return None
+ 
+ 
++def get_test_kind_monthly_leaderboard(test_kind: str, year: int, month: int, limit: int = 100):
++    """get_control_test_monthly_leaderboard bilan bir xil mantiq, lekin
++    `is_control_test` o'rniga `test_kind` bo'yicha filtrlaydi — Attestatsiya
++    (`attestation`), Milliy sertifikat (`certificate`) va Mavzuli testlar
++    (`practice`) uchun alohida oylik reyting olish imkonini beradi."""
++    month_str = f"{year:04d}-{month:02d}"
++    with get_connection() as conn:
++        cur = conn.cursor()
++        cur.execute("""
++            WITH first_attempts AS (
++                SELECT a.*,
++                       ROW_NUMBER() OVER (
++                           PARTITION BY a.telegram_id, a.test_id
++                           ORDER BY a.started_at ASC, a.id ASC
++                       ) as rn
++                FROM test_attempts a
++                JOIN tests t ON t.id = a.test_id
++                WHERE t.test_kind = ? AND a.finished_at IS NOT NULL
++            )
++            SELECT u.telegram_id as telegram_id, u.first_name as first_name,
++                   AVG(CAST(fa.score AS FLOAT) / NULLIF(fa.total_questions, 0)) * 100 as avg_percent,
++                   AVG((julianday(fa.finished_at) - julianday(fa.started_at)) * 86400) as avg_seconds,
++                   COUNT(fa.id) as attempts_count
++            FROM first_attempts fa
++            JOIN users u ON u.telegram_id = fa.telegram_id
++            WHERE fa.rn = 1
++              AND strftime('%Y-%m', fa.finished_at) = ?
++            GROUP BY u.telegram_id
++            ORDER BY avg_percent DESC, avg_seconds ASC
++            LIMIT ?
++        """, (test_kind, month_str, limit))
++        rows = [dict(r) for r in cur.fetchall()]
++        for r in rows:
++            r["avg_percent"] = round(r["avg_percent"] or 0, 1)
++            r["avg_seconds"] = round(r["avg_seconds"] or 0)
++        return rows
++
++
++def get_my_test_kind_rank(telegram_id: int, test_kind: str, year: int, month: int):
++    """Foydalanuvchining shu oydagi (attestatsiya/sertifikat/mavzuli)
++    reytingidagi o'rnini topadi."""
++    leaderboard = get_test_kind_monthly_leaderboard(test_kind, year, month, limit=100000)
++    for idx, row in enumerate(leaderboard):
++        if row["telegram_id"] == telegram_id:
++            return {
++                "rank": idx + 1,
++                "avg_percent": row["avg_percent"],
++                "avg_seconds": row["avg_seconds"],
++                "attempts_count": row["attempts_count"],
++                "total_participants": len(leaderboard),
++            }
++    return None
++
++
+ # ================================================================
+ # VAZIFA TOPSHIRISH (uy vazifasi rasmlari)
+ # ================================================================
+@@ -5129,7 +5206,15 @@ def compute_homework_paragraphs(telegram_id: int, subject_id: int):
+     ochiq, undan keyingisi esa faqat oldingisi "Vazifalar to'liq
+     yuklandi" deb YAKUNLANGANDA ochiladi. O'qituvchi qayta ishlashga
+     qaytargan (rejected) topshiriq yakunlangan hisoblanmaydi —
+-    keyingisi yopiladi."""
++    keyingisi yopiladi.
++
++    ESKI BOSHLANISH NUQTASI OSTIDA QOLGAN ISH YO'QOLMAYDI: agar admin
++    boshlanish nuqtasini keyinroq PASAYTIRSA (masalan 61 dan 60 ga),
++    yangi qo'shilgan 60-paragraf hech qachon so'ralmagani uchun bo'sh
++    bo'ladi va oddiy zanjir bo'yicha undan keyingi (aslida allaqachon
++    topshirilgan) 61-ni ham qulflab qo'yardi. Shu sababli paragraf N
++    o'zining submission yozuviga ega bo'lsa — u zanjirdan qat'i nazar
++    HAR DOIM ochiq hisoblanadi (ish "yo'qolib" ko'rinmasin)."""
+     subject = get_homework_subject(subject_id)
+     if not subject:
+         return []
+@@ -5146,11 +5231,12 @@ def compute_homework_paragraphs(telegram_id: int, subject_id: int):
+         sub = subs.get(n)
+         status = sub["status"] if sub else "empty"
+         is_done = status in ("submitted", "graded")
++        unlocked = prev_done or (sub is not None)
+         photo_count = len(get_homework_photos(sub["id"])) if sub else 0
+         result.append({
+             "paragraph_number": n,
+             "status": status,
+-            "unlocked": prev_done,
++            "unlocked": unlocked,
+             "photo_count": photo_count,
+             "teacher_score": sub.get("teacher_score") if sub else None,
+             "teacher_comment": sub.get("teacher_comment") if sub else None,
+@@ -5312,7 +5398,11 @@ def get_homework_pending_submissions(subject_id: int = None):
+ 
+ def grade_homework_submission(submission_id: int, teacher_score, teacher_comment: str,
+                               graded_by: int, reject: bool = False):
+-    """O'qituvchi 0..10 ball qo'yadi yoki qayta ishlashga qaytaradi."""
++    """O'qituvchi 0..10 ball qo'yadi yoki qayta ishlashga qaytaradi.
++
++    Natijada shu submission haqida (telegram_id, fan nomi, paragraf raqami,
++    ball, izoh) ma'lumotlarini ham qaytaradi — chaqiruvchi (admin_homework.py)
++    shu asosda o'quvchiga Telegram orqali xabar yubora oladi."""
+     with get_connection() as conn:
+         cur = conn.cursor()
+         if reject:
+@@ -5330,7 +5420,19 @@ def grade_homework_submission(submission_id: int, teacher_score, teacher_comment
+                 WHERE id = ?
+             """, (score, teacher_comment or "", graded_by, submission_id))
+         conn.commit()
+-    return {"ok": True}
++        cur.execute("""
++            SELECT s.telegram_id AS telegram_id, s.subject_id AS subject_id,
++                   s.paragraph_number AS paragraph_number, s.status AS status,
++                   s.teacher_score AS teacher_score, s.teacher_comment AS teacher_comment,
++                   hs.title AS subject_title
++            FROM homework_submissions s
++            JOIN homework_subjects hs ON hs.id = s.subject_id
++            WHERE s.id = ?
++        """, (submission_id,))
++        row = cur.fetchone()
++    result = dict(row) if row else {}
++    result["ok"] = True
++    return result
+ 
+ 
+ def get_user_homework_summary(telegram_id: int, subject_id: int = None):
+@@ -5543,6 +5645,241 @@ def get_my_combined_monthly_rank(telegram_id: int, year: int, month: int):
+     return None
+ 
+ 
++# ---------- HAFTALIK 50/50 REYTING (shaxsiy xabar uchun) ----------
++#
++# Yuqoridagi get_control_test_monthly_leaderboard / get_homework_monthly_scores /
++# get_combined_monthly_leaderboard bilan AYNAN bir xil mantiq — farqi faqat
++# "shu oy" o'rniga ISTALGAN SANA ORALIG'I (masalan bitta hafta) bo'yicha
++# filtrlanishi. Har haftalik shaxsiy xabar (bot.py -> send_weekly_rank_loop)
++# shu funksiyalardan foydalanadi.
++
++def get_control_test_range_leaderboard(start_date: str, end_date: str, limit: int = 100000):
++    """get_control_test_monthly_leaderboard bilan bir xil, lekin oy o'rniga
++    [start_date, end_date] (YYYY-MM-DD, ikkalasi ham qamrab olinadi)
++    oralig'i bo'yicha."""
++    with get_connection() as conn:
++        cur = conn.cursor()
++        cur.execute("""
++            WITH first_attempts AS (
++                SELECT a.*,
++                       ROW_NUMBER() OVER (
++                           PARTITION BY a.telegram_id, a.test_id
++                           ORDER BY a.started_at ASC, a.id ASC
++                       ) as rn
++                FROM test_attempts a
++                JOIN tests t ON t.id = a.test_id
++                WHERE t.is_control_test = 1 AND a.finished_at IS NOT NULL
++            )
++            SELECT u.telegram_id as telegram_id, u.first_name as first_name,
++                   AVG(CAST(fa.score AS FLOAT) / NULLIF(fa.total_questions, 0)) * 100 as avg_percent,
++                   AVG((julianday(fa.finished_at) - julianday(fa.started_at)) * 86400) as avg_seconds,
++                   COUNT(fa.id) as attempts_count
++            FROM first_attempts fa
++            JOIN users u ON u.telegram_id = fa.telegram_id
++            WHERE fa.rn = 1
++              AND date(fa.finished_at) BETWEEN ? AND ?
++            GROUP BY u.telegram_id
++            ORDER BY avg_percent DESC, avg_seconds ASC
++            LIMIT ?
++        """, (start_date, end_date, limit))
++        rows = [dict(r) for r in cur.fetchall()]
++        for r in rows:
++            r["avg_percent"] = round(r["avg_percent"] or 0, 1)
++            r["avg_seconds"] = round(r["avg_seconds"] or 0)
++        return rows
++
++
++def get_homework_range_scores(start_date: str, end_date: str):
++    """get_homework_monthly_scores bilan bir xil, lekin sana oralig'i bo'yicha."""
++    with get_connection() as conn:
++        cur = conn.cursor()
++        cur.execute("""
++            SELECT s.telegram_id,
++                   AVG(s.teacher_score) AS avg_score,
++                   COUNT(*) AS graded_count
++            FROM homework_submissions s
++            WHERE s.status = 'graded'
++              AND s.teacher_score IS NOT NULL
++              AND date(COALESCE(s.submitted_at, s.graded_at)) BETWEEN ? AND ?
++            GROUP BY s.telegram_id
++        """, (start_date, end_date))
++        rows = [dict(r) for r in cur.fetchall()]
++    return {
++        r["telegram_id"]: {
++            "homework_percent": round((r["avg_score"] / HOMEWORK_MAX_SCORE) * 100, 1),
++            "graded_count": r["graded_count"],
++            "avg_score": round(r["avg_score"], 2),
++        }
++        for r in rows
++    }
++
++
++def get_combined_range_leaderboard(start_date: str, end_date: str, limit: int = 100000):
++    """get_combined_monthly_leaderboard bilan AYNAN bir xil mantiq
++    (50/50 nazorat testi + vazifa), faqat oy o'rniga sana oralig'i bo'yicha."""
++    test_rows = get_control_test_range_leaderboard(start_date, end_date, limit=100000)
++    test_by_id = {r["telegram_id"]: r for r in test_rows}
++    hw_by_id = get_homework_range_scores(start_date, end_date)
++
++    all_ids = set(test_by_id) | set(hw_by_id)
++
++    users_by_id = {}
++    if all_ids:
++        with get_connection() as conn:
++            cur = conn.cursor()
++            placeholders = ",".join("?" for _ in all_ids)
++            cur.execute(f"SELECT telegram_id, first_name, username FROM users WHERE telegram_id IN ({placeholders})",
++                        list(all_ids))
++            users_by_id = {r["telegram_id"]: dict(r) for r in cur.fetchall()}
++
++    result = []
++    for tid in all_ids:
++        t = test_by_id.get(tid)
++        h = hw_by_id.get(tid)
++        test_percent = t["avg_percent"] if t else 0.0
++        hw_percent = h["homework_percent"] if h else 0.0
++        total = (test_percent * RANKING_TEST_WEIGHT + hw_percent * RANKING_HOMEWORK_WEIGHT) / 100.0
++
++        user = users_by_id.get(tid, {})
++        result.append({
++            "telegram_id": tid,
++            "first_name": (t or {}).get("first_name") or user.get("first_name") or "Foydalanuvchi",
++            "username": user.get("username"),
++            "test_percent": round(test_percent, 1),
++            "test_attempts": (t or {}).get("attempts_count", 0),
++            "homework_percent": round(hw_percent, 1),
++            "homework_graded": (h or {}).get("graded_count", 0),
++            "homework_avg_score": (h or {}).get("avg_score"),
++            "total_score": round(total, 1),
++        })
++
++    result.sort(key=lambda r: (-r["total_score"], -r["homework_graded"], -r["test_attempts"]))
++    for idx, r in enumerate(result):
++        r["rank"] = idx + 1
++    return result[:limit]
++
++
++def get_users_needing_weekly_rank_notification(iso_year: int, iso_week: int, start_date: str, end_date: str):
++    """Shu haftada kamida bitta faollik (nazorat testi yoki baholangan
++    vazifa) ko'rsatgan, lekin shu hafta uchun hali xabar OLMAGAN
++    foydalanuvchilar ro'yxati (telegram_id)."""
++    board = get_combined_range_leaderboard(start_date, end_date, limit=100000)
++    candidate_ids = {r["telegram_id"] for r in board}
++    if not candidate_ids:
++        return set()
++    with get_connection() as conn:
++        cur = conn.cursor()
++        cur.execute("""
++            SELECT telegram_id FROM weekly_rank_notifications
++            WHERE sent_year = ? AND sent_week = ?
++        """, (iso_year, iso_week))
++        already_sent = {r["telegram_id"] for r in cur.fetchall()}
++    return candidate_ids - already_sent
++
++
++def mark_weekly_rank_sent(telegram_id: int, iso_year: int, iso_week: int):
++    with get_connection() as conn:
++        conn.cursor().execute("""
++            INSERT OR IGNORE INTO weekly_rank_notifications (telegram_id, sent_year, sent_week)
++            VALUES (?, ?, ?)
++        """, (telegram_id, iso_year, iso_week))
++        conn.commit()
++
++
++# ---------- PULLIK GURUH — KUNLIK (KECHAGI) NATIJA HISOBOTI ----------
++#
++# "Pullik guruh a'zosi" — istalgan FAOL kirish guruhiga (access_groups,
++# Telegram yopiq kanal/guruh) a'zo bo'lgan foydalanuvchi deb olinadi,
++# qaysi aniq kurs/fanga bog'liqligidan qat'i nazar — o'qituvchi bilan
++# kelishilgan taxmin (kerak bo'lsa keyinroq kurs/fan darajasida
++# toraytirish mumkin).
++
++def get_paid_group_member_ids():
++    """Hozir kamida bitta FAOL pullik guruhga a'zo (kesh bo'yicha) barcha
++    foydalanuvchilar."""
++    with get_connection() as conn:
++        cur = conn.cursor()
++        cur.execute("""
++            SELECT DISTINCT c.telegram_id
++            FROM group_membership_cache c
++            JOIN access_groups g ON g.id = c.group_id
++            WHERE c.is_member = 1 AND g.is_active = 1
++        """)
++        return [r["telegram_id"] for r in cur.fetchall()]
++
++
++def get_users_due_for_paid_group_report(today_str: str):
++    """Pullik guruh a'zolaridan, HECH QACHON xabar OLMAGAN yoki oxirgi
++    xabardan beri 2 KUN YOKI KO'PROQ o'tganlar ro'yxati — "har 2 kunda bir
++    marta" qoidasini ta'minlaydi."""
++    member_ids = get_paid_group_member_ids()
++    if not member_ids:
++        return []
++    with get_connection() as conn:
++        cur = conn.cursor()
++        placeholders = ",".join("?" for _ in member_ids)
++        cur.execute(f"""
++            SELECT telegram_id, last_sent_date FROM paid_group_daily_notifications
++            WHERE telegram_id IN ({placeholders})
++        """, member_ids)
++        last_sent = {r["telegram_id"]: r["last_sent_date"] for r in cur.fetchall()}
++
++    today = datetime.date.fromisoformat(today_str)
++    due = []
++    for tid in member_ids:
++        last = last_sent.get(tid)
++        if not last or (today - datetime.date.fromisoformat(last)).days >= 2:
++            due.append(tid)
++    return due
++
++
++def get_yesterday_control_test_results_for(telegram_id: int, day_str: str):
++    """Shu foydalanuvchi KECHA yakunlagan barcha nazorat testi urinishlari
++    (mashq/qayta urinish ham — bu shaxsiy kunlik hisobot, reyting emas,
++    shuning uchun hech narsa chetlab o'tilmaydi)."""
++    with get_connection() as conn:
++        cur = conn.cursor()
++        cur.execute("""
++            SELECT t.title AS test_title, a.score AS score, a.total_questions AS total_questions
++            FROM test_attempts a
++            JOIN tests t ON t.id = a.test_id
++            WHERE a.telegram_id = ? AND t.is_control_test = 1
++              AND a.finished_at IS NOT NULL AND date(a.finished_at) = ?
++            ORDER BY a.finished_at ASC
++        """, (telegram_id, day_str))
++        rows = [dict(r) for r in cur.fetchall()]
++    for r in rows:
++        r["percent"] = round((r["score"] / r["total_questions"]) * 100, 1) if r["total_questions"] else 0
++    return rows
++
++
++def get_yesterday_homework_submissions_for(telegram_id: int, day_str: str):
++    """Shu foydalanuvchi KECHA topshirgan (submitted yoki graded) vazifalar."""
++    with get_connection() as conn:
++        cur = conn.cursor()
++        cur.execute("""
++            SELECT hs.title AS subject_title, s.paragraph_number AS paragraph_number,
++                   s.status AS status, s.teacher_score AS teacher_score
++            FROM homework_submissions s
++            JOIN homework_subjects hs ON hs.id = s.subject_id
++            WHERE s.telegram_id = ? AND s.status IN ('submitted', 'graded')
++              AND date(s.submitted_at) = ?
++            ORDER BY s.submitted_at ASC
++        """, (telegram_id, day_str))
++        return [dict(r) for r in cur.fetchall()]
++
++
++def mark_paid_group_report_sent(telegram_id: int, today_str: str):
++    with get_connection() as conn:
++        conn.cursor().execute("""
++            INSERT INTO paid_group_daily_notifications (telegram_id, last_sent_date, sent_at)
++            VALUES (?, ?, CURRENT_TIMESTAMP)
++            ON CONFLICT(telegram_id) DO UPDATE SET
++                last_sent_date = excluded.last_sent_date, sent_at = CURRENT_TIMESTAMP
++        """, (telegram_id, today_str))
++        conn.commit()
++
++
+ def mark_homework_reminder_sent(telegram_id: int, subject_id: int, paragraph_number: int):
+     """Ogohlantirish yuborilganini belgilaydi — bir xil eslatma
+     qayta-qayta yuborilmasligi uchun."""
+diff --git a/routers/admin_homework.py b/routers/admin_homework.py
+index 1cbb658..63b6a8c 100644
+--- a/routers/admin_homework.py
++++ b/routers/admin_homework.py
+@@ -6,6 +6,7 @@
+ #   - oy yakunidagi UMUMLASHGAN reyting (nazorat testi + vazifa)
+ 
+ import datetime
++import logging
+ 
+ from fastapi import APIRouter, Depends, Body, HTTPException
+ 
+@@ -96,18 +97,44 @@ def admin_pending_submissions(subject_id: int = None, admin=Depends(require_admi
+ 
+ 
+ @router.post("/grade")
+-def admin_grade_submission(data: dict = Body(...), admin=Depends(require_admin)):
+-    """0..10 ball qo'yish yoki qayta ishlashga qaytarish (reject=true)."""
++async def admin_grade_submission(data: dict = Body(...), admin=Depends(require_admin)):
++    """0..10 ball qo'yish yoki qayta ishlashga qaytarish (reject=true).
++
++    Baholangandan/qaytarilgandan so'ng o'quvchiga darhol Telegram orqali
++    xabar boradi (ball va o'qituvchi izohi bilan) — shu bilan o'quvchi
++    natijani bilish uchun ilovaga qayta kirib tekshirishi shart bo'lmaydi."""
+     submission_id = int(data["submission_id"])
+     reject = bool(data.get("reject"))
+     teacher_score = data.get("teacher_score")
+     if not reject and teacher_score is None:
+         raise HTTPException(status_code=400, detail="Ball qo'ying yoki qayta ishlashga qaytaring")
+     graded_by = admin.get("telegram_id") if isinstance(admin, dict) else None
+-    return db.grade_homework_submission(
++    result = db.grade_homework_submission(
+         submission_id, teacher_score, data.get("teacher_comment") or "", graded_by, reject=reject
+     )
+ 
++    if result.get("telegram_id"):
++        try:
++            import bot as bot_module
++            if reject:
++                text = (
++                    f"🔁 <b>Vazifa qayta ishlashga qaytarildi</b>\n\n"
++                    f"<b>{result['subject_title']}</b> — {result['paragraph_number']}-paragraf"
++                )
++            else:
++                text = (
++                    f"✅ <b>Vazifangiz baholandi</b>\n\n"
++                    f"<b>{result['subject_title']}</b> — {result['paragraph_number']}-paragraf\n"
++                    f"⭐ Baho: {result['teacher_score']}/10"
++                )
++            if result.get("teacher_comment"):
++                text += f"\n💬 Izoh: {result['teacher_comment']}"
++            await bot_module.bot.send_message(result["telegram_id"], text, parse_mode="HTML")
++        except Exception as e:
++            logging.warning(f"Baholash xabari yuborilmadi (submission_id={submission_id}): {e}")
++
++    return {"ok": True}
++
+ 
+ # ---------- Kechikkanlar ----------
+ 
+diff --git a/routers/control_tests.py b/routers/control_tests.py
+index f3429df..87a4215 100644
+--- a/routers/control_tests.py
++++ b/routers/control_tests.py
+@@ -1,13 +1,15 @@
+ # routers/control_tests.py
+ from datetime import datetime, timezone
+ 
+-from fastapi import APIRouter, Depends
++from fastapi import APIRouter, Depends, HTTPException
+ 
+ from routers.deps import get_verified_telegram_user
+ import database as db
+ 
+ router = APIRouter(prefix="/api", tags=["control-tests"])
+ 
++TEST_KIND_LEADERBOARD_KINDS = ("attestation", "certificate", "practice")
++
+ 
+ @router.get("/control-tests")
+ def api_get_control_tests(user=Depends(get_verified_telegram_user)):
+@@ -22,3 +24,19 @@ def api_control_test_leaderboard(year: int = None, month: int = None, user=Depen
+     leaderboard = db.get_control_test_monthly_leaderboard(y, m)
+     my_rank = db.get_my_control_test_rank(user["telegram_id"], y, m)
+     return {"year": y, "month": m, "leaderboard": leaderboard, "my_rank": my_rank}
++
++
++@router.get("/test-kind-leaderboard")
++def api_test_kind_leaderboard(kind: str, year: int = None, month: int = None,
++                              user=Depends(get_verified_telegram_user)):
++    """Attestatsiya / Milliy sertifikat / Mavzuli testlar uchun alohida
++    oylik reyting — get_control_test_leaderboard bilan bir xil shakl,
++    lekin test_kind bo'yicha filtrlanadi."""
++    if kind not in TEST_KIND_LEADERBOARD_KINDS:
++        raise HTTPException(status_code=400, detail="Noto'g'ri reyting turi")
++    now = datetime.now(timezone.utc)
++    y = year or now.year
++    m = month or now.month
++    leaderboard = db.get_test_kind_monthly_leaderboard(kind, y, m)
++    my_rank = db.get_my_test_kind_rank(user["telegram_id"], kind, y, m)
++    return {"year": y, "month": m, "kind": kind, "leaderboard": leaderboard, "my_rank": my_rank}
+diff --git a/server.py b/server.py
+index c00e402..02dab57 100644
+--- a/server.py
++++ b/server.py
+@@ -130,6 +130,10 @@ async def startup():
+     asyncio.create_task(bot_module.chem_battle_maintenance_loop())
+     # Pullik guruh a'zoligini fon rejimida yangilash (chiqib ketganlarni yopish)
+     asyncio.create_task(bot_module.membership_refresh_loop())
++    # Har yakshanba 21:00'da har o'quvchiga shaxsiy haftalik reyting xabari
++    asyncio.create_task(bot_module.send_weekly_rank_loop())
++    # Pullik guruh a'zolariga har 2 kunda, 23:00'da, kechagi natija hisoboti
++    asyncio.create_task(bot_module.send_paid_group_daily_report_loop())
+ 
+ 
+ @app.on_event("shutdown")
+diff --git a/webapp/index.html b/webapp/index.html
+index 82a82f4..0dd5227 100644
+--- a/webapp/index.html
++++ b/webapp/index.html
+@@ -608,6 +608,9 @@
+       <div class="tab-row" id="leaderboardTabRow">
+         <button class="tab-btn active" id="tabBtnCoinLb" data-lbtab="coin">🪙 Coin reytingi</button>
+         <button class="tab-btn" id="tabBtnControlLb" data-lbtab="control">🎓 Nazorat reytingi</button>
++        <button class="tab-btn" id="tabBtnAttestationLb" data-lbtab="attestation">📋 Attestatsiya</button>
++        <button class="tab-btn" id="tabBtnCertificateLb" data-lbtab="certificate">🏅 Milliy sertifikat</button>
++        <button class="tab-btn" id="tabBtnPracticeLb" data-lbtab="practice">📚 Mavzuli testlar</button>
+       </div>
+ 
+       <div id="coinLbTabContent">
+@@ -627,6 +630,24 @@
+         <div id="myControlRankBox" class="my-rank-box"></div>
+         <div id="controlLeaderboardList" class="leaderboard-list"></div>
+       </div>
++
++      <div id="attestationLbTabContent" class="hidden">
++        <div class="control-lb-month-label" id="attestationLbMonthLabel"></div>
++        <div id="myAttestationRankBox" class="my-rank-box"></div>
++        <div id="attestationLeaderboardList" class="leaderboard-list"></div>
++      </div>
++
++      <div id="certificateLbTabContent" class="hidden">
++        <div class="control-lb-month-label" id="certificateLbMonthLabel"></div>
++        <div id="myCertificateRankBox" class="my-rank-box"></div>
++        <div id="certificateLeaderboardList" class="leaderboard-list"></div>
++      </div>
++
++      <div id="practiceLbTabContent" class="hidden">
++        <div class="control-lb-month-label" id="practiceLbMonthLabel"></div>
++        <div id="myPracticeRankBox" class="my-rank-box"></div>
++        <div id="practiceLeaderboardList" class="leaderboard-list"></div>
++      </div>
+     </section>
+ 
+     <!-- NATIJALAR (o'quvchi fikri + sertifikat natijalari) -->
+diff --git a/webapp/js/admin.js b/webapp/js/admin.js
+index f6dbe2a..14a19cb 100644
+--- a/webapp/js/admin.js
++++ b/webapp/js/admin.js
+@@ -944,8 +944,9 @@ export async function loadAdminTests() {
+       const attestationBadge = t.test_kind === "attestation" ? `<span class="control-badge">📋 ATTESTATSIYA</span>` : "";
+       const group = t.test_group_id ? groupById[t.test_group_id] : null;
+       const groupBadge = group ? `<span class="control-badge">${group.icon || "📂"} ${group.subject_title} · ${group.stage_title} · ${group.title}</span>` : "";
++      const showResults = t.is_control_test || t.test_kind === "attestation";
+       const accessBtn = t.is_control_test ? `<button data-a="access">👥 Talabalar</button>` : "";
+-      const resultsBtn = t.is_control_test ? `<button data-a="results">📊 Natijalar</button>` : "";
++      const resultsBtn = showResults ? `<button data-a="results">📊 Natijalar</button>` : "";
+       // Nazorat testi qaysi guruhlarga bog'langani — bir qarashda ko'rinib tursin.
+       const linkedIds = Array.isArray(t.course_ids) ? t.course_ids : (t.course_id ? [t.course_id] : []);
+       const linkedTitles = linkedIds
+@@ -971,6 +972,8 @@ export async function loadAdminTests() {
+       row.querySelector('[data-a="questions"]').onclick = () => openAdminQuestions(t.id, t.title);
+       if (t.is_control_test) {
+         row.querySelector('[data-a="access"]').onclick = () => openAdminControlAccess(t.id, t.title);
++      }
++      if (showResults) {
+         row.querySelector('[data-a="results"]').onclick = () => openAdminControlResults(t.id, t.title);
+       }
+       row.querySelector('[data-a="edit"]').onclick = () => openAdminTestForm(t);
+diff --git a/webapp/js/leaderboard.js b/webapp/js/leaderboard.js
+index 8d7ed24..a05fa30 100644
+--- a/webapp/js/leaderboard.js
++++ b/webapp/js/leaderboard.js
+@@ -89,30 +89,75 @@ export async function loadLeaderboard(period) {
+   }
+ }
+ 
+-// ---------- Nazorat testlari oylik reytingi ----------
+-
+-let controlLbLoaded = false;
++// ---------- Nazorat testi / Attestatsiya / Milliy sertifikat / Mavzuli testlar — oylik reytinglar ----------
++//
++// Ushbu 4 ta tab bir xil shaklga ega natija qaytaradi (leaderboard + my_rank),
++// farqi faqat qaysi endpoint chaqirilishi va DOM elementlari qaysi id'ga ega
++// ekanida — shuning uchun bitta generik funksiya orqali boshqariladi (nusxa
++// ko'chirishning oldini oladi).
++const KIND_TAB_CONFIG = {
++  control: {
++    endpoint: "/api/control-test-leaderboard",
++    monthLabelId: "controlLbMonthLabel", rankBoxId: "myControlRankBox", listId: "controlLeaderboardList",
++    emptyText: "Bu oy hali hech kim nazorat testi topshirmagan",
++    noRankText: "Bu oy hali nazorat testi topshirmagansiz",
++    metricLabel: "test",
++  },
++  attestation: {
++    endpoint: "/api/test-kind-leaderboard?kind=attestation",
++    monthLabelId: "attestationLbMonthLabel", rankBoxId: "myAttestationRankBox", listId: "attestationLeaderboardList",
++    emptyText: "Bu oy hali hech kim attestatsiya testini topshirmagan",
++    noRankText: "Bu oy hali attestatsiya testi topshirmagansiz",
++    metricLabel: "test",
++  },
++  certificate: {
++    endpoint: "/api/test-kind-leaderboard?kind=certificate",
++    monthLabelId: "certificateLbMonthLabel", rankBoxId: "myCertificateRankBox", listId: "certificateLeaderboardList",
++    emptyText: "Bu oy hali hech kim Milliy sertifikat testini topshirmagan",
++    noRankText: "Bu oy hali Milliy sertifikat testi topshirmagansiz",
++    metricLabel: "test",
++  },
++  practice: {
++    endpoint: "/api/test-kind-leaderboard?kind=practice",
++    monthLabelId: "practiceLbMonthLabel", rankBoxId: "myPracticeRankBox", listId: "practiceLeaderboardList",
++    emptyText: "Bu oy hali hech kim mavzuli test topshirmagan",
++    noRankText: "Bu oy hali mavzuli test topshirmagansiz",
++    metricLabel: "test",
++  },
++};
++
++const kindLbLoaded = {};
+ 
+ function switchLeaderboardTab(tab) {
+-  document.getElementById("tabBtnCoinLb").classList.toggle("active", tab === "coin");
+-  document.getElementById("tabBtnControlLb").classList.toggle("active", tab === "control");
+-  document.getElementById("coinLbTabContent").classList.toggle("hidden", tab !== "coin");
+-  document.getElementById("controlLbTabContent").classList.toggle("hidden", tab !== "control");
++  const allTabs = ["coin", "control", "attestation", "certificate", "practice"];
++  const tabBtnIds = {
++    coin: "tabBtnCoinLb", control: "tabBtnControlLb", attestation: "tabBtnAttestationLb",
++    certificate: "tabBtnCertificateLb", practice: "tabBtnPracticeLb",
++  };
++  const tabContentIds = {
++    coin: "coinLbTabContent", control: "controlLbTabContent", attestation: "attestationLbTabContent",
++    certificate: "certificateLbTabContent", practice: "practiceLbTabContent",
++  };
++  allTabs.forEach(t => {
++    document.getElementById(tabBtnIds[t]).classList.toggle("active", t === tab);
++    document.getElementById(tabContentIds[t]).classList.toggle("hidden", t !== tab);
++  });
+ 
+-  if (tab === "control" && !controlLbLoaded) {
+-    loadControlLeaderboard();
++  if (tab !== "coin" && !kindLbLoaded[tab]) {
++    loadKindLeaderboard(tab);
+   }
+ }
+ 
+-async function loadControlLeaderboard() {
+-  const rankBox = document.getElementById("myControlRankBox");
+-  const box = document.getElementById("controlLeaderboardList");
+-  const monthLabel = document.getElementById("controlLbMonthLabel");
++async function loadKindLeaderboard(kind) {
++  const cfg = KIND_TAB_CONFIG[kind];
++  const rankBox = document.getElementById(cfg.rankBoxId);
++  const box = document.getElementById(cfg.listId);
++  const monthLabel = document.getElementById(cfg.monthLabelId);
+   box.innerHTML = skeletonRows(6);
+   try {
+-    const res = await apiFetch(`/api/control-test-leaderboard`);
++    const res = await apiFetch(cfg.endpoint);
+     const data = await res.json();
+-    controlLbLoaded = true;
++    kindLbLoaded[kind] = true;
+     monthLabel.textContent = `📅 ${MONTH_NAMES[data.month - 1]} ${data.year} — oylik reyting`;
+ 
+     if (data.my_rank) {
+@@ -120,20 +165,20 @@ async function loadControlLeaderboard() {
+         <div class="my-rank-label">Sizning o'rningiz</div>
+         <div class="my-rank-num">#${data.my_rank.rank}</div>
+         <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">
+-          ${data.my_rank.avg_percent}% o'rtacha natija · ⏱ ${formatAvgTime(data.my_rank.avg_seconds)} o'rtacha vaqt · ${data.my_rank.attempts_count} ta test · ${data.my_rank.total_participants} ishtirokchi orasida
++          ${data.my_rank.avg_percent}% o'rtacha natija · ⏱ ${formatAvgTime(data.my_rank.avg_seconds)} o'rtacha vaqt · ${data.my_rank.attempts_count} ta ${cfg.metricLabel} · ${data.my_rank.total_participants} ishtirokchi orasida
+         </div>
+       `;
+     } else {
+       rankBox.innerHTML = `
+         <div class="my-rank-label">Sizning o'rningiz</div>
+         <div class="my-rank-num">—</div>
+-        <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Bu oy hali nazorat testi topshirmagansiz</div>
++        <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">${cfg.noRankText}</div>
+       `;
+     }
+ 
+     box.innerHTML = "";
+     if (data.leaderboard.length === 0) {
+-      box.innerHTML = emptyHtml("Bu oy hali hech kim nazorat testi topshirmagan");
++      box.innerHTML = emptyHtml(cfg.emptyText);
+       return;
+     }
+     data.leaderboard.forEach((u, idx) => {
+@@ -148,7 +193,7 @@ async function loadControlLeaderboard() {
+       row.innerHTML = `
+         ${medal}
+         <span class="lb-name">${u.first_name || "Foydalanuvchi"}</span>
+-        <span class="lb-coins">${u.avg_percent}% · ⏱ ${formatAvgTime(u.avg_seconds)} · ${u.attempts_count} test</span>
++        <span class="lb-coins">${u.avg_percent}% · ⏱ ${formatAvgTime(u.avg_seconds)} · ${u.attempts_count} ${cfg.metricLabel}</span>
+       `;
+       box.appendChild(row);
+     });
+@@ -161,6 +206,9 @@ async function loadControlLeaderboard() {
+ export function initLeaderboardModule() {
+   document.getElementById("tabBtnCoinLb").addEventListener("click", () => switchLeaderboardTab("coin"));
+   document.getElementById("tabBtnControlLb").addEventListener("click", () => switchLeaderboardTab("control"));
++  document.getElementById("tabBtnAttestationLb").addEventListener("click", () => switchLeaderboardTab("attestation"));
++  document.getElementById("tabBtnCertificateLb").addEventListener("click", () => switchLeaderboardTab("certificate"));
++  document.getElementById("tabBtnPracticeLb").addEventListener("click", () => switchLeaderboardTab("practice"));
+ 
+   document.querySelectorAll("#lbPeriodRow .filter-chip").forEach(btn => {
+     btn.addEventListener("click", () => loadLeaderboard(btn.getAttribute("data-period")));
+-- 
+2.43.0
+
